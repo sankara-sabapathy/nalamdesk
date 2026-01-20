@@ -1,0 +1,89 @@
+{
+  "name": "nalamdesk",
+  "version": "0.0.0",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "ng": "ng",
+    "dev": "npm start",
+    "start": "concurrently \"npm run start:renderer\" \"wait-on http://localhost:4200 && npm run start:electron\"",
+    "start:renderer": "ng serve",
+    "start:electron": "tsc -p tsconfig.main.json && electron dist/main/main.js",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build": "ng build && npm run build:main",
+    "pack": "npm run build && electron-builder",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "postinstall": "electron-builder install-app-deps",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:mac": "npm run build && electron-builder --mac"
+  },
+  "private": true,
+  "build": {
+    "appId": "com.sankarasabapathy.nalamdesk",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sankara-sabapathy",
+        "repo": "nalamdesk"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.medical"
+    }
+  },
+  "dependencies": {
+    "@angular/animations": "^17.0.0",
+    "@angular/common": "^17.0.0",
+    "@angular/compiler": "^17.0.0",
+    "@angular/core": "^17.0.0",
+    "@angular/forms": "^17.0.0",
+    "@angular/platform-browser": "^17.0.0",
+    "@angular/platform-browser-dynamic": "^17.0.0",
+    "@angular/router": "^17.0.0",
+    "@types/pdfmake": "^0.2.12",
+    "argon2": "^0.44.0",
+    "better-sqlite3-multiple-ciphers": "^12.6.2",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.7.3",
+    "googleapis": "^170.1.0",
+    "open": "^11.0.0",
+    "pdfmake": "^0.3.3",
+    "rxjs": "~7.8.0",
+    "ts-node": "^10.9.2",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.14.2"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^17.0.8",
+    "@angular/cli": "^17.0.8",
+    "@angular/compiler-cli": "^17.0.0",
+    "@types/electron": "^1.4.38",
+    "@types/jasmine": "~5.1.0",
+    "autoprefixer": "^10.4.23",
+    "concurrently": "^9.2.1",
+    "electron": "^40.0.0",
+    "electron-builder": "^26.4.0",
+    "jasmine-core": "~5.1.0",
+    "karma": "~6.4.0",
+    "karma-chrome-launcher": "~3.2.0",
+    "karma-coverage": "~2.2.0",
+    "karma-jasmine": "~5.1.0",
+    "karma-jasmine-html-reporter": "~2.1.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.19",
+    "typescript": "~5.2.2",
+    "wait-on": "^9.0.3"
+  }
+}
