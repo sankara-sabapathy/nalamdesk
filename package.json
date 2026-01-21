@@ -11,7 +11,7 @@
     "start:renderer": "ng serve",
     "start:electron": "tsc -p tsconfig.main.json && electron dist/main/main.js",
     "build:main": "tsc -p tsconfig.main.json",
-    "build": "ng build && npm run build:main",
+    "build": "ng build --base-href ./ && npm run build:main",
     "pack": "npm run build && electron-builder",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
@@ -23,7 +23,7 @@
   "private": true,
   "build": {
     "appId": "com.sankarasabapathy.nalamdesk",
-    "asar": false,
+    "asar": true,
     "publish": [
       {
         "provider": "github",
