@@ -21,6 +21,7 @@
   "private": true,
   "build": {
     "appId": "com.sankarasabapathy.nalamdesk",
+    "asar": false,
     "publish": [
       {
         "provider": "github",
@@ -29,7 +30,8 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "forceCodeSigning": false
     },
     "linux": {
       "target": [
@@ -41,7 +43,14 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.medical"
-    }
+    },
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ]
   },
   "dependencies": {
     "@angular/animations": "^17.0.0",
