@@ -1,6 +1,8 @@
 {
   "name": "nalamdesk",
   "version": "0.0.0",
+  "author": "Sankara Sabapathy <sankara.sabapathy@gmail.com>",
+  "description": "NalamDesk - Medical Practice Management",
   "main": "dist/main/main.js",
   "scripts": {
     "ng": "ng",
@@ -38,7 +40,8 @@
         "AppImage",
         "deb"
       ],
-      "category": "Office"
+      "category": "Office",
+      "maintainer": "Sankara Sabapathy <sankara.sabapathy@gmail.com>"
     },
     "mac": {
       "target": "dmg",
