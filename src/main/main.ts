@@ -16,11 +16,30 @@ const securityService = new SecurityService();
 const databaseService = new DatabaseService();
 const googleDriveService = new GoogleDriveService();
 
+// Single Instance Lock
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+    app.quit();
+} else {
+    app.on('second-instance', (event, commandLine, workingDirectory) => {
+        // Someone tried to run a second instance, we should focus our window.
+        if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+        }
+    });
+
+    // Create myWindow, load the rest of the app, etc...
+    app.on('ready', createWindow);
+}
+
 function createWindow() {
     // ... existing window creation ...
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
+        autoHideMenuBar: true,
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -82,7 +101,7 @@ ipcMain.handle('updater:quitAndInstall', () => {
 });
 
 
-app.on('ready', createWindow);
+
 
 app.on('window-all-closed', () => {
     securityService.closeDb();

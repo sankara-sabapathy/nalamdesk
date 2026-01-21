@@ -12,8 +12,9 @@ import { FormsModule } from '@angular/forms';
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex items-center justify-between h-16">
           <div class="flex items-center">
+            <img src="assets/logo.png" alt="Logo" class="h-8 w-8 mr-3 rounded bg-white p-1">
             <span class="font-bold text-xl cursor-pointer" routerLink="/dashboard">
-              {{ clinicName || 'NalamDesk' }}
+              {{ clinicName || 'Nalamdesk.ai' }}
             </span>
             <div class="ml-10 flex items-baseline space-x-4">
               <a routerLink="/dashboard" routerLinkActive="bg-blue-700" class="px-3 py-2 rounded-md hover:bg-blue-500 transition">Dashboard</a>
