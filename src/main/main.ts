@@ -16,11 +16,15 @@ const securityService = new SecurityService();
 const databaseService = new DatabaseService();
 const googleDriveService = new GoogleDriveService();
 
+// Set explicit AppUserModelId for Windows
+app.setAppUserModelId('com.sankarasabapathy.nalamdesk');
+
 // Single Instance Lock
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
     app.quit();
+    process.exit(0); // Force exit immediately
 } else {
     app.on('second-instance', (event, commandLine, workingDirectory) => {
         // Someone tried to run a second instance, we should focus our window.
@@ -32,6 +36,19 @@ if (!gotTheLock) {
 
     // Create myWindow, load the rest of the app, etc...
     app.on('ready', createWindow);
+
+    app.on('window-all-closed', () => {
+        securityService.closeDb();
+        if (process.platform !== 'darwin') {
+            app.quit();
+        }
+    });
+
+    app.on('activate', () => {
+        if (mainWindow === null) {
+            createWindow();
+        }
+    });
 }
 
 function createWindow() {
@@ -214,17 +231,4 @@ ipcMain.handle('drive:listBackups', async () => {
 });
 
 
-app.on('ready', createWindow);
 
-app.on('window-all-closed', () => {
-    securityService.closeDb();
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
-
-app.on('activate', () => {
-    if (mainWindow === null) {
-        createWindow();
-    }
-});

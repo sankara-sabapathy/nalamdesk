@@ -3,7 +3,7 @@
   "version": "0.0.3",
   "author": "Sankara Sabapathy <sankara.sabapathy@gmail.com>",
   "description": "NalamDesk - Medical Practice Management",
-  "productName": "Nalamdesk.ai",
+  "productName": "NalamDesk",
   "main": "dist/main/main.js",
   "scripts": {
     "ng": "ng",
