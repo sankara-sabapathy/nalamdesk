@@ -1,58 +1,96 @@
-name: Build and Release
+name: Automated Release
 
 on:
   push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
-  release:
-    types: [ created ]
+    branches:
+      - master
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  bump-version:
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.bump.outputs.new_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Bump Version & Push Tag
+        id: bump
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Get current version from package.json
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          
+          # Increment patch version (simple semantic logic)
+          # Note: relying on npm version for robust handling
+          npm version patch --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          NEW_TAG="v$NEW_VERSION"
+          
+          echo "Bumping from $CURRENT_VERSION to $NEW_VERSION"
+          
+          # Update package.json, commit, and tag
+          git add package.json
+          git commit -m "chore(release): bump version to $NEW_VERSION [skip ci]"
+          git tag $NEW_TAG
+          
+          # Push changes
+          git push origin master
+          git push origin $NEW_TAG
+          
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+  build-and-release:
+    needs: bump-version
     runs-on: ${{ matrix.os }}
-    
     strategy:
       matrix:
         os: [windows-latest, ubuntu-latest, macos-latest]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.new_tag }}
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
-        cache: 'npm'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
 
-    - name: Install Dependencies
-      run: npm ci
+      - name: Install Dependencies
+        run: npm ci
 
-    # Angular Build
-    - name: Build Angular App
-      run: npm run build
+      - name: Build Angular
+        run: npm run build
 
-    # Electron Build & Release (Windows)
-    - name: Build & Release Electron (Windows)
-      if: matrix.os == 'windows-latest'
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        npm run dist:win
-        
-    # Electron Build & Release (Linux)
-    - name: Build & Release Electron (Linux)
-      if: matrix.os == 'ubuntu-latest'
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        npm run dist:linux
+      # Build & Publish based on OS
+      - name: Build & Publish Electron (Windows)
+        if: matrix.os == 'windows-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:win
 
-    # Electron Build & Release (Mac)
-    - name: Build & Release Electron (Mac)
-      if: matrix.os == 'macos-latest'
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        npm run dist:mac
+      - name: Build & Publish Electron (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:linux
+
+      - name: Build & Publish Electron (Mac)
+        if: matrix.os == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:mac
