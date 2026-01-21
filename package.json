@@ -1,6 +1,6 @@
 {
   "name": "nalamdesk",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "author": "Sankara Sabapathy <sankara.sabapathy@gmail.com>",
   "description": "NalamDesk - Medical Practice Management",
   "main": "dist/main/main.js",
