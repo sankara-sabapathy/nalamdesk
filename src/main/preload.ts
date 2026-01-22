@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electron', {
         savePatient: (patient: any) => ipcRenderer.invoke('db:savePatient', patient),
         deletePatient: (id: number) => ipcRenderer.invoke('db:deletePatient', id),
         getVisits: (patientId: number) => ipcRenderer.invoke('db:getVisits', patientId),
+        getAllVisits: (limit: number) => ipcRenderer.invoke('db:getAllVisits', limit),
         saveVisit: (visit: any) => ipcRenderer.invoke('db:saveVisit', visit),
         deleteVisit: (id: number) => ipcRenderer.invoke('db:deleteVisit', id),
         getSettings: () => ipcRenderer.invoke('db:getSettings'),
@@ -15,7 +16,19 @@ contextBridge.exposeInMainWorld('electron', {
         getDashboardStats: () => ipcRenderer.invoke('db:getDashboardStats'),
         getDoctors: () => ipcRenderer.invoke('db:getDoctors'),
         saveDoctor: (doctor: any) => ipcRenderer.invoke('db:saveDoctor', doctor),
-        deleteDoctor: (id: number) => ipcRenderer.invoke('db:deleteDoctor', id)
+        deleteDoctor: (id: number) => ipcRenderer.invoke('db:deleteDoctor', id),
+        // Users
+        getUsers: () => ipcRenderer.invoke('db:getUsers'),
+        saveUser: (user: any) => ipcRenderer.invoke('db:saveUser', user),
+        deleteUser: (id: number) => ipcRenderer.invoke('db:deleteUser', id),
+        // Queue
+        getQueue: () => ipcRenderer.invoke('db:getQueue'),
+        addToQueue: (data: { patientId: number, priority: number }) => ipcRenderer.invoke('db:addToQueue', data),
+        updateQueueStatus: (data: { id: number, status: string }) => ipcRenderer.invoke('db:updateQueueStatus', data),
+        updateQueueStatusByPatientId: (data: { patientId: number, status: string }) => ipcRenderer.invoke('db:updateQueueStatusByPatientId', data),
+        removeFromQueue: (id: number) => ipcRenderer.invoke('db:removeFromQueue', id),
+        // Audit
+        getAuditLogs: (limit: number) => ipcRenderer.invoke('db:getAuditLogs', limit)
     },
     drive: {
         authenticate: () => ipcRenderer.invoke('drive:authenticate'),

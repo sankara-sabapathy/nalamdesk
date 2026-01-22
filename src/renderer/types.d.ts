@@ -3,12 +3,13 @@ export { };
 declare global {
     interface Window {
         electron: {
-            login: (password: string) => Promise<{ success: boolean; error?: string }>;
+            login: (credentials: { username: string, password: string }) => Promise<{ success: boolean; user?: any; error?: string }>;
             db: {
                 getPatients: (query: string) => Promise<any[]>;
                 savePatient: (patient: any) => Promise<any>;
                 deletePatient: (id: number) => Promise<any>;
                 getVisits: (patientId: number) => Promise<any[]>;
+                getAllVisits: (limit: number) => Promise<any[]>;
                 saveVisit: (visit: any) => Promise<any>;
                 deleteVisit: (id: number) => Promise<any>;
                 getSettings: () => Promise<any>;
@@ -17,6 +18,18 @@ declare global {
                 getDoctors: () => Promise<any[]>;
                 saveDoctor: (doctor: any) => Promise<any>;
                 deleteDoctor: (id: number) => Promise<any>;
+                // Users
+                getUsers: () => Promise<any[]>;
+                saveUser: (user: any) => Promise<any>;
+                deleteUser: (id: number) => Promise<any>;
+                // Queue
+                getQueue: () => Promise<any[]>;
+                addToQueue: (data: { patientId: number, priority: number }) => Promise<any>;
+                updateQueueStatus: (data: { id: number, status: string }) => Promise<any>;
+                updateQueueStatusByPatientId: (data: { patientId: number, status: string }) => Promise<any>;
+                removeFromQueue: (id: number) => Promise<any>;
+                // Audit
+                getAuditLogs: (limit: number) => Promise<any[]>;
             };
             drive: {
                 authenticate: () => Promise<boolean>;

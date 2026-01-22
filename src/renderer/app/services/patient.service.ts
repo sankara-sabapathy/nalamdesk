@@ -1,4 +1,5 @@
 import { Injectable, NgZone } from '@angular/core';
+import { DataService } from './api.service';
 
 export interface Patient {
   id?: number;
@@ -14,15 +15,21 @@ export interface Patient {
 @Injectable({
   providedIn: 'root'
 })
+
+// ... interface ...
+
+@Injectable({
+  providedIn: 'root'
+})
 export class PatientService {
 
-  constructor(private ngZone: NgZone) { }
+  constructor(private dataService: DataService) { }
 
   async getPatients(query: string = ''): Promise<Patient[]> {
-    return await window.electron.db.getPatients(query);
+    return await this.dataService.invoke<any>('getPatients', query);
   }
 
   async savePatient(patient: Patient): Promise<any> {
-    return await window.electron.db.savePatient(patient);
+    return await this.dataService.invoke<any>('savePatient', patient);
   }
 }

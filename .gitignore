@@ -29,7 +29,7 @@ yarn-error.log
 .history/*
 
 # Miscellaneous
-/.angular/cache
+/.angular
 .sass-cache/
 /connect.lock
 /coverage
@@ -43,3 +43,12 @@ Thumbs.db
 
 # release artifacts
 /release
+
+# Local Database
+*.db
+nalamdesk.db
+
+# Test reports and artifacts
+/playwright-report
+/test-results
+/html

@@ -6,6 +6,7 @@ import log from 'electron-log';
 import { SecurityService } from './services/SecurityService';
 import { DatabaseService } from './services/DatabaseService';
 import { GoogleDriveService } from './services/GoogleDriveService';
+import { ApiServer } from './server';
 
 // Configure logging
 autoUpdater.logger = log;
@@ -57,6 +58,13 @@ function createWindow() {
         width: 1200,
         height: 800,
         autoHideMenuBar: true,
+        icon: path.join(__dirname, '../nalamdesk/browser/assets/icon.png'),
+        titleBarStyle: 'hidden',
+        titleBarOverlay: {
+            color: '#ffffff',
+            symbolColor: '#000000',
+            height: 35
+        },
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -134,35 +142,71 @@ app.on('activate', () => {
 });
 
 // IPC Handlers
-ipcMain.handle('auth:login', async (event, password) => {
+ipcMain.handle('auth:login', async (event, credentials) => {
     try {
-        const key = await securityService.deriveKey(password);
-        // Defines where the user data DB is located.
-        // In dev: project root/local_db.sqlite
-        // In prod: app.getPath('userData')/nalamdesk.sqlite
-        const dbName = 'nalamdesk.db';
-        const dbPath = app.isPackaged
-            ? path.join(app.getPath('userData'), dbName)
-            : path.join(__dirname, '../../', dbName);
+        const { username, password } = credentials; // Expect object now
+        let dbOpen = false;
+        try {
+            dbOpen = !!securityService.getDbPath();
+        } catch { dbOpen = false; } // Check if DB is open checking path or similar
 
-        securityService.initDb(dbPath, key);
+        // If Admin, try to unlock/init DB (if not open) or just validate
+        if (username === 'admin') {
+            // 1. Try to derive key and open DB if not open
+            try {
+                // Determine path
+                const dbName = 'nalamdesk.db';
+                const dbPath = app.isPackaged
+                    ? path.join(app.getPath('userData'), dbName)
+                    : path.join(__dirname, '../../', dbName);
 
-        // Initialize Database Service with the open DB connection
-        databaseService.setDb(securityService.getDb());
-        databaseService.migrate();
+                const key = await securityService.deriveKey(password);
+                try {
+                    securityService.initDb(dbPath, key);
+                } catch (e: any) {
+                    if (e.message !== 'DB_ALREADY_OPEN') throw e;
+                }
 
-        // Check for existing Drive tokens in settings
-        const settings = databaseService.getSettings();
-        if (settings && settings.drive_tokens) {
-            googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+                databaseService.setDb(securityService.getDb());
+                databaseService.migrate();
+                await databaseService.ensureAdminUser(password); // Ensure admin exists and password matches DB key
+
+                // Initialize Server if not running
+                const apiServer = new ApiServer(databaseService);
+                apiServer.start();
+
+                // Check Drive
+                const settings = databaseService.getSettings();
+                if (settings && settings.drive_tokens) {
+                    googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+                }
+            } catch (e: any) {
+                console.error('DB Init failed:', e);
+                return { success: false, error: 'INVALID_CREDENTIALS' };
+            }
+        } else {
+            // Non-admin user
+            // DB Must be open
+            try {
+                const db = securityService.getDb(); // Throws if not open
+                databaseService.setDb(db); // Ensure Service has it
+            } catch (e) {
+                return { success: false, error: 'SYSTEM_LOCKED' };
+            }
         }
 
-        return { success: true };
+        // 2. Now DB is open, validate user against table
+        console.log(`[Auth] Validating user: ${username}`);
+        const user = await databaseService.validateUser(username, password);
+        console.log(`[Auth] Validation result:`, user ? 'Success' : 'Failed');
+        if (user) {
+            return { success: true, user };
+        } else {
+            return { success: false, error: 'INVALID_CREDENTIALS' };
+        }
+
     } catch (error: any) {
         console.error('Login failed:', error);
-        if (error.message === 'INVALID_PASSWORD') {
-            return { success: false, error: 'INVALID_PASSWORD' };
-        }
         return { success: false, error: 'UNKNOWN_ERROR' };
     }
 });
@@ -172,6 +216,7 @@ ipcMain.handle('db:getPatients', (_, query) => databaseService.getPatients(query
 ipcMain.handle('db:savePatient', (_, patient) => databaseService.savePatient(patient));
 ipcMain.handle('db:deletePatient', (_, id) => databaseService.deletePatient(id));
 ipcMain.handle('db:getVisits', (_, patientId) => databaseService.getVisits(patientId));
+ipcMain.handle('db:getAllVisits', (_, limit) => databaseService.getAllVisits(limit));
 ipcMain.handle('db:saveVisit', (_, visit) => databaseService.saveVisit(visit));
 ipcMain.handle('db:deleteVisit', (_, id) => databaseService.deleteVisit(id));
 ipcMain.handle('db:getSettings', () => databaseService.getSettings());
@@ -180,6 +225,21 @@ ipcMain.handle('db:getDashboardStats', () => databaseService.getDashboardStats()
 ipcMain.handle('db:getDoctors', () => databaseService.getDoctors());
 ipcMain.handle('db:saveDoctor', (_, doctor) => databaseService.saveDoctor(doctor));
 ipcMain.handle('db:deleteDoctor', (_, id) => databaseService.deleteDoctor(id));
+
+// User Management IPC
+ipcMain.handle('db:getUsers', () => databaseService.getUsers());
+ipcMain.handle('db:saveUser', (_, user) => databaseService.saveUser(user));
+ipcMain.handle('db:deleteUser', (_, id) => databaseService.deleteUser(id));
+
+// Queue IPC Handlers
+ipcMain.handle('db:getQueue', () => databaseService.getQueue());
+ipcMain.handle('db:addToQueue', (_, { patientId, priority }) => databaseService.addToQueue(patientId, priority));
+ipcMain.handle('db:updateQueueStatus', (_, { id, status }) => databaseService.updateQueueStatus(id, status));
+ipcMain.handle('db:updateQueueStatusByPatientId', (_, { patientId, status }) => databaseService.updateQueueStatusByPatientId(patientId, status));
+ipcMain.handle('db:removeFromQueue', (_, id) => databaseService.removeFromQueue(id));
+
+// Audit IPC Handlers
+ipcMain.handle('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));
 
 // Drive IPC Handlers
 ipcMain.handle('drive:authenticate', async () => {

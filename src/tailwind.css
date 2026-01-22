@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: theme('colors.base-200');
+    color: theme('colors.base-content');
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: theme('colors.slate.300');
+    border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background-color: theme('colors.slate.600');
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.slate.400');
+}
+
+/* Custom Scrollbar */
+
+@layer utilities {
+    /* Ensure bg-primary uses DaisyUI theme variable */
+    .bg-primary {
+        --tw-bg-opacity: 1;
+        background-color: var(--fallback-p, oklch(var(--p) / var(--tw-bg-opacity)));
+    }
+
+    /* Ensure text-primary uses DaisyUI theme variable */
+    .text-primary {
+        --tw-text-opacity: 1;
+        color: var(--fallback-p, oklch(var(--p) / var(--tw-text-opacity)));
+    }
+
+    /* Ensure text-primary-content uses DaisyUI theme variable */
+    .text-primary-content {
+        --tw-text-opacity: 1;
+        color: var(--fallback-pc, oklch(var(--pc) / var(--tw-text-opacity)));
+    }
+
+    /* Used by dropdown menus (e.g. avatar menu) */
+    .shadow-menu {
+        @apply shadow-lg shadow-black/5 border border-base-200;
+    }
+
+    /* Used on Dashboard root container */
+    .animate-fade-in-up {
+        animation: fade-in-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+}
+
+@keyframes fade-in-up {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 10px, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}

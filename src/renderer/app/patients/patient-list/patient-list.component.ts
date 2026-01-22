@@ -1,10 +1,13 @@
-import { Component, NgZone, OnInit } from '@angular/core';
+import { Component, NgZone, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Patient, PatientService } from '../../services/patient.service';
+import { DataService } from '../../services/api.service';
 import { Router } from '@angular/router';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
+  // ... template omitted ...
   selector: 'app-patient-list',
   standalone: true,
   imports: [CommonModule, FormsModule],
@@ -47,9 +50,17 @@ import { Router } from '@angular/router';
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ patient.mobile }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ patient.age }} / {{ patient.gender }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <button 
+                    (click)="addToQueue(patient); $event.stopPropagation()" 
+                    [disabled]="isEnqueued(patient)"
+                    [class.text-gray-400]="isEnqueued(patient)"
+                    [class.text-green-600]="!isEnqueued(patient)"
+                    class="hover:text-green-900 mr-4 font-medium disabled:cursor-not-allowed">
+                    {{ isEnqueued(patient) ? 'In Queue' : 'Add to Queue' }}
+                  </button>
                   <button (click)="editPatient(patient); $event.stopPropagation()" class="text-indigo-600 hover:text-indigo-900 mr-4">Edit</button>
-                  <button (click)="confirmDelete(patient.id!); $event.stopPropagation()" class="text-red-600 hover:text-red-900 mr-4">Delete</button>
-                  <button (click)="goToVisit(patient); $event.stopPropagation()" class="text-blue-600 hover:text-blue-900">Visit</button>
+                  <button *ngIf="currentUser?.role === 'admin'" (click)="confirmDelete(patient.id!); $event.stopPropagation()" class="text-red-600 hover:text-red-900 mr-4">Delete</button>
+                  <button (click)="goToVisit(patient); $event.stopPropagation()" class="text-blue-600 hover:text-blue-900">History</button>
                 </td>
               </tr>
               <tr *ngIf="patients.length === 0">
@@ -126,6 +137,10 @@ export class PatientListComponent implements OnInit {
     address: ''
   };
 
+  private dataService: DataService = inject(DataService);
+  private authService: AuthService = inject(AuthService);
+  currentUser: any = null;
+
   constructor(
     private patientService: PatientService,
     private ngZone: NgZone,
@@ -133,7 +148,9 @@ export class PatientListComponent implements OnInit {
   ) { }
 
   ngOnInit() {
+    this.currentUser = this.authService.getUser();
     this.loadPatients();
+    this.loadQueueStatus();
   }
 
   async loadPatients() {
@@ -144,6 +161,20 @@ export class PatientListComponent implements OnInit {
       });
     } catch (e) {
       console.error('Failed to load patients', e);
+    }
+  }
+
+  async loadQueueStatus() {
+    try {
+      const queue = await this.dataService.invoke<any>('getQueue');
+      this.enqueuedPatientIds.clear();
+      queue.forEach((item: any) => {
+        if (item.status !== 'completed') {
+          this.enqueuedPatientIds.add(item.patient_id);
+        }
+      });
+    } catch (e) {
+      console.error('Failed to load queue status', e);
     }
   }
 
@@ -189,7 +220,7 @@ export class PatientListComponent implements OnInit {
   async executeDelete() {
     if (this.patientToDeleteId) {
       try {
-        await window.electron.db.deletePatient(this.patientToDeleteId);
+        await this.dataService.invoke<any>('deletePatient', this.patientToDeleteId);
         this.loadPatients();
         this.showDeleteModal = false;
         this.patientToDeleteId = null;
@@ -203,5 +234,27 @@ export class PatientListComponent implements OnInit {
   cancelDelete() {
     this.showDeleteModal = false;
     this.patientToDeleteId = null;
+  }
+
+  enqueuedPatientIds = new Set<number>();
+
+  async addToQueue(patient: Patient) {
+    if (this.isEnqueued(patient)) return;
+    try {
+      await this.dataService.invoke<any>('addToQueue', { patientId: patient.id!, priority: 1 });
+      this.enqueuedPatientIds.add(patient.id!);
+    } catch (e: any) {
+      console.error(e);
+      // If error is "Patient already in queue", we should update our local state
+      if (e.message && e.message.includes('already in queue')) {
+        this.enqueuedPatientIds.add(patient.id!);
+      } else {
+        alert('Failed to add to queue: ' + e.message);
+      }
+    }
+  }
+
+  isEnqueued(patient: Patient): boolean {
+    return this.enqueuedPatientIds.has(patient.id!);
   }
 }

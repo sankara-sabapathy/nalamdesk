@@ -17,7 +17,17 @@
 - **Doctor's Workbench**:
     - **Timeline View**: See patient visit history at a glance.
     - **Prescription Pad**: Digital prescription writing (Diagnosis, Medicines, Dosage).
+    - **Prescription Pad**: Digital prescription writing (Diagnosis, Medicines, Dosage).
     - **PDF Generation**: Print professional prescriptions instantly.
+    - **Patient Queue**: Real-time queue management with priority handling.
+
+### 🛡️ Audit & Compliance
+- **Audit Logs**: Tamper-evident logging of all sensitive actions (access, modification, deletion).
+- **Role-Based Access**: Secured by design.
+
+### 🎨 Modern UI/UX
+- **Theming**: Toggle between Light, Dark, and High-Contrast themes.
+- **Responsive Design**: Built with TailwindCSS and DaisyUI.
 
 ### ☁️ Cloud Resilience
 - **Google Drive Backup**: Optional integration to securely backup your *encrypted* database to your personal Google Drive.
@@ -26,10 +36,11 @@
 ## 🛠️ Tech Stack
 
 - **Framework**: [Electron](https://www.electronjs.org/) (Desktop Container)
-- **Frontend**: [Angular v17+](https://angular.io/) (Standalone Components, TailwindCSS)
+- **Frontend**: [Angular v17+](https://angular.io/) (Standalone Components, TailwindCSS, DaisyUI)
 - **Database**: [better-sqlite3-multiple-ciphers](https://github.com/m4heshd/better-sqlite3-multiple-ciphers) (SQLCipher)
 - **Security**: [argon2](https://github.com/ranisalt/node-argon2) (Key Derivation)
-- **PDF**: [pdfmake](http://pdfmake.org/)
+- **PDF**: [jspdf](https://github.com/parallax/jsPDF) & [jspdf-autotable](https://github.com/simonbengtsson/jsPDF-AutoTable)
+- **Testing**: [Vitest](https://vitest.dev/) (Unit), [Playwright](https://playwright.dev/) (E2E)
 
 ## 🚀 Getting Started
 
