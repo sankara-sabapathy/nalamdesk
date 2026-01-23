@@ -128,7 +128,7 @@ describe('DatabaseService', () => {
     describe('Queue Management', () => {
         it('should add patient to queue', () => {
             mockStatement.get.mockReturnValue(null); // Not already in queue
-            service.addToQueue(1, 2); // Patient 1, Priority 2
+            service.addToQueue(1, 2, 999); // Patient 1, Priority 2, User 999
 
             expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO patient_queue'));
             expect(mockStatement.run).toHaveBeenCalledWith(1, 2);
@@ -136,11 +136,11 @@ describe('DatabaseService', () => {
 
         it('should throw if patient already in queue', () => {
             mockStatement.get.mockReturnValue({ id: 99 }); // Already in queue
-            expect(() => service.addToQueue(1)).toThrow('Patient already in queue');
+            expect(() => service.addToQueue(1, 1, 999)).toThrow('Patient already in queue');
         });
 
         it('should log audit when updating queue status', () => {
-            service.updateQueueStatus(1, 'in-consult');
+            service.updateQueueStatus(1, 'in-consult', 999);
             // Check for Audit Log Insert
             expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO audit_logs'));
         });

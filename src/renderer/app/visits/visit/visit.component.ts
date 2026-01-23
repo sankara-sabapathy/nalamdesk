@@ -34,7 +34,7 @@ import { DataService } from '../../services/api.service';
                 <p class="font-semibold">{{ visit.diagnosis }}</p>
                 <div class="text-xs text-gray-600 mt-1">
                 <span *ngFor="let med of visit.prescription" class="block">
-                    • {{ med.name }} - {{ med.dosage }}
+                    • {{ med.medicine }} - {{ med.frequency }}
                 </span>
                 </div>
             </div>
@@ -55,14 +55,60 @@ import { DataService } from '../../services/api.service';
                 <button *ngIf="editingVisitId" (click)="resetForm()" class="text-blue-600 hover:underline text-sm">Create New Visit</button>
             </div>
         </div>
+
+        <!-- SOAP Tabs -->
+        <div class="flex space-x-1 mb-4 border-b">
+            <button class="px-4 py-2 font-medium" [class.border-b-2]="activeTab === 'S'" [class.border-blue-600]="activeTab === 'S'" [class.text-blue-600]="activeTab === 'S'" (click)="activeTab = 'S'">Subjective</button>
+            <button class="px-4 py-2 font-medium" [class.border-b-2]="activeTab === 'O'" [class.border-blue-600]="activeTab === 'O'" [class.text-blue-600]="activeTab === 'O'" (click)="activeTab = 'O'">Objective</button>
+            <button class="px-4 py-2 font-medium" [class.border-b-2]="activeTab === 'A'" [class.border-blue-600]="activeTab === 'A'" [class.text-blue-600]="activeTab === 'A'" (click)="activeTab = 'A'">Assessment</button>
+            <button class="px-4 py-2 font-medium" [class.border-b-2]="activeTab === 'P'" [class.border-blue-600]="activeTab === 'P'" [class.text-blue-600]="activeTab === 'P'" (click)="activeTab = 'P'">Plan</button>
+        </div>
         
         <form [formGroup]="visitForm" (ngSubmit)="saveVisit()">
-          <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 mb-2">Diagnosis / Symptoms</label>
-            <textarea formControlName="diagnosis" rows="3" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500"></textarea>
+          
+          <!-- Subjective -->
+          <div *ngIf="activeTab === 'S'" class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Chief Complaint / Symptoms</label>
+            <textarea formControlName="symptoms" rows="6" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500" placeholder="Patient's complaints..."></textarea>
           </div>
 
-          <div class="mb-6">
+          <!-- Objective -->
+          <div *ngIf="activeTab === 'O'" class="mb-6">
+             <div *ngIf="patientVitals" class="bg-blue-50 p-4 rounded mb-4">
+                <h3 class="font-bold text-blue-800 mb-2">Use Latest Vitals</h3>
+                <div class="grid grid-cols-4 gap-4 text-sm">
+                    <div><span class="text-gray-600">BP:</span> <span class="font-bold">{{ patientVitals.systolic_bp || '-' }}/{{ patientVitals.diastolic_bp || '-' }}</span></div>
+                    <div><span class="text-gray-600">Pulse:</span> <span class="font-bold">{{ patientVitals.pulse || '-' }}</span></div>
+                    <div><span class="text-gray-600">Temp:</span> <span class="font-bold">{{ patientVitals.temperature || '-' }}°F</span></div>
+                    <div><span class="text-gray-600">BMI:</span> <span class="font-bold">{{ patientVitals.bmi || '-' }}</span></div>
+                </div>
+             </div>
+             <div *ngIf="!patientVitals" class="text-sm text-gray-500 italic mb-4">No recent vitals recorded.</div>
+
+            <label class="block text-sm font-medium text-gray-700 mb-2">Physical Examination Notes</label>
+            <textarea formControlName="examination_notes" rows="6" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500" placeholder="Clinical findings..."></textarea>
+          </div>
+
+          <!-- Assessment -->
+          <div *ngIf="activeTab === 'A'" class="mb-6">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Diagnosis <span class="text-red-500">*</span></label>
+                <textarea formControlName="diagnosis" rows="3" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500" 
+                    [class.border-red-500]="visitForm.get('diagnosis')?.invalid && (visitForm.get('diagnosis')?.dirty || visitForm.get('diagnosis')?.touched)"></textarea>
+                <span *ngIf="visitForm.get('diagnosis')?.invalid && (visitForm.get('diagnosis')?.dirty || visitForm.get('diagnosis')?.touched)" class="text-xs text-red-500">Diagnosis is required</span>
+            </div>
+             <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-2">Diagnosis Type</label>
+                <select formControlName="diagnosis_type" class="w-full border p-2 rounded">
+                    <option value="">Select Type</option>
+                    <option value="Provisional">Provisional</option>
+                    <option value="Final">Final</option>
+                </select>
+            </div>
+          </div>
+
+          <!-- Plan -->
+          <div *ngIf="activeTab === 'P'" class="mb-6">
             <div class="flex justify-between items-center mb-2">
               <label class="block text-sm font-medium text-gray-700">Prescription</label>
             </div>
@@ -73,7 +119,7 @@ import { DataService } from '../../services/api.service';
             </app-prescription>
           </div>
 
-          <div class="mb-6 w-48">
+          <div class="mb-6 w-48 border-t pt-4">
             <label class="block text-sm font-medium text-gray-700 mb-2">Amount Paid (₹)</label>
             <input type="number" formControlName="amount_paid" class="w-full border p-2 rounded">
           </div>
@@ -123,6 +169,9 @@ export class VisitComponent implements OnInit {
   private authService: AuthService = inject(AuthService);
   currentUser: any = null;
 
+  activeTab: 'S' | 'O' | 'A' | 'P' = 'S';
+  patientVitals: any = null;
+
   constructor(
     private route: ActivatedRoute,
     private router: Router,
@@ -131,7 +180,10 @@ export class VisitComponent implements OnInit {
     private pdfService: PdfService
   ) {
     this.visitForm = this.fb.group({
-      diagnosis: ['', Validators.required],
+      symptoms: [''],
+      examination_notes: [''],
+      diagnosis: [''],
+      diagnosis_type: [''],
       prescription: [[]],
       amount_paid: [0]
     });
@@ -148,7 +200,10 @@ export class VisitComponent implements OnInit {
   editVisit(visit: any) {
     this.editingVisitId = visit.id;
     this.visitForm.patchValue({
+      symptoms: visit.symptoms,
+      examination_notes: visit.examination_notes,
       diagnosis: visit.diagnosis,
+      diagnosis_type: visit.diagnosis_type,
       amount_paid: visit.amount_paid
     });
 
@@ -172,19 +227,29 @@ export class VisitComponent implements OnInit {
       const visits = await this.dataService.invoke<any>('getVisits', this.patientId);
       const allPatients = await this.dataService.invoke<any>('getPatients', '');
       const p = allPatients.find((p: any) => p.id === this.patientId);
+
+      const vitals = await this.dataService.invoke<any>('getVitals', this.patientId);
+
       this.ngZone.run(() => {
         this.patient = p;
         this.history = visits;
+        this.patientVitals = vitals;
       });
 
       // Check Queue Status
       const queue = await this.dataService.invoke<any>('getQueue');
-      const queueItem = queue.find((q: any) => q.patient_id === this.patientId && q.status === 'in-consult');
+      console.log('DEBUG: VisitComponent patientId:', this.patientId, typeof this.patientId);
+      console.log('DEBUG: Queue Content:', JSON.stringify(queue));
+
+      const queueItem = queue.find((q: any) => q.patient_id == this.patientId && q.status === 'in-consult');
+      console.log('DEBUG: Found QueueItem:', queueItem);
+
       this.ngZone.run(() => {
         this.isConsulting = !!queueItem;
+        console.log('DEBUG: isConsulting:', this.isConsulting);
         // If not consulting and not editing, disable form
         if (!this.isConsulting && !this.editingVisitId) {
-          this.visitForm.disable();
+          this.visitForm.disable(); // THIS IS WHAT CAUSES THE BUG MESSAGE
         } else {
           this.visitForm.enable();
         }
@@ -199,7 +264,10 @@ export class VisitComponent implements OnInit {
   }
 
   async saveVisit(): Promise<boolean> {
-    if (this.visitForm.invalid) return false;
+    if (this.visitForm.invalid) {
+      this.visitForm.markAllAsTouched();
+      return false;
+    }
 
     // Get active doctor from current user session
     const currentUser = this.authService.getUser();

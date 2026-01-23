@@ -105,6 +105,70 @@ export class DatabaseService {
           );
         `);
 
+        // Vitals Table (New)
+        this.db.exec(`
+            CREATE TABLE IF NOT EXISTS vitals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                visit_id INTEGER,
+                patient_id INTEGER,
+                height REAL,
+                weight REAL,
+                bmi REAL,
+                temperature REAL,
+                systolic_bp INTEGER,
+                diastolic_bp INTEGER,
+                pulse INTEGER,
+                respiratory_rate INTEGER,
+                spo2 INTEGER,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(visit_id) REFERENCES visits(id) ON DELETE CASCADE,
+                FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
+            );
+        `);
+
+        // Migrations for Patients Table
+        const patientColumns = [
+            'dob DATE',
+            'blood_group TEXT',
+            'email TEXT',
+            'emergency_contact_name TEXT',
+            'emergency_contact_mobile TEXT',
+            'street TEXT',
+            'city TEXT',
+            'state TEXT',
+            'zip_code TEXT',
+            'insurance_provider TEXT',
+            'policy_number TEXT'
+        ];
+
+        patientColumns.forEach(col => {
+            try {
+                const colName = col.split(' ')[0];
+                this.db.exec(`ALTER TABLE patients ADD COLUMN ${col}`);
+                console.log(`Added column ${colName} to patients`);
+            } catch (e) {
+                // Ignore if column exists
+            }
+        });
+
+        // Migrations for Visits Table (SOAP)
+        const visitColumns = [
+            'symptoms TEXT',          // Subjective
+            'examination_notes TEXT', // Objective
+            'diagnosis_type TEXT'     // Assessment Type
+        ];
+
+        visitColumns.forEach(col => {
+            try {
+                const colName = col.split(' ')[0];
+                this.db.exec(`ALTER TABLE visits ADD COLUMN ${col}`);
+                console.log(`Added column ${colName} to visits`);
+            } catch (e) {
+                // Ignore if column exists
+            }
+        });
+
+
         // Seed Default Admin if not exists
         const admin = this.db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
         if (!admin) {
@@ -153,14 +217,10 @@ export class DatabaseService {
         if (!user) { console.log('[DB] User not found:', username); return null; }
         if (user.active !== 1) { console.log('[DB] User inactive:', username, user.active); return null; }
 
-        console.log(`[DB] Validating ${username}. Stored Hash len: ${user.password?.length}, Input PW len: ${passwordTry?.length}`);
-
         const argon2 = await import('argon2');
         try {
             if (await argon2.verify(user.password, passwordTry)) {
                 return { id: user.id, username: user.username, role: user.role, name: user.name };
-            } else {
-                console.log('[DB] Password verification failed');
             }
         } catch (e) {
             console.error('Password verify failed', e);
@@ -183,9 +243,8 @@ export class DatabaseService {
             // Insert
             if (!user.password) throw new Error('Password required for new user');
 
-            console.log(`[DB] Creating user ${user.username}. Password len: ${user.password.length}`);
+            console.log(`[DB] Creating user ${user.username}`);
             user.password = await argon2.hash(user.password);
-            console.log(`[DB] Generated Hash len: ${user.password.length} starts: ${user.password.substring(0, 10)}...`);
 
             user.active = user.active !== undefined ? user.active : 1; // Default to active
             return this.db.prepare(`
@@ -239,7 +298,7 @@ export class DatabaseService {
         if (!query) {
             return this.db.prepare('SELECT * FROM patients ORDER BY created_at DESC LIMIT 50').all();
         }
-        const search = `% ${query}% `;
+        const search = `%${query.trim()}%`;
         return this.db.prepare(`
         SELECT * FROM patients 
       WHERE name LIKE ? OR mobile LIKE ?
@@ -255,11 +314,22 @@ export class DatabaseService {
         if (patient.id) {
             return this.db.prepare(`
         UPDATE patients SET
-        name = @name,
+            name = @name,
             mobile = @mobile,
             age = @age,
             gender = @gender,
-            address = @address
+            address = @address,
+            dob = @dob,
+            blood_group = @blood_group,
+            email = @email,
+            emergency_contact_name = @emergency_contact_name,
+            emergency_contact_mobile = @emergency_contact_mobile,
+            street = @street,
+            city = @city,
+            state = @state,
+            zip_code = @zip_code,
+            insurance_provider = @insurance_provider,
+            policy_number = @policy_number
         WHERE id = @id
             `).run(patient);
         } else {
@@ -267,8 +337,16 @@ export class DatabaseService {
                 patient.uuid = crypto.randomUUID();
             }
             return this.db.prepare(`
-        INSERT INTO patients(uuid, name, mobile, age, gender, address)
-        VALUES(@uuid, @name, @mobile, @age, @gender, @address)
+        INSERT INTO patients(
+            uuid, name, mobile, age, gender, address, 
+            dob, blood_group, email, emergency_contact_name, emergency_contact_mobile,
+            street, city, state, zip_code, insurance_provider, policy_number
+        )
+        VALUES(
+            @uuid, @name, @mobile, @age, @gender, @address,
+            @dob, @blood_group, @email, @emergency_contact_name, @emergency_contact_mobile,
+            @street, @city, @state, @zip_code, @insurance_provider, @policy_number
+        )
             `).run(patient);
         }
     }
@@ -324,16 +402,25 @@ export class DatabaseService {
             if (visit.id) {
                 return this.db.prepare(`
             UPDATE visits SET
-        diagnosis = @diagnosis,
-            prescription_json = @prescription_json,
-            amount_paid = @amount_paid,
-            doctor_id = @doctor_id
+                diagnosis = @diagnosis,
+                prescription_json = @prescription_json,
+                amount_paid = @amount_paid,
+                doctor_id = @doctor_id,
+                symptoms = @symptoms,
+                examination_notes = @examination_notes,
+                diagnosis_type = @diagnosis_type
             WHERE id = @id
             `).run(data);
             } else {
                 return this.db.prepare(`
-            INSERT INTO visits(patient_id, doctor_id, diagnosis, prescription_json, amount_paid)
-        VALUES(@patient_id, @doctor_id, @diagnosis, @prescription_json, @amount_paid)
+            INSERT INTO visits(
+                patient_id, doctor_id, diagnosis, prescription_json, amount_paid, 
+                symptoms, examination_notes, diagnosis_type
+            )
+            VALUES(
+                @patient_id, @doctor_id, @diagnosis, @prescription_json, @amount_paid,
+                @symptoms, @examination_notes, @diagnosis_type
+            )
             `).run(data);
             }
         })();
@@ -342,10 +429,50 @@ export class DatabaseService {
     }
 
 
+
+    // Vitals
+    saveVitals(vitals: any) {
+        if (vitals.id) {
+            return this.db.prepare(`
+                UPDATE vitals SET
+                height = @height,
+                weight = @weight,
+                bmi = @bmi,
+                temperature = @temperature,
+                systolic_bp = @systolic_bp,
+                diastolic_bp = @diastolic_bp,
+                pulse = @pulse,
+                respiratory_rate = @respiratory_rate,
+                spo2 = @spo2
+                WHERE id = @id
+            `).run(vitals);
+        } else {
+            return this.db.prepare(`
+                INSERT INTO vitals(
+                    visit_id, patient_id, height, weight, bmi, 
+                    temperature, systolic_bp, diastolic_bp, pulse, respiratory_rate, spo2
+                )
+                VALUES(
+                    @visit_id, @patient_id, @height, @weight, @bmi, 
+                    @temperature, @systolic_bp, @diastolic_bp, @pulse, @respiratory_rate, @spo2
+                )
+            `).run(vitals);
+        }
+    }
+
+    getVitals(patientId: number) {
+        // Get latest vitals for patient
+        return this.db.prepare(`
+            SELECT * FROM vitals WHERE patient_id = ? ORDER BY timestamp DESC LIMIT 1
+        `).get(patientId);
+    }
+
+
     // Queue Management
     getQueue() {
         return this.db.prepare(`
-            SELECT q.*, p.name as patient_name, p.gender, p.age, p.mobile 
+            SELECT q.id, q.patient_id, q.status, q.priority, q.check_in_time, 
+                   p.name as patient_name, p.gender, p.age, p.mobile 
             FROM patient_queue q
             JOIN patients p ON q.patient_id = p.id
             WHERE q.status != 'completed'
@@ -353,39 +480,42 @@ export class DatabaseService {
         `).all();
     }
 
-    addToQueue(patientId: number, priority: number = 1) {
+    addToQueue(patientId: number, priority: number = 1, actingUserId: number) {
         // Check if already in queue
         const existing = this.db.prepare('SELECT id FROM patient_queue WHERE patient_id = ? AND status != ?').get(patientId, 'completed');
         if (existing) throw new Error('Patient already in queue');
 
         const result = this.db.prepare('INSERT INTO patient_queue (patient_id, priority) VALUES (?, ?)').run(patientId, priority);
-        this.logAudit('INSERT', 'patient_queue', result.lastInsertRowid, 1, `Added patient ${patientId} to queue`);
+        this.logAudit('INSERT', 'patient_queue', result.lastInsertRowid, actingUserId, `Added patient ${patientId} to queue`);
         return result;
     }
 
-    updateQueueStatus(id: number, status: string) {
+    updateQueueStatus(id: number, status: string, actingUserId: number) {
         const result = this.db.prepare('UPDATE patient_queue SET status = ? WHERE id = ?').run(status, id);
-        this.logAudit('UPDATE', 'patient_queue', id, 1, `Updated status to ${status} `);
+        this.logAudit('UPDATE', 'patient_queue', id, actingUserId, `Updated status to ${status} `);
         return result;
     }
 
-    updateQueueStatusByPatientId(patientId: number, status: string) {
+    updateQueueStatusByPatientId(patientId: number, status: string, actingUserId: number) {
         // Update the most recent non-completed queue entry for this patient
+        // Fetch ID first for audit
+        const existing = this.db.prepare(`SELECT id FROM patient_queue WHERE patient_id = ? AND status != 'completed' ORDER BY check_in_time DESC LIMIT 1`).get(patientId);
+
         const result = this.db.prepare(`
             UPDATE patient_queue 
             SET status = ? 
             WHERE patient_id = ? AND status != 'completed'
         `).run(status, patientId);
 
-        if (result.changes > 0) {
-            this.logAudit('UPDATE', 'patient_queue', patientId, 1, `Updated status to ${status} for patient ${patientId}`);
+        if (result.changes > 0 && existing) {
+            this.logAudit('UPDATE', 'patient_queue', existing.id, actingUserId, `Updated status to ${status} for patient ${patientId}`);
         }
         return result;
     }
 
-    removeFromQueue(id: number) {
+    removeFromQueue(id: number, actingUserId: number) {
         const result = this.db.prepare('DELETE FROM patient_queue WHERE id = ?').run(id);
-        this.logAudit('DELETE', 'patient_queue', id, 1, 'Removed from queue');
+        this.logAudit('DELETE', 'patient_queue', id, actingUserId, 'Removed from queue');
         return result;
     }
 

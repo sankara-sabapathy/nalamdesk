@@ -348,6 +348,11 @@ export class SettingsComponent implements OnInit {
 
   async saveUser() {
     if (!this.editingUser.username || (!this.editingUser.id && !this.editingUser.password)) return;
+    const allowedRoles = ['admin', 'doctor', 'receptionist', 'nurse'];
+    if (!this.editingUser.role || !allowedRoles.includes(this.editingUser.role)) {
+      alert('Invalid Role');
+      return;
+    }
     try {
       await this.dataService.invoke<any>('saveUser', this.editingUser);
       this.ngZone.run(() => {

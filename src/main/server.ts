@@ -7,7 +7,9 @@ import { DatabaseService } from './services/DatabaseService';
 import { app } from 'electron';
 import * as argon2 from 'argon2';
 
-const JWT_SECRET = 'nalamdesk-secret-key-change-in-prod-or-env'; // TODO: Move to secure storage or ENV
+import * as crypto from 'crypto';
+
+const JWT_SECRET = process.env['JWT_SECRET'] || crypto.randomBytes(64).toString('hex');
 
 export class ApiServer {
     private fastify: FastifyInstance;
@@ -76,6 +78,7 @@ export class ApiServer {
             (request as any).user = decoded;
         } catch (err) {
             reply.code(401).send({ error: 'Unauthorized' });
+            return; // Short-circuit
         }
     }
 

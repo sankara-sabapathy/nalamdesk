@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PatientListComponent } from './patient-list.component';
 import { DataService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { of } from 'rxjs';
 
 // Mock inject
 vi.mock('@angular/core', async () => {
@@ -15,7 +16,7 @@ vi.mock('@angular/core', async () => {
         inject: vi.fn(),
     };
 });
-import { inject } from '@angular/core';
+import { inject, ChangeDetectorRef } from '@angular/core';
 
 describe('PatientListComponent', () => {
     let component: PatientListComponent;
@@ -24,6 +25,7 @@ describe('PatientListComponent', () => {
     let mockRouter: any;
     let mockDataService: any;
     let mockAuthService: any;
+    let mockCdr: any;
 
     beforeEach(() => {
         mockPatientService = {
@@ -34,14 +36,31 @@ describe('PatientListComponent', () => {
         mockRouter = { navigate: vi.fn() };
         mockDataService = { invoke: vi.fn() };
         mockAuthService = { getUser: vi.fn().mockReturnValue({ role: 'admin' }) };
+        mockCdr = { detectChanges: vi.fn() }; // Mock CDR
+        const mockFb = {
+            group: vi.fn().mockImplementation((config) => ({
+                value: { name: '', ...config },
+                patchValue: vi.fn(),
+                reset: vi.fn(),
+                get: vi.fn().mockReturnValue({
+                    value: '',
+                    invalid: false,
+                    touched: false,
+                    valueChanges: of(null)
+                }),
+                invalid: false,
+                markAllAsTouched: vi.fn()
+            }))
+        };
 
         vi.mocked(inject).mockImplementation((token: any) => {
             if (token === DataService) return mockDataService;
             if (token === AuthService) return mockAuthService;
+            if (token === ChangeDetectorRef) return mockCdr;
             return null;
         });
 
-        component = new PatientListComponent(mockPatientService, mockNgZone, mockRouter);
+        component = new PatientListComponent(mockFb as any, mockPatientService, mockNgZone, mockRouter, mockCdr);
     });
 
     it('should load patients on init', async () => {
@@ -85,13 +104,13 @@ describe('PatientListComponent', () => {
     it('should open modal for new patient', () => {
         component.openAddModal();
         expect(component.showModal).toBe(true);
-        expect(component.newPatient.name).toBe('');
+        expect(component.patientForm.get('name')?.value).toBe('');
     });
 
     it('should edit patient', () => {
         const patient = { id: 1, name: 'John' } as any;
         component.editPatient(patient);
         expect(component.showModal).toBe(true);
-        expect(component.newPatient).toEqual(patient);
+        expect(component.patientForm.patchValue).toHaveBeenCalledWith(patient);
     });
 });

@@ -10,6 +10,25 @@ export interface Patient {
   gender: string;
   address: string;
   created_at?: string;
+
+  // Demographics
+  dob?: string;
+  blood_group?: string;
+  email?: string;
+
+  // Emergency Contact
+  emergency_contact_name?: string;
+  emergency_contact_mobile?: string;
+
+  // Detailed Address
+  street?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+
+  // Insurance
+  insurance_provider?: string;
+  policy_number?: string;
 }
 
 @Injectable({

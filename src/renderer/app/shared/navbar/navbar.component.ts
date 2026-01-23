@@ -93,29 +93,17 @@ export class NavbarComponent implements OnInit {
       });
     } catch (e) { console.error(e); }
   }
-      this.ngZone.run(() => {
-    this.doctors = docs;
-    // Auto-select if stored or single
-    const stored = localStorage.getItem('selectedDoctorId');
-    if (stored) {
-      this.selectedDoctorId = +stored;
-    } else if (docs.length > 0) {
-      this.selectedDoctorId = docs[0].id;
-      this.onDoctorChange();
+
+
+  onDoctorChange() {
+    if (this.selectedDoctorId) {
+      localStorage.setItem('selectedDoctorId', this.selectedDoctorId.toString());
+    } else {
+      localStorage.removeItem('selectedDoctorId');
     }
-  });
-    } catch (e) { console.error(e); }
   }
 
-onDoctorChange() {
-  if (this.selectedDoctorId) {
-    localStorage.setItem('selectedDoctorId', this.selectedDoctorId.toString());
-  } else {
-    localStorage.removeItem('selectedDoctorId');
+  logout() {
+    this.router.navigate(['/login']);
   }
-}
-
-logout() {
-  this.router.navigate(['/login']);
-}
 }

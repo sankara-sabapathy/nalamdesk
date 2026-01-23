@@ -23,27 +23,27 @@ import { AuthService } from '../services/auth.service';
         <!-- Stats Grid -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <!-- Total Patients -->
-          <div class="stat bg-base-100 shadow-sm border border-base-200 rounded-2xl group hover:border-primary/20 transition-all duration-300">
-            <div class="stat-figure text-primary opacity-20 group-hover:opacity-100 transition-opacity">
+          <div class="stat bg-white shadow-sm border border-gray-200 rounded-2xl group hover:border-blue-500/20 transition-all duration-300">
+            <div class="stat-figure text-blue-600 opacity-20 group-hover:opacity-100 transition-opacity">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
             </div>
-            <div class="stat-title text-base-content/60 font-medium tracking-wide text-xs uppercase">Total Patients</div>
-            <div class="stat-value text-primary font-display">{{ stats.totalPatients }}</div>
-            <div class="stat-desc text-base-content/40">Registered in system</div>
+            <div class="stat-title text-gray-500 font-medium tracking-wide text-xs uppercase">Total Patients</div>
+            <div class="stat-value text-blue-600 font-display">{{ stats.totalPatients }}</div>
+            <div class="stat-desc text-gray-400">Registered in system</div>
           </div>
 
           <!-- Today's Visits -->
-          <div class="stat bg-base-100 shadow-sm border border-base-200 rounded-2xl group hover:border-secondary/20 transition-all duration-300">
-            <div class="stat-figure text-secondary opacity-20 group-hover:opacity-100 transition-opacity">
+          <div class="stat bg-white shadow-sm border border-gray-200 rounded-2xl group hover:border-gray-500/20 transition-all duration-300">
+            <div class="stat-figure text-gray-600 opacity-20 group-hover:opacity-100 transition-opacity">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
             </div>
-            <div class="stat-title text-base-content/60 font-medium tracking-wide text-xs uppercase">Visits Today</div>
-            <div class="stat-value text-secondary font-display">{{ stats.todayVisits }}</div>
-            <div class="stat-desc text-base-content/40">Checked in so far</div>
+            <div class="stat-title text-gray-500 font-medium tracking-wide text-xs uppercase">Visits Today</div>
+            <div class="stat-value text-gray-700 font-display">{{ stats.todayVisits }}</div>
+            <div class="stat-desc text-gray-400">Checked in so far</div>
           </div>
 
            <!-- Quick Action -->
-           <div class="card bg-primary text-primary-content shadow-lg shadow-primary/20 rounded-2xl cursor-pointer hover:shadow-xl hover:shadow-primary/30 transition-all duration-300" (click)="goToPatients()">
+           <div class="card bg-blue-600 text-white shadow-lg shadow-blue-600/20 rounded-2xl cursor-pointer hover:shadow-xl hover:shadow-blue-600/30 transition-all duration-300" (click)="goToPatients()">
             <div class="card-body p-6 relative overflow-hidden">
                 <!-- Background decoration -->
                 <div class="absolute -right-4 -bottom-4 opacity-20">

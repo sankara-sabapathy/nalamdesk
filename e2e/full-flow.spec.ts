@@ -2,11 +2,12 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import { join } from 'path';
 
 test('NalamDesk Full Clinical Flow', async () => {
+    let app: any;
     try {
         // 1. Launch Electron Application
         // We launch the main process built file.
         // Ensure `npm run build:main` is run before this test if not automated.
-        const app = await electron.launch({
+        app = await electron.launch({
             args: [join(__dirname, '../dist/main/main.js')],
             env: { ...process.env, NODE_ENV: 'test' }
         });
@@ -138,14 +139,13 @@ test('NalamDesk Full Clinical Flow', async () => {
 
         console.log('Consultation completed successfully.');
 
-        // Close App
-        await app.close();
     } catch (e) {
         console.error('----------------------------------------');
         console.error('TEST FAILURE DETAIL:');
         console.error(e);
         console.error('----------------------------------------');
-        // await app.close(); // might be closed already or undefined app context scope
         throw e;
+    } finally {
+        if (app) await app.close();
     }
 });

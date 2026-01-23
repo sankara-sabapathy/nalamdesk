@@ -1,16 +1,17 @@
 
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { DataService } from '../services/api.service';
+import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
 
 @Component({
   // ... (omitted for brevity, keeping same template)
   selector: 'app-queue',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, VitalsFormComponent],
   template: `
-    <div class="min-h-screen bg-base-200 p-8 font-sans">
+    <div class="min-h-screen bg-gray-50 p-8 font-sans">
       <div class="max-w-6xl mx-auto">
         <!-- Header -->
         <div class="flex justify-between items-center mb-8">
@@ -19,21 +20,21 @@ import { DataService } from '../services/api.service';
                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
              </button>
              <div>
-               <h1 class="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Patient Queue</h1>
-               <p class="text-base-content/60">Manage waiting list and consultations</p>
+               <h1 class="text-3xl font-bold text-blue-900">Patient Queue</h1>
+               <p class="text-gray-600">Manage waiting list and consultations</p>
              </div>
            </div>
            
-           <div class="stats shadow bg-base-100/50 backdrop-blur">
+           <div class="stats shadow bg-white">
              <div class="stat place-items-center">
                <div class="stat-title">Waiting</div>
-               <div class="stat-value text-secondary">{{ queue().length }}</div>
+               <div class="stat-value text-blue-600">{{ queue().length }}</div>
              </div>
            </div>
         </div>
 
         <!-- Main Card -->
-        <div class="card bg-base-100/80 backdrop-blur-xl shadow-2xl border border-base-200">
+        <div class="card bg-white shadow-xl border border-gray-200">
           <div class="card-body p-0">
             <div class="overflow-x-auto">
               <table class="table table-lg">
@@ -91,6 +92,11 @@ import { DataService } from '../services/api.service';
                     <td class="text-right">
                       <div class="join opacity-0 group-hover:opacity-100 transition-opacity">
                         <button *ngIf="item.status === 'waiting'" 
+                                (click)="openVitals(item.patient_id)"
+                                class="btn btn-secondary btn-sm join-item">
+                          Vitals
+                        </button>
+                        <button *ngIf="item.status === 'waiting'" 
                                 (click)="updateStatus(item.id, 'in-consult')"
                                 class="btn btn-primary btn-sm join-item">
                           Start Consult
@@ -127,18 +133,30 @@ import { DataService } from '../services/api.service';
           </div>
         </div>
       </div>
+      
+      <!-- Vitals Modal -->
+      <app-vitals-form *ngIf="showVitalsModal" 
+        (close)="closeVitalsModal()" 
+        (save)="onVitalsSaved($event)"
+        [patientId]="selectedPatientIdForVitals">
+      </app-vitals-form>
     </div>
   `
 })
-export class QueueComponent implements OnInit {
+export class QueueComponent implements OnInit, OnDestroy {
   queue = signal<any[]>([]);
   private router = inject(Router);
   private dataService: DataService = inject(DataService);
+  private refreshIntervalId: any;
 
   ngOnInit() {
     this.refreshQueue();
     // Poll every 30 seconds
-    setInterval(() => this.refreshQueue(), 30000);
+    this.refreshIntervalId = setInterval(() => this.refreshQueue(), 30000);
+  }
+
+  ngOnDestroy() {
+    if (this.refreshIntervalId) clearInterval(this.refreshIntervalId);
   }
 
   goBack() {
@@ -155,19 +173,29 @@ export class QueueComponent implements OnInit {
   }
 
   async updateStatus(id: number, status: string) {
-    const item = this.queue().find(x => x.id === id);
-    await this.dataService.invoke<any>('updateQueueStatus', { id, status });
-    this.refreshQueue();
+    try {
+      const item = this.queue().find(x => x.id === id);
+      await this.dataService.invoke<any>('updateQueueStatus', { id, status });
+      this.refreshQueue();
 
-    if (status === 'in-consult' && item) {
-      this.router.navigate(['/visit', item.patient_id]);
+      if (status === 'in-consult' && item) {
+        this.router.navigate(['/visit', item.patient_id]);
+      }
+    } catch (e) {
+      console.error('Update failed', e);
+      alert('Failed to update status');
     }
   }
 
   async remove(id: number) {
     if (confirm('Remove from queue?')) {
-      await this.dataService.invoke<any>('removeFromQueue', id);
-      this.refreshQueue();
+      try {
+        await this.dataService.invoke<any>('removeFromQueue', id);
+        this.refreshQueue();
+      } catch (e) {
+        console.error('Remove failed', e);
+        alert('Failed to remove from queue');
+      }
     }
   }
 
@@ -188,5 +216,24 @@ export class QueueComponent implements OnInit {
     const h = Math.floor(diff / 60);
     const m = diff % 60;
     return `${h}h ${m}m`;
+  }
+
+  // Vitals Logic
+  showVitalsModal = false;
+  selectedPatientIdForVitals: number | null = null;
+
+  openVitals(patientId: number) {
+    this.selectedPatientIdForVitals = patientId;
+    this.showVitalsModal = true;
+  }
+
+  closeVitalsModal() {
+    this.showVitalsModal = false;
+    this.selectedPatientIdForVitals = null;
+  }
+
+  onVitalsSaved(data: any) {
+    this.closeVitalsModal();
+    // Optional: Show success toast
   }
 }

@@ -19,6 +19,8 @@ const googleDriveService = new GoogleDriveService();
 const apiServer = new ApiServer(databaseService);
 apiServer.start();
 
+let currentUser: any = null;
+
 // Set explicit AppUserModelId for Windows
 app.setAppUserModelId('com.sankarasabapathy.nalamdesk');
 
@@ -133,18 +135,7 @@ ipcMain.handle('updater:quitAndInstall', () => {
 
 
 
-app.on('window-all-closed', () => {
-    securityService.closeDb();
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
 
-app.on('activate', () => {
-    if (mainWindow === null) {
-        createWindow();
-    }
-});
 
 // IPC Handlers
 ipcMain.handle('auth:login', async (event, credentials) => {
@@ -171,13 +162,19 @@ ipcMain.handle('auth:login', async (event, credentials) => {
                 const key = await securityService.deriveKey(password);
                 try {
                     securityService.initDb(dbPath, key);
+                    // If we are here, DB opened successfully with this password.
+                    // We can safely update the admin password to ensure sync.
+                    databaseService.setDb(securityService.getDb());
+                    databaseService.migrate();
+                    await databaseService.ensureAdminUser(password);
                 } catch (e: any) {
                     if (e.message !== 'DB_ALREADY_OPEN') throw e;
+                    // If DB already open, we skipped init.
+                    // DO NOT update admin password here to prevent overwrite attacks.
+                    // Just confirm we can access it.
+                    databaseService.setDb(securityService.getDb());
                 }
 
-                databaseService.setDb(securityService.getDb());
-                databaseService.migrate();
-                await databaseService.ensureAdminUser(password); // Ensure admin exists and password matches DB key
 
                 // Initialize Server if not running
                 // const apiServer = new ApiServer(databaseService); // Now started globally
@@ -208,6 +205,7 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         const user = await databaseService.validateUser(username, password);
         console.log(`[Auth] Validation result:`, user ? 'Success' : 'Failed');
         if (user) {
+            currentUser = user; // Store session
             return { success: true, user };
         } else {
             return { success: false, error: 'INVALID_CREDENTIALS' };
@@ -231,6 +229,8 @@ ipcMain.handle('db:getSettings', () => databaseService.getSettings());
 ipcMain.handle('db:saveSettings', (_, settings) => databaseService.saveSettings(settings));
 ipcMain.handle('db:getDashboardStats', () => databaseService.getDashboardStats());
 ipcMain.handle('db:getDoctors', () => databaseService.getDoctors());
+ipcMain.handle('db:getVitals', (_, patientId) => databaseService.getVitals(patientId));
+ipcMain.handle('db:saveVitals', (_, vitals) => databaseService.saveVitals(vitals));
 
 // User Management IPC
 ipcMain.handle('db:getUsers', () => databaseService.getUsers());
@@ -239,10 +239,22 @@ ipcMain.handle('db:deleteUser', (_, id) => databaseService.deleteUser(id));
 
 // Queue IPC Handlers
 ipcMain.handle('db:getQueue', () => databaseService.getQueue());
-ipcMain.handle('db:addToQueue', (_, { patientId, priority }) => databaseService.addToQueue(patientId, priority));
-ipcMain.handle('db:updateQueueStatus', (_, { id, status }) => databaseService.updateQueueStatus(id, status));
-ipcMain.handle('db:updateQueueStatusByPatientId', (_, { patientId, status }) => databaseService.updateQueueStatusByPatientId(patientId, status));
-ipcMain.handle('db:removeFromQueue', (_, id) => databaseService.removeFromQueue(id));
+ipcMain.handle('db:addToQueue', (_, { patientId, priority }) => {
+    if (!currentUser) throw new Error('Unauthorized');
+    return databaseService.addToQueue(patientId, priority, currentUser.id);
+});
+ipcMain.handle('db:updateQueueStatus', (_, { id, status }) => {
+    if (!currentUser) throw new Error('Unauthorized');
+    return databaseService.updateQueueStatus(id, status, currentUser.id);
+});
+ipcMain.handle('db:updateQueueStatusByPatientId', (_, { patientId, status }) => {
+    if (!currentUser) throw new Error('Unauthorized');
+    return databaseService.updateQueueStatusByPatientId(patientId, status, currentUser.id);
+});
+ipcMain.handle('db:removeFromQueue', (_, id) => {
+    if (!currentUser) throw new Error('Unauthorized');
+    return databaseService.removeFromQueue(id, currentUser.id);
+});
 
 // Audit IPC Handlers
 ipcMain.handle('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));

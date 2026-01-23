@@ -1,6 +1,6 @@
 import { Component, NgZone, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Patient, PatientService } from '../../services/patient.service';
 import { DataService } from '../../services/api.service';
 import { Router } from '@angular/router';
@@ -10,7 +10,7 @@ import { AuthService } from '../../services/auth.service';
   // ... template omitted ...
   selector: 'app-patient-list',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule],
   template: `
     <div class="p-6 bg-gray-100 min-h-screen">
       <div class="max-w-7xl mx-auto">
@@ -73,39 +73,111 @@ import { AuthService } from '../../services/auth.service';
 
       <!-- Add Patient Modal -->
       <div *ngIf="showModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-96 shadow-xl">
-          <h2 class="text-xl font-bold mb-4">New Patient</h2>
-          <form (ngSubmit)="savePatient()">
-            <div class="mb-2">
-              <label class="block text-sm font-medium text-gray-700">Name</label>
-              <input [(ngModel)]="newPatient.name" name="name" class="w-full border p-2 rounded" required>
-            </div>
-            <div class="mb-2">
-              <label class="block text-sm font-medium text-gray-700">Mobile</label>
-              <input [(ngModel)]="newPatient.mobile" name="mobile" class="w-full border p-2 rounded" required>
-            </div>
-            <div class="flex gap-2 mb-2">
-              <div class="w-1/2">
-                <label class="block text-sm font-medium text-gray-700">Age</label>
-                <input type="number" [(ngModel)]="newPatient.age" name="age" class="w-full border p-2 rounded" required>
-              </div>
-              <div class="w-1/2">
-                <label class="block text-sm font-medium text-gray-700">Gender</label>
-                <select [(ngModel)]="newPatient.gender" name="gender" class="w-full border p-2 rounded">
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-            </div>
-             <div class="mb-4">
-              <label class="block text-sm font-medium text-gray-700">Address</label>
-              <textarea [(ngModel)]="newPatient.address" name="address" class="w-full border p-2 rounded"></textarea>
+        <div class="bg-white rounded-lg p-6 w-[800px] max-h-[90vh] overflow-y-auto shadow-xl">
+          <h2 class="text-xl font-bold mb-4">New Patient Registration</h2>
+          <form [formGroup]="patientForm" (ngSubmit)="savePatient()">
+            <!-- ID/UUID Hidden -->
+            
+            <div class="grid grid-cols-2 gap-4">
+                <!-- Personal Info -->
+                <div class="col-span-2">
+                    <h3 class="font-bold text-gray-700 border-b pb-1 mb-2">Personal Information</h3>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Full Name <span class="text-red-500">*</span></label>
+                    <input formControlName="name" class="w-full border p-2 rounded focus:ring-blue-500 focus:border-blue-500" 
+                           [class.border-red-500]="patientForm.get('name')?.invalid && (patientForm.get('name')?.dirty || patientForm.get('name')?.touched)">
+                    <span *ngIf="patientForm.get('name')?.invalid && (patientForm.get('name')?.dirty || patientForm.get('name')?.touched)" class="text-xs text-red-500">Min 3 chars required</span>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Mobile <span class="text-red-500">*</span></label>
+                    <input formControlName="mobile" type="tel" class="w-full border p-2 rounded"
+                           [class.border-red-500]="patientForm.get('mobile')?.invalid && (patientForm.get('mobile')?.dirty || patientForm.get('mobile')?.touched)">
+                    <span *ngIf="patientForm.get('mobile')?.invalid && (patientForm.get('mobile')?.dirty || patientForm.get('mobile')?.touched)" class="text-xs text-red-500">10-digit mobile required</span>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Date of Birth</label>
+                    <input type="date" formControlName="dob" class="w-full border p-2 rounded">
+                </div>
+
+                <div class="flex gap-2">
+                     <div class="w-1/2">
+                        <label class="block text-sm font-medium text-gray-700">Age <span class="text-red-500">*</span></label>
+                        <input type="number" formControlName="age" class="w-full border p-2 rounded">
+                     </div>
+                     <div class="w-1/2">
+                        <label class="block text-sm font-medium text-gray-700">Blood Group</label>
+                        <select formControlName="blood_group" class="w-full border p-2 rounded">
+                            <option value="">Select</option>
+                            <option value="A+">A+</option> <option value="A-">A-</option>
+                            <option value="B+">B+</option> <option value="B-">B-</option>
+                            <option value="O+">O+</option> <option value="O-">O-</option>
+                            <option value="AB+">AB+</option> <option value="AB-">AB-</option>
+                        </select>
+                     </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Gender <span class="text-red-500">*</span></label>
+                    <select formControlName="gender" class="w-full border p-2 rounded">
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" formControlName="email" class="w-full border p-2 rounded">
+                    <span *ngIf="patientForm.get('email')?.invalid && (patientForm.get('email')?.dirty || patientForm.get('email')?.touched)" class="text-xs text-red-500">Invalid email</span>
+                </div>
+
+                <!-- Contact Info -->
+                <div class="col-span-2 mt-2">
+                    <h3 class="font-bold text-gray-700 border-b pb-1 mb-2">Address & Emergency</h3>
+                </div>
+
+                <div class="col-span-2">
+                    <label class="block text-sm font-medium text-gray-700">Address / Street <span class="text-red-500">*</span></label>
+                    <textarea formControlName="address" rows="2" class="w-full border p-2 rounded"></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">City</label>
+                    <input formControlName="city" class="w-full border p-2 rounded">
+                </div>
+
+                <div class="flex gap-2">
+                    <div class="w-1/2">
+                        <label class="block text-sm font-medium text-gray-700">State</label>
+                         <input formControlName="state" class="w-full border p-2 rounded">
+                    </div>
+                    <div class="w-1/2">
+                        <label class="block text-sm font-medium text-gray-700">Pincode</label>
+                         <input formControlName="zip_code" class="w-full border p-2 rounded">
+                         <span *ngIf="patientForm.get('zip_code')?.invalid && (patientForm.get('zip_code')?.dirty || patientForm.get('zip_code')?.touched)" class="text-xs text-red-500">Invalid Pincode</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Emergency Contact</label>
+                    <input formControlName="emergency_contact_name" placeholder="Name" class="w-full border p-2 rounded">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Emergency Mobile</label>
+                    <input formControlName="emergency_contact_mobile" placeholder="Mobile" class="w-full border p-2 rounded">
+                     <span *ngIf="patientForm.get('emergency_contact_mobile')?.invalid && (patientForm.get('emergency_contact_mobile')?.dirty || patientForm.get('emergency_contact_mobile')?.touched)" class="text-xs text-red-500">10-digit req</span>
+                </div>
+            
             </div>
             
-            <div class="flex justify-end gap-2">
+            <div class="flex justify-end gap-2 mt-6 border-t pt-4">
               <button type="button" (click)="showModal = false" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-              <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
+              <button type="submit" [disabled]="patientForm.invalid" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400">Save Patient</button>
             </div>
           </form>
         </div>
@@ -129,24 +201,70 @@ export class PatientListComponent implements OnInit {
   searchQuery = '';
   showModal = false;
 
-  newPatient: Patient = {
-    name: '',
-    mobile: '',
-    age: 0,
-    gender: 'Male',
-    address: ''
-  };
+  // Removed old newPatient object in favor of patientForm
 
   private dataService: DataService = inject(DataService);
   private authService: AuthService = inject(AuthService);
   currentUser: any = null;
 
   constructor(
+    private fb: FormBuilder,
     private patientService: PatientService,
     private ngZone: NgZone,
     private router: Router,
     private cdr: ChangeDetectorRef
-  ) { }
+  ) {
+    this.initForm();
+  }
+
+  patientForm!: FormGroup;
+
+  initForm() {
+    this.patientForm = this.fb.group({
+      id: [null],
+      uuid: [null],
+      name: ['', [Validators.required, Validators.minLength(3)]],
+      mobile: ['', [Validators.required, Validators.pattern(/^[0-9]{10}$/)]],
+      age: [null, [Validators.required, Validators.min(0), Validators.max(120)]],
+      dob: [null], // We will validate that DOB matches age approximately if provided
+      gender: ['Male', Validators.required],
+      blood_group: [''],
+      email: ['', [Validators.email]], // Optional but strictly validated if present
+
+      // Address
+      address: ['', Validators.required], // Full address or street
+      street: [''],
+      city: [''],
+      state: [''], // Could be dropdown
+      zip_code: ['', [Validators.pattern(/^[0-9]{6}$/)]],
+
+      // Emergency
+      emergency_contact_name: [''],
+      emergency_contact_mobile: ['', [Validators.pattern(/^[0-9]{10}$/)]],
+
+      // Insurance
+      insurance_provider: [''],
+      policy_number: ['']
+    });
+
+    // Auto-calculate Age from DOB
+    this.patientForm.get('dob')?.valueChanges.subscribe(dob => {
+      if (dob) {
+        const age = this.calculateAge(new Date(dob));
+        this.patientForm.patchValue({ age }, { emitEvent: false });
+      }
+    });
+
+    // Auto-calculate DOB from Age (Approximate, optional - maybe not needed as it overwrites DOB)
+    // Better to just let user enter one or the other.
+  }
+
+  calculateAge(dob: Date): number {
+    const diff = Date.now() - dob.getTime();
+    const ageDate = new Date(diff);
+    return Math.abs(ageDate.getUTCFullYear() - 1970);
+  }
+
 
   ngOnInit() {
     this.currentUser = this.authService.getUser();
@@ -184,18 +302,24 @@ export class PatientListComponent implements OnInit {
   }
 
   openAddModal() {
-    this.newPatient = { name: '', mobile: '', age: 0, gender: 'Male', address: '' };
+    this.patientForm.reset({ gender: 'Male', age: 0 });
     this.showModal = true;
   }
 
   editPatient(patient: Patient) {
-    this.newPatient = { ...patient };
+    this.patientForm.patchValue(patient);
     this.showModal = true;
   }
 
   async savePatient() {
+    if (this.patientForm.invalid) {
+      this.patientForm.markAllAsTouched();
+      return;
+    }
+
     try {
-      const result = await this.patientService.savePatient(this.newPatient);
+      const formValue = this.patientForm.value;
+      const result = await this.patientService.savePatient(formValue);
       this.ngZone.run(() => {
         this.showModal = false;
         this.loadPatients();

@@ -18,12 +18,13 @@ mockPrepare.mockReturnValue({ get: mockGet });
 vi.mock('better-sqlite3-multiple-ciphers', () => {
     return {
         default: class {
+            pragma: any;
+            prepare: any;
+            close: any;
             constructor() {
-                return {
-                    pragma: mockPragma,
-                    prepare: mockPrepare,
-                    close: mockClose
-                };
+                this.pragma = mockPragma;
+                this.prepare = mockPrepare;
+                this.close = mockClose;
             }
         }
     };

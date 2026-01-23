@@ -46,7 +46,13 @@ describe('VisitComponent', () => {
                 enable: vi.fn(),
                 valid: true,
                 invalid: false,
-                markAllAsTouched: vi.fn()
+                markAllAsTouched: vi.fn(),
+                get: vi.fn().mockReturnValue({
+                    value: '',
+                    invalid: false,
+                    touched: false,
+                    dirty: false
+                }) // Mock get() for strict checks
             }))
         };
         mockNgZone = { run: vi.fn((fn) => fn()) };
@@ -65,6 +71,7 @@ describe('VisitComponent', () => {
             if (method === 'getVisits') return Promise.resolve([]);
             if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
             if (method === 'getQueue') return Promise.resolve([]);
+            if (method === 'getVitals') return Promise.resolve({ systolic_bp: 120 });
             if (method === 'saveVisit') return Promise.resolve(true);
             if (method === 'updateQueueStatusByPatientId') return Promise.resolve(true);
             return Promise.resolve(null);
@@ -91,21 +98,69 @@ describe('VisitComponent', () => {
         expect(component.history).toEqual(visits);
     });
 
+    it('should set isConsulting to true when patient is in queue', async () => {
+        const queueItem = { patient_id: 1, status: 'in-consult' };
+        // Override mock to return a queue item
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getVisits') return Promise.resolve([]);
+            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
+            if (method === 'getQueue') return Promise.resolve([queueItem]);
+            if (method === 'getVitals') return Promise.resolve({});
+            return Promise.resolve(null);
+        });
+
+        component.ngOnInit();
+        await component.loadData();
+
+        expect(component.isConsulting).toBe(true);
+        expect(component.visitForm.enable).toHaveBeenCalled();
+    });
+
     it('should save visit', async () => {
         component.patientId = 1;
-        component.visitForm.value.diagnosis = 'Cold'; // Force value
+        // Mock the form value to include SOAP fields
+        const formVal = {
+            diagnosis: 'Cold',
+            symptoms: 'Cough',
+            examination_notes: 'Throat Red',
+            diagnosis_type: 'Provisional'
+        };
+        // We can't easily assign to .value of the mock group if it's static, 
+        // but our mock implementation returns { ...config, value: ... }
+        // Let's assume the component reads this.visitForm.value.
+        // We can force the getter if needed, or if we mocked it as a property
+        component.visitForm = {
+            value: formVal,
+            invalid: false,
+            reset: vi.fn(),
+            patchValue: vi.fn(),
+            disable: vi.fn(),
+            enable: vi.fn(),
+            markAllAsTouched: vi.fn(),
+            get: vi.fn().mockReturnValue({ invalid: false })
+        } as any;
 
         await component.saveVisit();
 
         expect(mockDataService.invoke).toHaveBeenCalledWith('saveVisit', expect.objectContaining({
             patient_id: 1,
-            doctor_id: 99
+            doctor_id: 99,
+            symptoms: 'Cough',
+            examination_notes: 'Throat Red'
         }));
     });
 
     it('should end consult', async () => {
         component.patientId = 1;
         component.saveVisit = vi.fn().mockResolvedValue(true);
+        // Ensure form is valid so endConsult proceeds
+        component.visitForm = {
+            value: {},
+            invalid: false,
+            valid: true,
+            markAllAsTouched: vi.fn()
+        } as any;
+
 
         await component.endConsult();
 
