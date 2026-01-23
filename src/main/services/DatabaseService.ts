@@ -32,15 +32,6 @@ export class DatabaseService {
         } catch (e) { }
 
         // Doctors Table
-        this.db.exec(`
-          CREATE TABLE IF NOT EXISTS doctors (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            specialty TEXT,
-            license_number TEXT,
-            active INTEGER DEFAULT 1
-          );
-        `);
 
         this.db.exec(`
           CREATE TABLE IF NOT EXISTS patients (
@@ -65,7 +56,7 @@ export class DatabaseService {
             prescription_json TEXT,
             amount_paid REAL,
             FOREIGN KEY(patient_id) REFERENCES patients(id),
-            FOREIGN KEY(doctor_id) REFERENCES doctors(id)
+            FOREIGN KEY(doctor_id) REFERENCES users(id)
         );
         `);
 
@@ -107,6 +98,8 @@ export class DatabaseService {
             password TEXT,
             role TEXT,
             name TEXT,
+            specialty TEXT,
+            license_number TEXT,
             active INTEGER DEFAULT 1,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
           );
@@ -138,6 +131,10 @@ export class DatabaseService {
             this.db.prepare('UPDATE users SET password = ? WHERE username = ?').run(hash, 'admin');
             console.log('Admin password synced with DB key.');
         }
+
+        // Migration: Add doctor fields to users if missing
+        try { this.db.exec(`ALTER TABLE users ADD COLUMN specialty TEXT`); } catch (e) { }
+        try { this.db.exec(`ALTER TABLE users ADD COLUMN license_number TEXT`); } catch (e) { }
     }
 
     // ... existing Settings methods ...
@@ -175,10 +172,11 @@ export class DatabaseService {
         const argon2 = await import('argon2');
         if (user.id) {
             // Update
-            let query = `UPDATE users SET role = @role, name = @name, active = @active WHERE id = @id`;
+            // Update
+            let query = `UPDATE users SET role = @role, name = @name, active = @active, specialty = @specialty, license_number = @license_number WHERE id = @id`;
             if (user.password) {
                 user.password = await argon2.hash(user.password);
-                query = `UPDATE users SET role = @role, name = @name, active = @active, password = @password WHERE id = @id`;
+                query = `UPDATE users SET role = @role, name = @name, active = @active, specialty = @specialty, license_number = @license_number, password = @password WHERE id = @id`;
             }
             return this.db.prepare(query).run(user);
         } else {
@@ -191,8 +189,8 @@ export class DatabaseService {
 
             user.active = user.active !== undefined ? user.active : 1; // Default to active
             return this.db.prepare(`
-                INSERT INTO users(username, password, role, name, active)
-                VALUES(@username, @password, @role, @name, @active)
+                INSERT INTO users(username, password, role, name, active, specialty, license_number)
+                VALUES(@username, @password, @role, @name, @active, @specialty, @license_number)
             `).run(user);
         }
     }
@@ -233,29 +231,7 @@ export class DatabaseService {
 
     // Doctors
     getDoctors() {
-        return this.db.prepare('SELECT * FROM doctors WHERE active = 1').all();
-    }
-
-    saveDoctor(doctor: any) {
-        if (doctor.id) {
-            return this.db.prepare(`
-                UPDATE doctors SET
-        name = @name,
-            specialty = @specialty,
-            license_number = @license_number 
-                WHERE id = @id
-            `).run(doctor);
-        } else {
-            return this.db.prepare(`
-                INSERT INTO doctors(name, specialty, license_number)
-        VALUES(@name, @specialty, @license_number)
-            `).run(doctor);
-        }
-    }
-
-    deleteDoctor(id: number) {
-        // Soft delete
-        return this.db.prepare('UPDATE doctors SET active = 0 WHERE id = ?').run(id);
+        return this.db.prepare(`SELECT * FROM users WHERE role = 'doctor' AND active = 1`).all();
     }
 
     // Patients
@@ -309,7 +285,7 @@ export class DatabaseService {
         const visits = this.db.prepare(`
             SELECT v.*, d.name as doctor_name 
             FROM visits v 
-            LEFT JOIN doctors d ON v.doctor_id = d.id 
+            LEFT JOIN users d ON v.doctor_id = d.id 
             WHERE v.patient_id = ?
             ORDER BY v.date DESC
         `).all(patientId);
@@ -324,7 +300,7 @@ export class DatabaseService {
             SELECT v.*, p.name as patient_name, d.name as doctor_name 
             FROM visits v 
             JOIN patients p ON v.patient_id = p.id
-            LEFT JOIN doctors d ON v.doctor_id = d.id 
+            LEFT JOIN users d ON v.doctor_id = d.id 
             ORDER BY v.date DESC
             LIMIT ?
         `).all(limit);

@@ -43,6 +43,7 @@ Thumbs.db
 
 # release artifacts
 /release
+/build
 
 # Local Database
 *.db
@@ -52,3 +53,11 @@ nalamdesk.db
 /playwright-report
 /test-results
 /html
+
+# Logs and outputs
+*.log
+test_output.txt
+tsc_output.txt
+
+# Scripts
+fix-images.js

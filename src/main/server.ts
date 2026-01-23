@@ -46,7 +46,14 @@ export class ApiServer {
 
             // Data Wrappers
             instance.post('/api/ipc/:method', this.handleIpcCall.bind(this));
+        });
 
+        // SPA Fallback
+        this.fastify.setNotFoundHandler((req, reply) => {
+            if (req.method === 'GET' && !req.url.startsWith('/api')) {
+                return reply.sendFile('index.html');
+            }
+            return reply.code(404).send({ message: 'Route ' + req.method + ':' + req.url + ' not found', error: 'Not Found', statusCode: 404 });
         });
     }
 

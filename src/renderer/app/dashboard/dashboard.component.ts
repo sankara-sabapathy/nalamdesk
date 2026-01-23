@@ -1,7 +1,9 @@
 import { Component, NgZone, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+
 import { DataService } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   // ... (template omitted, same as before) 
@@ -9,11 +11,11 @@ import { DataService } from '../services/api.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="container mx-auto max-w-7xl animate-fade-in-up">
+    <div class="container mx-auto max-w-7xl">
         <!-- Welcome Section -->
         <div class="mb-8 mt-2">
             <h1 class="text-3xl font-display font-bold text-base-content">
-                Good {{ getTimeOfDay() }}, <span class="text-primary">{{ doctorName || 'Doctor' }}</span>
+                Good {{ getTimeOfDay() }}, <span class="text-primary">{{ currentUser?.name || doctorName || 'Doctor' }}</span>
             </h1>
             <p class="text-base-content/60 mt-1">Here's what's happening at {{ clinicName || 'your clinic' }} today.</p>
         </div>
@@ -79,7 +81,7 @@ import { DataService } from '../services/api.service';
             </div>
           </div>
 
-          <div class="card bg-base-100 shadow-sm border border-base-200 hover:border-primary/30 transition-colors cursor-pointer" (click)="goToSettings()">
+          <div *ngIf="currentUser?.role === 'admin'" class="card bg-base-100 shadow-sm border border-base-200 hover:border-primary/30 transition-colors cursor-pointer" (click)="goToSettings()">
             <div class="card-body flex-row items-center gap-4">
                 <div class="p-3 bg-neutral/10 rounded-xl text-neutral">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -102,14 +104,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
   doctorName = '';
   stats = { totalPatients: 0, todayVisits: 0 };
   waitingCount = 0;
+  currentUser: any = null;
 
   constructor(
     private router: Router,
     private ngZone: NgZone,
-    private dataService: DataService
+    private dataService: DataService,
+    private authService: AuthService
   ) { }
 
   ngOnInit() {
+    this.currentUser = this.authService.getUser();
     this.timer = setInterval(() => {
       this.currentTime = new Date();
     }, 1000);

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterModule, Router } from '@angular/router';
 import { UniversalDialogComponent } from '../../shared/components/universal-dialog/universal-dialog.component';
 import { DialogService } from '../../shared/services/dialog.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-main-layout',
@@ -40,12 +41,12 @@ import { DialogService } from '../../shared/services/dialog.service';
              <div class="dropdown dropdown-end">
                 <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar placeholder">
                   <div class="bg-neutral text-neutral-content rounded-full w-10">
-                    <span>Dr</span>
+                    <span class="text-sm font-bold">{{ getUserInitials() }}</span>
                   </div>
                 </div>
                 <ul tabindex="0" class="mt-3 z-[1] p-2 shadow-menu menu menu-sm dropdown-content bg-base-100 rounded-box w-52">
-                  <li><a>Profile</a></li>
-                  <li><a>Settings</a></li>
+                  <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings">Manage Profile</a></li>
+                  <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings">Settings</a></li>
                   <li><a class="text-error" (click)="logout()">Logout</a></li>
                 </ul>
              </div>
@@ -108,9 +109,9 @@ import { DialogService } from '../../shared/services/dialog.service';
             </a>
           </li>
 
-           <li class="menu-title px-2 uppercase tracking-wider font-bold text-[11px] opacity-50 mt-4">System</li>
+           <li class="menu-title px-2 uppercase tracking-wider font-bold text-[11px] opacity-50 mt-4" *ngIf="currentUser?.role === 'admin'">System</li>
 
-          <li>
+          <li *ngIf="currentUser?.role === 'admin'">
             <a routerLink="/settings" routerLinkActive="bg-primary text-primary-content shadow-lg shadow-blue-500/30 font-semibold" class="group">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
               Settings
@@ -155,9 +156,13 @@ import { DialogService } from '../../shared/services/dialog.service';
 })
 export class MainLayoutComponent {
   dialogService = inject(DialogService);
+  private authService = inject(AuthService);
   queueCount = 0; // TODO: Connect to service
+  currentUser: any = null;
 
-  constructor(private router: Router) { }
+  constructor(private router: Router) {
+    this.currentUser = this.authService.getUser();
+  }
 
   get currentRouteName(): string {
     // Simple extraction, can be enhanced
@@ -167,6 +172,16 @@ export class MainLayoutComponent {
   }
 
   logout() {
+    this.authService.logout();
     this.router.navigate(['/login']);
+  }
+
+  getUserInitials(): string {
+    if (!this.currentUser || !this.currentUser.name) return 'U';
+    const names = this.currentUser.name.split(' ');
+    if (names.length >= 2) {
+      return (names[0][0] + names[1][0]).toUpperCase();
+    }
+    return names[0].substring(0, 2).toUpperCase();
   }
 }

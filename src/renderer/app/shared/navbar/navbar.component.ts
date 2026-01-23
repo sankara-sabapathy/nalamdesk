@@ -21,6 +21,7 @@ import { AuthService } from '../../services/auth.service';
             </span>
             <div class="ml-10 flex items-baseline space-x-4">
               <a routerLink="/dashboard" routerLinkActive="bg-blue-700" class="px-3 py-2 rounded-md hover:bg-blue-500 transition">Dashboard</a>
+              <a routerLink="/queue" routerLinkActive="bg-blue-700" class="px-3 py-2 rounded-md hover:bg-blue-500 transition">Queue</a>
               <a routerLink="/patients" routerLinkActive="bg-blue-700" class="px-3 py-2 rounded-md hover:bg-blue-500 transition">Patients</a>
               <a *ngIf="currentUser?.role === 'admin'" routerLink="/settings" routerLinkActive="bg-blue-700" class="px-3 py-2 rounded-md hover:bg-blue-500 transition">Settings</a>
             </div>

@@ -101,7 +101,7 @@ import { DataService } from '../services/api.service';
                           Complete
                         </button>
                         <button (click)="remove(item.id)" class="btn btn-error btn-outline btn-sm join-item">
-                          Running
+                          Remove
                         </button>
                       </div>
                       <!-- Mobile fallback or always visible action if hover isn't reliable -->

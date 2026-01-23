@@ -29,6 +29,10 @@ jobs:
       - name: Build Angular
         run: npm run build
 
+      - name: Run Unit Tests
+        run: npm test -- --run
+
+
       # Build Electron (No Publish)
       
       - name: Build Electron (Windows)

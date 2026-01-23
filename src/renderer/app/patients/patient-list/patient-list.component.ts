@@ -1,4 +1,4 @@
-import { Component, NgZone, OnInit, inject } from '@angular/core';
+import { Component, NgZone, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Patient, PatientService } from '../../services/patient.service';
@@ -144,7 +144,8 @@ export class PatientListComponent implements OnInit {
   constructor(
     private patientService: PatientService,
     private ngZone: NgZone,
-    private router: Router
+    private router: Router,
+    private cdr: ChangeDetectorRef
   ) { }
 
   ngOnInit() {
@@ -170,7 +171,7 @@ export class PatientListComponent implements OnInit {
       this.enqueuedPatientIds.clear();
       queue.forEach((item: any) => {
         if (item.status !== 'completed') {
-          this.enqueuedPatientIds.add(item.patient_id);
+          this.enqueuedPatientIds.add(Number(item.patient_id));
         }
       });
     } catch (e) {
@@ -242,15 +243,21 @@ export class PatientListComponent implements OnInit {
     if (this.isEnqueued(patient)) return;
     try {
       await this.dataService.invoke<any>('addToQueue', { patientId: patient.id!, priority: 1 });
-      this.enqueuedPatientIds.add(patient.id!);
+      this.ngZone.run(() => {
+        this.enqueuedPatientIds.add(Number(patient.id!));
+        this.cdr.detectChanges();
+      });
     } catch (e: any) {
       console.error(e);
       // If error is "Patient already in queue", we should update our local state
-      if (e.message && e.message.includes('already in queue')) {
-        this.enqueuedPatientIds.add(patient.id!);
-      } else {
-        alert('Failed to add to queue: ' + e.message);
-      }
+      this.ngZone.run(() => {
+        if (e.message && e.message.includes('already in queue')) {
+          this.enqueuedPatientIds.add(patient.id!);
+          this.cdr.detectChanges();
+        } else {
+          alert('Failed to add to queue: ' + e.message);
+        }
+      });
     }
   }
 

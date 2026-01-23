@@ -15,8 +15,6 @@ contextBridge.exposeInMainWorld('electron', {
         saveSettings: (settings: any) => ipcRenderer.invoke('db:saveSettings', settings),
         getDashboardStats: () => ipcRenderer.invoke('db:getDashboardStats'),
         getDoctors: () => ipcRenderer.invoke('db:getDoctors'),
-        saveDoctor: (doctor: any) => ipcRenderer.invoke('db:saveDoctor', doctor),
-        deleteDoctor: (id: number) => ipcRenderer.invoke('db:deleteDoctor', id),
         // Users
         getUsers: () => ipcRenderer.invoke('db:getUsers'),
         saveUser: (user: any) => ipcRenderer.invoke('db:saveUser', user),

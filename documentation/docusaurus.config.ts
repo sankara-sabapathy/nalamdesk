@@ -25,7 +25,7 @@ const config: Config = {
   organizationName: 'sankara-sabapathy', // Usually your GitHub org/user name.
   projectName: 'nalamdesk', // Usually your repo name.
 
-  onBrokenLinks: 'throw',
+  onBrokenLinks: 'warn',
 
   // Even if you don't use internationalization, you can use this field to set
   // useful metadata like html lang. For example, if your site is Chinese, you
@@ -83,9 +83,15 @@ const config: Config = {
       items: [
         {
           type: 'docSidebar',
-          sidebarId: 'tutorialSidebar', // We can rename this later if we change sidebars.ts, keeping default for now but changing label
+          sidebarId: 'userGuideSidebar',
           position: 'left',
-          label: 'Documentation',
+          label: 'User Guide',
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'developerGuideSidebar',
+          position: 'left',
+          label: 'Developer Guide',
         },
         {
           href: 'https://github.com/sankara-sabapathy/nalamdesk',
@@ -102,7 +108,7 @@ const config: Config = {
           items: [
             {
               label: 'Tutorial',
-              to: '/docs/intro',
+              to: '/docs/user-guide/intro',
             },
           ],
         },

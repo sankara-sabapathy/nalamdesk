@@ -201,8 +201,13 @@ export class VisitComponent implements OnInit {
   async saveVisit(): Promise<boolean> {
     if (this.visitForm.invalid) return false;
 
-    // Get active doctor
-    const doctorId = localStorage.getItem('selectedDoctorId');
+    // Get active doctor from current user session
+    const currentUser = this.authService.getUser();
+
+    // Logic: If I am a doctor/admin, I am the doctor.
+    // If we want to allow selecting a doctor, we would need a dropdown.
+    // For now, assume the logged-in user is the doctor.
+    const doctorId = currentUser?.id;
 
     const visitData = {
       id: this.editingVisitId, // If editing
@@ -244,10 +249,12 @@ export class VisitComponent implements OnInit {
     // Get current doctor
     try {
       const settings = await this.dataService.invoke<any>('getSettings');
+      const currentUser = this.authService.getUser();
+
       const doctor = {
-        name: settings?.doctor_name || 'Doctor',
-        specialty: 'General',
-        license_number: settings?.license_key || ''
+        name: currentUser?.name || settings?.doctor_name || 'Doctor',
+        specialty: currentUser?.specialty || 'General',
+        license_number: currentUser?.license_number || settings?.license_key || ''
       };
 
       await this.pdfService.generatePrescription(

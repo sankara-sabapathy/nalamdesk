@@ -10,3 +10,4 @@ Documentation Continuity: update READMEs and inline comments to ensure long-term
 Version Pinning: When managing backward compatibility, ensure the agent checks the Semantic Versioning (SemVer) rules to prevent minor updates from breaking core dependencies.
 Migration Scripts: For any database or schema changes, require automated migration and rollback scripts to ensure the backward compatibility feature can recover from failures.
 Automated Regression: Utilize CI/CD pipelines (like GitHub Actions) specifically configured to test "Update Paths"—verifying the software functions correctly when transitioning from the previous version to the new one.
+Documentation: Always update Nalamdesk document with all mjor and minor changes for both user and developer guide to keep it relevant and up to date. All architechure changes, implementation, setup for developer. All feature, options section for user guide.

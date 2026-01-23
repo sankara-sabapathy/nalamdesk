@@ -2,8 +2,11 @@
 module.exports = {
     test: {
         globals: true,
-        environment: 'jsdom',
-        setupFiles: ['src/test-setup.ts'],
+        environment: 'node',
+        environmentMatchGlobs: [
+            ['src/renderer/**/*.spec.ts', 'jsdom'],
+            ['src/main/**/*.spec.ts', 'node']
+        ],
         include: ['src/**/*.spec.ts'],
         reporters: ['default', 'json', 'html'],
         coverage: {

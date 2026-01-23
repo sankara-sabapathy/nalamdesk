@@ -16,6 +16,8 @@ let mainWindow: BrowserWindow | null = null;
 const securityService = new SecurityService();
 const databaseService = new DatabaseService();
 const googleDriveService = new GoogleDriveService();
+const apiServer = new ApiServer(databaseService);
+apiServer.start();
 
 // Set explicit AppUserModelId for Windows
 app.setAppUserModelId('com.sankarasabapathy.nalamdesk');
@@ -73,12 +75,15 @@ function createWindow() {
     });
 
     // ... existing loadURL/loadFile ...
-    const isDev = !app.isPackaged;
+    // In test mode (Playwright), we want to load the static file (production behavior)
+    // even if not packaged, to avoid needing 'ng serve' running.
+    const isDev = !app.isPackaged && process.env['NODE_ENV'] !== 'test';
     if (isDev) {
         mainWindow.loadURL('http://localhost:4200');
-        mainWindow.webContents.openDevTools();
+        // mainWindow.webContents.openDevTools();
     } else {
-        mainWindow.loadFile(path.join(__dirname, '../nalamdesk/browser/index.html'));
+        // Load from internal server to avoid file:// protocol issues
+        mainWindow.loadURL('http://localhost:3000');
     }
 
     // Auto Updater Events
@@ -155,10 +160,13 @@ ipcMain.handle('auth:login', async (event, credentials) => {
             // 1. Try to derive key and open DB if not open
             try {
                 // Determine path
-                const dbName = 'nalamdesk.db';
+                const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
                 const dbPath = app.isPackaged
                     ? path.join(app.getPath('userData'), dbName)
                     : path.join(__dirname, '../../', dbName);
+
+                // If testing, we need to delete the DB to ensure fresh start - or maybe just use 'admin' password
+                // For now, let's assume if it's test env, we just use it.
 
                 const key = await securityService.deriveKey(password);
                 try {
@@ -172,8 +180,8 @@ ipcMain.handle('auth:login', async (event, credentials) => {
                 await databaseService.ensureAdminUser(password); // Ensure admin exists and password matches DB key
 
                 // Initialize Server if not running
-                const apiServer = new ApiServer(databaseService);
-                apiServer.start();
+                // const apiServer = new ApiServer(databaseService); // Now started globally
+                // apiServer.start();
 
                 // Check Drive
                 const settings = databaseService.getSettings();
@@ -223,8 +231,6 @@ ipcMain.handle('db:getSettings', () => databaseService.getSettings());
 ipcMain.handle('db:saveSettings', (_, settings) => databaseService.saveSettings(settings));
 ipcMain.handle('db:getDashboardStats', () => databaseService.getDashboardStats());
 ipcMain.handle('db:getDoctors', () => databaseService.getDoctors());
-ipcMain.handle('db:saveDoctor', (_, doctor) => databaseService.saveDoctor(doctor));
-ipcMain.handle('db:deleteDoctor', (_, id) => databaseService.deleteDoctor(id));
 
 // User Management IPC
 ipcMain.handle('db:getUsers', () => databaseService.getUsers());

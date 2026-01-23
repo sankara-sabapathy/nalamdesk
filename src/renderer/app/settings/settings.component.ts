@@ -1,11 +1,11 @@
 import { Component, NgZone, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { DataService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 
 @Component({
-  // ... template omitted ...
   selector: 'app-settings',
   standalone: true,
   imports: [CommonModule, FormsModule],
@@ -17,7 +17,6 @@ import { AuthService } from '../services/auth.service';
         <!-- Tabs -->
         <div class="flex space-x-4 mb-6 border-b">
             <button class="pb-2 px-4 font-medium" [class.border-b-2]="activeTab === 'general'" [class.border-primary]="activeTab === 'general'" [class.text-primary]="activeTab === 'general'" (click)="activeTab = 'general'">General</button>
-            <button class="pb-2 px-4 font-medium" [class.border-b-2]="activeTab === 'doctors'" [class.border-primary]="activeTab === 'doctors'" [class.text-primary]="activeTab === 'doctors'" (click)="activeTab = 'doctors'">Doctors Management</button>
             <button *ngIf="currentUser?.role === 'admin'" class="pb-2 px-4 font-medium" [class.border-b-2]="activeTab === 'users'" [class.border-primary]="activeTab === 'users'" [class.text-primary]="activeTab === 'users'" (click)="activeTab = 'users'">Users</button>
         </div>
 
@@ -87,42 +86,6 @@ import { AuthService } from '../services/auth.service';
             </div>
         </div>
 
-        <div *ngIf="activeTab === 'doctors'">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">Doctors</h2>
-                <button (click)="editDoctor({})" class="btn btn-primary">+ Add Doctor</button>
-            </div>
-
-            <div class="grid gap-4">
-                <div *ngFor="let doc of doctors" class="bg-white p-4 rounded-lg shadow flex justify-between items-center">
-                    <div>
-                        <h3 class="font-bold text-lg">{{ doc.name }}</h3>
-                        <p class="text-sm text-gray-600">{{ doc.specialty }} • {{ doc.license_number }}</p>
-                    </div>
-                    <div>
-                        <button (click)="editDoctor(doc)" class="text-blue-600 hover:underline mr-4">Edit</button>
-                        <button (click)="deleteDoctor(doc.id)" class="text-red-600 hover:underline">Delete</button>
-                    </div>
-                </div>
-                <p *ngIf="doctors.length === 0" class="text-gray-500">No doctors added yet.</p>
-            </div>
-
-            <!-- Edit Modal (Simple Inline for now) -->
-            <div *ngIf="editingDoctor" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-                <div class="bg-white rounded-lg p-6 w-full max-w-md">
-                    <h3 class="text-xl font-bold mb-4">{{ editingDoctor.id ? 'Edit Doctor' : 'Add Doctor' }}</h3>
-                    <div class="space-y-4">
-                        <input [(ngModel)]="editingDoctor.name" placeholder="Doctor Name" class="w-full border p-2 rounded">
-                        <input [(ngModel)]="editingDoctor.specialty" placeholder="Specialty (e.g. General Physician)" class="w-full border p-2 rounded">
-                        <input [(ngModel)]="editingDoctor.license_number" placeholder="License Number" class="w-full border p-2 rounded">
-                    </div>
-                    <div class="mt-6 flex justify-end gap-2">
-                        <button (click)="editingDoctor = null" class="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
-                        <button (click)="saveDoctor()" class="btn btn-primary">Save</button>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <div *ngIf="activeTab === 'users' && currentUser?.role === 'admin'">
             <div class="flex justify-between items-center mb-6">
@@ -182,6 +145,16 @@ import { AuthService } from '../services/auth.service';
                                  <option value="nurse">Nurse</option>
                              </select>
                         </div>
+                        <div *ngIf="editingUser.role === 'doctor'" class="space-y-4">
+                            <div class="form-control">
+                                <label class="label">Specialty</label>
+                                <input [(ngModel)]="editingUser.specialty" class="input input-bordered w-full" placeholder="e.g. General Physician">
+                            </div>
+                            <div class="form-control">
+                                <label class="label">License Number</label>
+                                <input [(ngModel)]="editingUser.license_number" class="input input-bordered w-full">
+                            </div>
+                        </div>
                         <div class="form-control">
                             <label class="label">{{ editingUser.id ? 'New Password (Optional)' : 'Password' }}</label>
                             <input [(ngModel)]="editingUser.password" type="password" class="input input-bordered w-full" placeholder="********">
@@ -201,7 +174,7 @@ import { AuthService } from '../services/auth.service';
   styles: []
 })
 export class SettingsComponent implements OnInit {
-  activeTab: 'general' | 'doctors' | 'users' = 'general';
+  activeTab: 'general' | 'users' = 'general';
 
   // General
   isLoading = false;
@@ -213,29 +186,35 @@ export class SettingsComponent implements OnInit {
   settingsSaved = false;
   isElectron = !!window.electron;
 
-  // Doctors
-  doctors: any[] = [];
-  editingDoctor: any = null;
-
   // Users
   users: any[] = [];
   editingUser: any = null;
 
-  editingUser: any = null;
   currentUser: any = null;
 
   private dataService: DataService = inject(DataService);
   private authService: AuthService = inject(AuthService);
+  private router: Router = inject(Router);
+
+  // Updater
+  updateStatus: 'idle' | 'checking' | 'available' | 'downloaded' | 'uptodate' | 'error' = 'idle';
+  downloadProgress = 0;
+  errorMessage = '';
+  appVersion = '0.0.0';
 
   constructor(private ngZone: NgZone) { }
 
   ngOnInit() {
     this.currentUser = this.authService.getUser();
+    if (this.currentUser?.role !== 'admin') {
+      this.router.navigate(['/dashboard']);
+      return;
+    }
     this.loadSettings();
+
     if (this.isElectron) {
       this.listBackups();
     }
-    this.loadDoctors();
     this.loadUsers();
 
     // Listen for updates
@@ -333,42 +312,6 @@ export class SettingsComponent implements OnInit {
     } catch (e) { alert('Error'); }
   }
 
-  // Doctor Methods
-  async loadDoctors() {
-    try {
-      const docs = await this.dataService.invoke('getDoctors');
-      this.ngZone.run(() => { this.doctors = docs; });
-    } catch (e) { console.error(e); }
-  }
-
-  editDoctor(doc: any) {
-    this.editingDoctor = { ...doc };
-  }
-
-  async saveDoctor() {
-    if (!this.editingDoctor.name) return;
-    try {
-      await this.dataService.invoke('saveDoctor', this.editingDoctor);
-      this.ngZone.run(() => {
-        this.editingDoctor = null;
-        this.loadDoctors();
-      });
-    } catch (e) { console.error(e); }
-  }
-
-  async deleteDoctor(id: any) {
-    if (!confirm('Delete this doctor?')) return;
-    try {
-      await this.dataService.invoke('deleteDoctor', id);
-      this.ngZone.run(() => { this.loadDoctors(); });
-    } catch (e) { console.error(e); }
-  }
-
-  // Updater
-  updateStatus: 'idle' | 'checking' | 'available' | 'downloaded' | 'uptodate' | 'error' = 'idle';
-  downloadProgress = 0;
-  errorMessage = '';
-  appVersion = '0.0.0';
 
   checkForUpdates() {
     this.updateStatus = 'checking';
@@ -422,4 +365,3 @@ export class SettingsComponent implements OnInit {
     } catch (e) { console.error(e); }
   }
 }
-
