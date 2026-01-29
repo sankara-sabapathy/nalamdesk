@@ -5,7 +5,16 @@ terraform {
       version = "~> 5.0"
     }
   }
-  backend "s3" {}
+  backend "s3" {
+    # Backend config is populated dynamically during 'terraform init' in CI/CD (provision.yml).
+    # We pass properties: bucket, key, region, and use_lockfile via -backend-config flags.
+  }
+}
+
+variable "ssh_allowed_cidrs" {
+  description = "List of CIDR blocks allowed to connect/SSH to port 22. Defaults to 0.0.0.0/0 (Open) but should be restricted."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
 }
 
 provider "aws" {
@@ -62,6 +71,7 @@ resource "aws_lightsail_instance_public_ports" "firewall" {
     protocol  = "tcp"
     from_port = 22
     to_port   = 22
+    cidrs     = var.ssh_allowed_cidrs
   }
 
   port_info {

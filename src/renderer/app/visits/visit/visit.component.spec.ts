@@ -102,11 +102,10 @@ describe('VisitComponent', () => {
         const queueItem = { patient_id: 1, status: 'in-consult' };
         // Override mock to return a queue item
         mockDataService.invoke.mockImplementation((method: string) => {
-            if (method === 'getVisits') return Promise.resolve([]);
-            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
             if (method === 'getQueue') return Promise.resolve([queueItem]);
+            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
             if (method === 'getVitals') return Promise.resolve({});
-            return Promise.resolve(null);
+            return Promise.resolve([]); // Default return array for lists, or null
         });
 
         component.ngOnInit();

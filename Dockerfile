@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ RUN npx ng build --configuration production --base-href /
 RUN npm run build:server
 
 # Stage 2: Runner
-FROM node:20-alpine AS runner
+FROM node:20-slim AS runner
 
 WORKDIR /app
 

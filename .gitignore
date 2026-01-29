@@ -41,6 +41,9 @@ typings/
 .DS_Store
 Thumbs.db
 
+# Build logs
+output.txt
+*.log
 # release artifacts
 /release
 

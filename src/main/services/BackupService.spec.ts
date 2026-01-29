@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BackupService } from './BackupService';
 import { DatabaseService } from './DatabaseService';
 import { GoogleDriveService } from './GoogleDriveService';
@@ -18,24 +18,24 @@ const mockSecurityService = {
     getDbPath: vi.fn()
 } as unknown as SecurityService;
 
-const { mockCronJob } = vi.hoisted(() => {
+// Define mocks for CronJob instance methods
+const mockStart = vi.fn();
+const mockStop = vi.fn();
+
+// Mock cron
+vi.mock('cron', () => {
     return {
-        mockCronJob: {
-            start: vi.fn(() => console.log('[Test] mockCronJob.start called')),
-            stop: vi.fn(() => console.log('[Test] mockCronJob.stop called')),
-            _task: null // To verify callback
-        }
+        CronJob: vi.fn().mockImplementation(function (time, task) {
+            return {
+                start: mockStart,
+                stop: mockStop
+            };
+        })
     };
 });
 
-vi.mock('cron', () => ({
-    CronJob: vi.fn().mockImplementation((time, task) => {
-        console.log('[Test] CronJob constructor called');
-        // Expose task to test it
-        (mockCronJob as any)._task = task;
-        return mockCronJob;
-    })
-}));
+// Import CronJob to check constructor calls if needed, OR just rely on instance method checks
+import { CronJob } from 'cron';
 
 describe('BackupService', () => {
     let service: BackupService;
@@ -47,13 +47,16 @@ describe('BackupService', () => {
 
     it('should schedule a daily backup', () => {
         service.scheduleDailyBackup();
-        expect(mockCronJob.start).toHaveBeenCalled();
+        // Check if constructor was called
+        expect(CronJob).toHaveBeenCalled();
+        // Check if start was called
+        expect(mockStart).toHaveBeenCalled();
     });
 
     it('should stop existing job before scheduling new one', () => {
         service.scheduleDailyBackup();
         service.scheduleDailyBackup();
-        expect(mockCronJob.stop).toHaveBeenCalled();
+        expect(mockStop).toHaveBeenCalled();
     });
 
     describe('performBackup', () => {

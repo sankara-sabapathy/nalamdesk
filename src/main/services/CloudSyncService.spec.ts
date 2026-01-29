@@ -15,7 +15,8 @@ describe('CloudSyncService', () => {
         saveSettings: vi.fn(),
         getPatients: vi.fn(),
         savePatient: vi.fn(),
-        addToQueue: vi.fn()
+        addToQueue: vi.fn(),
+        saveAppointmentRequest: vi.fn()
     };
 
     beforeEach(() => {
@@ -59,7 +60,7 @@ describe('CloudSyncService', () => {
         expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it('should poll, process appointment, and ack', async () => {
+    it('should poll, process appointment request, and ack', async () => {
         // 1. Setup Settings
         mockDb.getSettings.mockReturnValue({
             cloud_enabled: 1,
@@ -67,14 +68,21 @@ describe('CloudSyncService', () => {
             cloud_api_key: 'key'
         });
 
-        // 2. Mock Sync Response (1 Appointment)
+        // 2. Mock Sync Response
         (global.fetch as any)
             .mockResolvedValueOnce({
                 ok: true,
                 json: async () => ([{
                     id: 'msg_1',
-                    type: 'APPOINTMENT',
-                    payload: { name: 'New Patient', phone: '1234567890', reason: 'Fever' }
+                    type: 'APPOINTMENT_REQUEST',
+                    payload: {
+                        slotId: 'slot_1',
+                        name: 'New Patient',
+                        phone: '1234567890',
+                        reason: 'Fever',
+                        date: '2023-01-01',
+                        time: '10:00'
+                    }
                 }])
             })
             // 3. Mock Ack Response
@@ -82,10 +90,6 @@ describe('CloudSyncService', () => {
                 ok: true,
                 json: async () => ({ success: true })
             });
-
-        // 4. Mock Patient Lookup (Not Found)
-        mockDb.getPatients.mockReturnValue([]);
-        mockDb.savePatient.mockReturnValue({ lastInsertRowid: 101 });
 
         // Act
         await service.poll();
@@ -97,16 +101,14 @@ describe('CloudSyncService', () => {
             expect.objectContaining({ headers: expect.objectContaining({ 'x-api-key': 'key' }) })
         );
 
-        // Verify Patient Saved with NULL defaults (Critical check)
-        expect(mockDb.savePatient).toHaveBeenCalledWith(expect.objectContaining({
-            name: 'New Patient',
-            mobile: '1234567890',
-            dob: null, // Critical fix verification
-            email: null
+        // Verify Save Request (Not Patient/Queue)
+        expect(mockDb.saveAppointmentRequest).toHaveBeenCalledWith(expect.objectContaining({
+            id: 'msg_1',
+            patient_name: 'New Patient',
+            phone: '1234567890',
+            date: '2023-01-01',
+            time: '10:00'
         }));
-
-        // Verify Added to Queue
-        expect(mockDb.addToQueue).toHaveBeenCalledWith(101, 1, 1);
 
         // Verify Ack Call
         expect(global.fetch).toHaveBeenNthCalledWith(2,
@@ -118,33 +120,28 @@ describe('CloudSyncService', () => {
         );
     });
 
-    it('should handle patient already in queue gracefully', async () => {
+    it('should handle request save failure but still continue', async () => {
         mockDb.getSettings.mockReturnValue({ cloud_enabled: 1, cloud_api_key: 'k' });
 
         (global.fetch as any).mockResolvedValueOnce({
             ok: true,
             json: async () => ([{
                 id: 'msg_1',
-                type: 'APPOINTMENT',
-                payload: { name: 'Existing', phone: '111', reason: 'Checkup' }
+                type: 'APPOINTMENT_REQUEST',
+                payload: { name: 'Bad Data' }
             }])
         });
 
-        // Patient exists
-        mockDb.getPatients.mockReturnValue([{ id: 55 }]);
-
-        // Queue throws "already in queue"
-        mockDb.addToQueue.mockImplementation(() => {
-            throw new Error('Patient already in queue');
+        // Mock error
+        // @ts-ignore
+        mockDb.saveAppointmentRequest = vi.fn().mockImplementation(() => {
+            throw new Error('Save failed');
         });
 
         await service.poll();
 
-        // Should still Ack because we consider it "processed"
-        expect(global.fetch).toHaveBeenCalledTimes(2); // Sync + Ack
-        expect(global.fetch).toHaveBeenLastCalledWith(
-            expect.stringContaining('/ack'),
-            expect.anything()
-        );
+        // Should NOT Ack if processing failed (logic says: try...catch around save, if catch log error. Does it push to processedIds? No, push is inside try block)
+        // So it should NOT Ack.
+        expect(global.fetch).toHaveBeenCalledTimes(1); // Sync only
     });
 });

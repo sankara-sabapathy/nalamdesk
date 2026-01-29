@@ -1,5 +1,0 @@
-src/main/services/BackupService.ts(35,36): error TS2551: Property 'isAuthenticated' does not exist on type 'GoogleDriveService'. Did you mean 'authenticate'?
-src/main/services/CrashService.ts(13,42): error TS7006: Parameter 'error' implicitly has an 'any' type.
-src/main/services/CrashService.ts(18,43): error TS7006: Parameter 'reason' implicitly has an 'any' type.
-src/main/services/CrashService.ts(43,17): error TS2339: Property 'response' does not exist on type 'Number'.
-src/main/services/CrashService.ts(96,17): error TS2339: Property 'filePath' does not exist on type 'String'.

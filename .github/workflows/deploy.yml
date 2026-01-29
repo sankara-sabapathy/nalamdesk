@@ -52,10 +52,11 @@ jobs:
           host: ${{ secrets.LIGHTSAIL_IP }}
           username: ubuntu
           key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          envs: CR_PAT,JWT_SECRET
           script: |
             # Login to GHCR on the server using a PAT (Personal Access Token)
             # You must set CR_PAT secret in GitHub Actions containing a PAT with 'read:packages' scope.
-            echo "${{ secrets.CR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            echo "$CR_PAT" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull latest image
             docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
@@ -65,7 +66,7 @@ jobs:
             docker rm server || true
 
             # Create .env file from secrets
-            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" > .env
+            echo "JWT_SECRET=$JWT_SECRET" > .env
             echo "PORT=3000" >> .env
             echo "HOST=0.0.0.0" >> .env
             echo "DB_PATH=/data/nalamdesk.db" >> .env

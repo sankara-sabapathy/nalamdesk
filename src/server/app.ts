@@ -12,6 +12,14 @@ dotenv.config();
 
 const JWT_SECRET = process.env['JWT_SECRET'] || crypto.randomBytes(64).toString('hex');
 
+const ALLOWED_IPC_METHODS = [
+    'getQueue', 'addToQueue', 'updateQueueStatus', 'updateQueueStatusByPatientId', 'removeFromQueue',
+    'getAuditLogs',
+    'getAppointmentRequests', 'updateAppointmentRequestStatus',
+    'getAppointments', 'saveAppointment',
+    'validateUser', 'getPermissions' // Auth/RBAC related if needed via IPC, though mostly handled via token
+];
+
 export class ApiServer {
     private fastify: FastifyInstance;
     private dbService: DatabaseService;
@@ -26,8 +34,26 @@ export class ApiServer {
 
     private setup() {
         // CORS
-        this.fastify.register(fastifyCors, {
-            origin: true // Allow all for local LAN/Dev. In Prod, this should be restricted if not same-origin.
+        // CORS
+        this.fastify.register(fastifyCors, (instance: any) => {
+            return (req: any, callback: any) => {
+                const allowedOrigins = process.env['ALLOWED_ORIGINS']
+                    ? process.env['ALLOWED_ORIGINS'].split(',')
+                    : [];
+
+                // Allow all in Dev if no specific list provided
+                if (process.env['NODE_ENV'] === 'development' && allowedOrigins.length === 0) {
+                    callback(null, { origin: true });
+                    return;
+                }
+
+                const origin = req.headers.origin;
+                if (allowedOrigins.includes(origin)) {
+                    callback(null, { origin: true });
+                } else {
+                    callback(null, { origin: false });
+                }
+            };
         });
 
         console.log(`[API Server] Serving static files from: ${this.staticPath}`);
@@ -123,14 +149,19 @@ export class ApiServer {
         const args = request.body as any[]; // Expect array of args
         const user = (request as any).user;
 
-        // RBAC Enforcement
+        // 1. Allowlist Check (Security)
+        if (!ALLOWED_IPC_METHODS.includes(method)) {
+            return reply.code(404).send({ error: 'Method not found or not allowed' });
+        }
+
+        // 2. RBAC Enforcement
         if (!this.checkPermission(user.role, method)) {
             return reply.code(403).send({ error: 'Forbidden' });
         }
 
         const dbAny = this.dbService as any;
 
-        // Map method names to actual dbService calls
+        // 3. Execution using Allowlist
         if (typeof dbAny[method] === 'function') {
             try {
                 const result = await dbAny[method](...args);
@@ -139,7 +170,7 @@ export class ApiServer {
                 return reply.code(500).send({ error: e.message });
             }
         } else {
-            return reply.code(404).send({ error: 'Method not found' });
+            return reply.code(404).send({ error: 'Method not implemented' });
         }
     }
 

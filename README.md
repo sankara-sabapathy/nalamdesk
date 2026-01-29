@@ -14,7 +14,7 @@
 
 *   **🔒 Zero-Knowledge Security:** AES-256 Encryption with Argon2id. Your password is the key.
 *   **⚡ Offline-First:** Works perfectly without internet.
-*   **☁️ Hybrid Cloud Sync:** Optional "Online Booking" module that securely syncs appointments to your offline desktop.
+*   **☁️ Hybrid Cloud Sync:** Optional "Online Booking" module that securely syncs appointments to your offline desktop (Self-Hostable on AWS/Docker).
 *   **🛡️ Robust Security:** Advanced Role-Based Access Control (RBAC) and automated encrypted backups.
 *   **🚀 Modern Stack:** Electron, Angular v17+, SQLite, Node.js.
 

@@ -103,6 +103,7 @@
     "@angular/compiler-cli": "^17.0.0",
     "@playwright/test": "^1.57.0",
     "@tailwindcss/typography": "^0.5.19",
+    "@types/better-sqlite3": "^7.6.13",
     "@vitest/ui": "^4.0.17",
     "autoprefixer": "^10.4.23",
     "concurrently": "^9.2.1",
@@ -113,6 +114,7 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
     "typescript": "~5.2.2",
+    "vitest": "^4.0.18",
     "wait-on": "^9.0.3"
   }
 }

@@ -9,9 +9,9 @@ dotenv.config();
 import { DatabaseService } from '../main/services/DatabaseService';
 import { ApiServer } from './app';
 
-const PORT = parseInt(process.env.PORT || '3000');
-const HOST = process.env.HOST || '0.0.0.0';
-const DB_PATH = process.env.DB_PATH || 'nalamdesk.db';
+const PORT = parseInt(process.env['PORT'] || '3000');
+const HOST = process.env['HOST'] || '0.0.0.0';
+const DB_PATH = process.env['DB_PATH'] || 'nalamdesk.db';
 
 // Ensure data directory exists if path implies one?
 // For now, let better-sqlite3 handle it or fail.
@@ -38,8 +38,8 @@ databaseService.setDb(db);
         await databaseService.migrate();
         // Ensure Admin exists using ENV password or default?
         // Ideally we should use a Setup flow, but for MVP:
-        if (process.env.ADMIN_PASSWORD) {
-            await databaseService.ensureAdminUser(process.env.ADMIN_PASSWORD);
+        if (process.env['ADMIN_PASSWORD']) {
+            await databaseService.ensureAdminUser(process.env['ADMIN_PASSWORD']);
         }
     } catch (e) {
         console.error('[Server] Migration failed:', e);
@@ -54,7 +54,7 @@ databaseService.setDb(db);
     // Logic: 
     // If running from <Project>/dist/server/index.js
     // Client is at <Project>/dist/nalamdesk/browser
-    const staticPath = process.env.STATIC_PATH || path.join(process.cwd(), 'dist', 'nalamdesk', 'browser');
+    const staticPath = process.env['STATIC_PATH'] || path.join(process.cwd(), 'dist', 'nalamdesk', 'browser');
 
     const apiServer = new ApiServer(databaseService, staticPath);
     await apiServer.start(PORT, HOST);

@@ -135,23 +135,67 @@ ipcMain.handle('db:removeFromQueue', (_, id) => {
 ipcMain.handle('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));
 
 // Cloud IPC Handlers
-ipcMain.handle('cloud:getStatus', () => cloudSyncService.getStatus());
-ipcMain.handle('cloud:onboard', (_, { name, city }) => cloudSyncService.onboard(name, city));
-ipcMain.handle('cloud:toggle', (_, enabled) => cloudSyncService.setEnabled(enabled));
-ipcMain.handle('cloud:publishSlots', (_, slots, dates) => cloudSyncService.publishSlots(slots, dates));
+// Cloud IPC Handlers
+ipcMain.handle('cloud:getStatus', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return cloudSyncService.getStatus();
+});
+ipcMain.handle('cloud:onboard', (_, { name, city }) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return cloudSyncService.onboard(name, city);
+});
+ipcMain.handle('cloud:toggle', (_, enabled) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return cloudSyncService.setEnabled(enabled);
+});
+ipcMain.handle('cloud:publishSlots', (_, slots, dates) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return cloudSyncService.publishSlots(slots, dates);
+});
 ipcMain.handle('cloud:syncNow', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     await cloudSyncService.poll();
     return { success: true };
 });
-ipcMain.handle('cloud:getPublishedSlots', (_, date) => cloudSyncService.getPublishedSlots(date));
+ipcMain.handle('cloud:getPublishedSlots', (_, date) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return cloudSyncService.getPublishedSlots(date);
+});
 
 // Appointment Request IPC
-ipcMain.handle('db:getAppointmentRequests', () => databaseService.getAppointmentRequests());
-ipcMain.handle('db:updateAppointmentRequestStatus', (_, { id, status }) => databaseService.updateAppointmentRequestStatus(id, status));
+// Appointment Request IPC
+ipcMain.handle('db:getAppointmentRequests', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getAppointmentRequests();
+});
+ipcMain.handle('db:updateAppointmentRequestStatus', (_, { id, status }) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.updateAppointmentRequestStatus(id, status);
+});
 
 // Appointments (Bookings) IPC
-ipcMain.handle('db:getAppointments', (_, date) => databaseService.getAppointments(date));
-ipcMain.handle('db:saveAppointment', (_, appt) => databaseService.saveAppointment(appt));
+// Appointments (Bookings) IPC
+ipcMain.handle('db:getAppointments', (_, date) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getAppointments(date);
+});
+ipcMain.handle('db:saveAppointment', (_, appt) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.saveAppointment(appt);
+});
 
 // Drive IPC Handlers
 ipcMain.handle('drive:authenticate', async () => {

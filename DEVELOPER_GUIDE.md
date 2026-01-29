@@ -27,9 +27,9 @@ NalamDesk uses a **Hybrid Architecture** combining a secure "Offline-First" Desk
 
 ### 3. The Cloud Intake (The "Mailbox")
 *   **Tech Stack:**
-    *   **Server:** Node.js (Fastify)
-    *   **Database:** SQLite (WAL Mode) + Litestream (S3 Replication)
-    *   **Deployment:** Docker Compose (Self-Hosted)
+    *   **Server:** Node.js (Fastify) - Reuses core logic from `src/server/app.ts`.
+    *   **Database:** SQLite (WAL Mode).
+    *   **Deployment:** Docker on AWS Lightsail.
 *   **Role:** A temporary holding area for *incoming* appointments. It does NOT store medical history.
 *   **Flow:**
     1.  Patient POSTs to `/api/v1/book` (Cloud).
@@ -69,51 +69,56 @@ npm install
 # 3. Use Developer Mode (Rebuilds native deps for current OS)
 npm run rebuild:electron
 
-# 4. Start (Runs Angluar + Electron concurrently)
+# 4. Start (Runs Angular + Electron concurrently)
 npm start
 ```
 
 ### Directory Structure
 *   `src/main`: Electron Main Process (Node.js). Handles DB, File System, IPC.
 *   `src/renderer`: Angular App (UI).
-*   `web/`: Cloud Server Code (Fastify).
+*   `src/server`: **NEW** Shared Server Core (Fastify). Runs in both Electron and Cloud.
+*   `infrastructure/`: Terraform scripts for AWS Lightsail.
+*   `.github/workflows`: CI/CD pipelines.
+*   `web/`: (Legacy/Reference) Old cloud server code.
 *   `scripts/`: Utility scripts.
 
 ---
 
-## ☁️ Cloud Sync Implementation
+## ☁️ Cloud Deployment & Infrastructure
 
-### The Sync Protocol
-We use a **Pull-Based** synchronization pattern to keep the desktop secure (no open inbound ports).
+### 1. Unified Architecture
+We use a **Shared Core** approach. The `ApiServer` in `src/server/app.ts` is used by:
+1.  **Electron App**: Runs locally on port 3000 (Internal) to serve the UI and handle IPC.
+2.  **Cloud Server**: Runs in a Docker container on AWS Lightsail to handle public bookings.
 
-**Endpoints (Cloud):**
-*   `POST /onboard`: Registers a new clinic. Returns `clinic_id` + `api_key`.
-*   `POST /book`: Public endpoint for patients to book.
-*   `GET /sync`: Private endpoint (Auth via API Key). Returns pending messages.
-*   `POST /ack`: Private endpoint. Confirms receipt so Cloud can delete messages.
+### 2. AWS Lightsail Deployment
+The cloud component is deployed to a **$3.50/mo AWS Lightsail Instance** (Ubuntu) running Docker.
 
-**Client Service (`CloudSyncService.ts`):**
-*   Located in `src/main/services/CloudSyncService.ts`.
-*   Polls every 30 seconds.
-*   **CRITICAL:** When saving a synced patient, you MUST provide explicit `null` for all optional fields (e.g., `dob`, `email`) because `better-sqlite3` prepared statements expect all named parameters to be present.
+#### Infrastructure as Code (Terraform)
+Located in `infrastructure/main.tf`.
+*   **Provisions**: Lightsail Instance, Static IP, Firewall Rules (Ports 22, 80, 443).
+*   **State**: Stored in a private S3 bucket.
 
-### Self-Hosting the Cloud Node
-If you want to run your own NalamDesk Cloud Server:
+#### CI/CD Pipelines (GitHub Actions)
+1.  **Provision Infrastructure** (`provision.yml`):
+    *   **Trigger**: Manual (`workflow_dispatch`).
+    *   **Action**: Checks/Creates S3 bucket -> Runs `terraform apply` -> Outputs IP.
+2.  **Deploy to Lightsail** (`deploy.yml`):
+    *   **Trigger**: Manual (`workflow_dispatch`).
+    *   **Action**: Builds Docker Image -> Pushes to GHCR -> SSH into server -> Pulls & Restarts Container.
 
-1.  **Navigate to Server Directory:**
-    ```bash
-    cd web/
-    ```
-2.  **Configuration:**
-    *   Copy `.env.example` to `.env`.
-    *   Set `APP_SECRET` (Must match Client).
-3.  **Run with Docker:**
-    ```bash
-    docker-compose up -d
-    ```
-4.  **Security:**
-    *   Use a Reverse Proxy (Caddy/Nginx) for HTTPS.
-    *   Rate Limit `/book` endpoint.
+### 3. How to Deploy (Manual)
+1.  **Provision**: Run "Provision Infrastructure" workflow once.
+2.  **Configure Secrets**: Update `LIGHTSAIL_IP` in GitHub Secrets.
+3.  **Deploy**: Run "Deploy to Lightsail" workflow. Select branch (main/feature).
+
+### 4. Local Server Development
+To run the server component without Electron (for testing cloud API):
+```bash
+npm run build:server
+npm run start:server
+# Server runs at http://localhost:3000
+```
 
 ---
 
