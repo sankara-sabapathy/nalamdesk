@@ -10,12 +10,12 @@ export class CrashService {
 
     private setupHandlers() {
         // Main Process Crashes
-        process.on('uncaughtException', (error) => {
+        process.on('uncaughtException', (error: any) => {
             log.error('Uncaught Exception:', error);
             this.handleCrash(error, 'Main Process');
         });
 
-        process.on('unhandledRejection', (reason) => {
+        process.on('unhandledRejection', (reason: any) => {
             log.error('Unhandled Rejection:', reason);
             this.handleCrash(reason, 'Main Process (Promise)');
         });
@@ -48,7 +48,7 @@ export class CrashService {
             buttons: ['Save Report', 'Ignore', 'Restart App'],
             defaultId: 0,
             cancelId: 1
-        });
+        }) as any;
 
         if (response === 0) { // Save Report
             this.saveReport(report);
@@ -97,7 +97,7 @@ export class CrashService {
             title: 'Save Crash Report',
             defaultPath: `nalamdesk-crash-report-${Date.now()}.json`,
             filters: [{ name: 'JSON', extensions: ['json'] }]
-        });
+        }) as any;
 
         if (filePath) {
             fs.writeFileSync(filePath, JSON.stringify(report, null, 2));

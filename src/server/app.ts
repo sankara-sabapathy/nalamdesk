@@ -1,22 +1,25 @@
 import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
-import * as path from 'path';
 import * as jwt from 'jsonwebtoken';
-import { DatabaseService } from './services/DatabaseService';
-import { app } from 'electron';
+import { DatabaseService } from '../main/services/DatabaseService';
 import * as argon2 from 'argon2';
-
 import * as crypto from 'crypto';
+import * as dotenv from 'dotenv';
+
+// Load env vars if present (e.g. in standalone mode)
+dotenv.config();
 
 const JWT_SECRET = process.env['JWT_SECRET'] || crypto.randomBytes(64).toString('hex');
 
 export class ApiServer {
     private fastify: FastifyInstance;
     private dbService: DatabaseService;
+    private staticPath: string;
 
-    constructor(dbService: DatabaseService) {
+    constructor(dbService: DatabaseService, staticPath: string) {
         this.dbService = dbService;
+        this.staticPath = staticPath;
         this.fastify = Fastify({ logger: true });
         this.setup();
     }
@@ -24,21 +27,13 @@ export class ApiServer {
     private setup() {
         // CORS
         this.fastify.register(fastifyCors, {
-            origin: true // Allow all for local LAN
+            origin: true // Allow all for local LAN/Dev. In Prod, this should be restricted if not same-origin.
         });
 
-        // Static Files (Angular App)
-        // In Dev, we are running from dist/main, so we go up one level.
-        // In Prod, app.getAppPath() points to the root of the packaged app.
-        const isDev = !app.isPackaged;
-        const staticPath = isDev
-            ? path.join(__dirname, '../nalamdesk/browser')
-            : path.join(app.getAppPath(), 'dist/nalamdesk/browser');
-
-        console.log(`[API Server] Serving static files from: ${staticPath}`);
+        console.log(`[API Server] Serving static files from: ${this.staticPath}`);
 
         this.fastify.register(fastifyStatic, {
-            root: staticPath,
+            root: this.staticPath,
             prefix: '/', // optional: default '/'
         });
 
@@ -62,10 +57,10 @@ export class ApiServer {
         });
     }
 
-    async start() {
+    async start(port: number = 3000, host: string = '0.0.0.0') {
         try {
-            await this.fastify.listen({ port: 3000, host: '0.0.0.0' });
-            console.log('API Server running on http://0.0.0.0:3000');
+            await this.fastify.listen({ port, host });
+            console.log(`API Server running on http://${host}:${port}`);
         } catch (err) {
             this.fastify.log.error(err);
         }
@@ -97,16 +92,19 @@ export class ApiServer {
         // Admin IP Restriction
         if (user.role === 'admin') {
             const ip = request.ip;
-            // Fastify IP might be ::1 or 127.0.0.1
-            if (ip !== '127.0.0.1' && ip !== '::1') {
+            // Fastify IP might be ::1 or 127.0.0.1. In Docker/Cloud, it might be the Proxy IP.
+            // TODO: In Cloud/Docker behind Nginx/Lightsail LB, trustProxy needs to be set if we want real IP.
+            // For now, in "Instance" mode with Docker host network or mapped port, it might be the gateway.
+            // We will relax this for Cloud OR make it configurable. 
+            // FIXME: Relaxing for Cloud Deployment where Admin access is needed over public IP initially.
+            // Ideally, Admin should only be via VPN or restricted IP.
+            // Checking ENV to bypass strict check?
+            if (process.env['STRICT_ADMIN_IP'] === 'true' && ip !== '127.0.0.1' && ip !== '::1') {
                 return reply.code(403).send({ error: 'Admin login restricted to Master System' });
             }
         }
 
         // Verify Password
-        // Note: Admin might be seeded with raw hash string if not careful, but saveUser hashes it.
-        // If we seeded admin specifically we need to match that.
-        // Assuming argon2 hash is stored.
         try {
             if (await argon2.verify(user.password, password)) {
                 const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, JWT_SECRET, { expiresIn: '12h' });
@@ -120,7 +118,6 @@ export class ApiServer {
     }
 
     // Generic IPC wrapper for DataService
-    // This allows the frontend to call dbService methods purely by name, controlled by RBAC here.
     private async handleIpcCall(request: FastifyRequest, reply: FastifyReply) {
         const { method } = request.params as any;
         const args = request.body as any[]; // Expect array of args
@@ -131,11 +128,12 @@ export class ApiServer {
             return reply.code(403).send({ error: 'Forbidden' });
         }
 
+        const dbAny = this.dbService as any;
+
         // Map method names to actual dbService calls
-        // This is a dynamic dispatch. Secure? We whitelist permissions.
-        if (typeof (this.dbService as any)[method] === 'function') {
+        if (typeof dbAny[method] === 'function') {
             try {
-                const result = await (this.dbService as any)[method](...args);
+                const result = await dbAny[method](...args);
                 return result;
             } catch (e: any) {
                 return reply.code(500).send({ error: e.message });

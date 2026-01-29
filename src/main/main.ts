@@ -6,8 +6,13 @@ import log from 'electron-log';
 import { SessionService } from './services/SessionService';
 import { BackupService } from './services/BackupService';
 import { CrashService } from './services/CrashService';
+import { SecurityService } from './services/SecurityService';
+import { DatabaseService } from './services/DatabaseService';
+import { GoogleDriveService } from './services/GoogleDriveService';
+import { CloudSyncService } from './services/CloudSyncService';
+import { ApiServer } from '../server/app';
 
-// ... (existing imports)
+
 
 // ... (logging config)
 
@@ -19,7 +24,14 @@ const securityService = new SecurityService();
 const databaseService = new DatabaseService();
 const googleDriveService = new GoogleDriveService();
 const cloudSyncService = new CloudSyncService(databaseService);
-const apiServer = new ApiServer(databaseService);
+
+// Determine Static Path for ApiServer
+const isDev = !app.isPackaged;
+const staticPath = isDev
+    ? path.join(__dirname, '../nalamdesk/browser')
+    : path.join(app.getAppPath(), 'dist/nalamdesk/browser');
+
+const apiServer = new ApiServer(databaseService, staticPath);
 const sessionService = new SessionService();
 const backupService = new BackupService(databaseService, googleDriveService, securityService);
 

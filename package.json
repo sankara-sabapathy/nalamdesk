@@ -23,7 +23,9 @@
     "postinstall": "electron-builder install-app-deps",
     "dist:win": "npm run build && electron-builder --win",
     "dist:linux": "npm run build && electron-builder --linux",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "dist:mac": "npm run build && electron-builder --mac",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start:server": "node dist/server/index.js"
   },
   "private": true,
   "build": {
@@ -78,6 +80,8 @@
     "argon2": "^0.44.0",
     "better-sqlite3": "^12.6.2",
     "better-sqlite3-multiple-ciphers": "^12.6.2",
+    "cron": "^4.4.0",
+    "dotenv": "^17.2.3",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.7.3",
     "fastify": "^5.7.1",
@@ -99,7 +103,6 @@
     "@angular/compiler-cli": "^17.0.0",
     "@playwright/test": "^1.57.0",
     "@tailwindcss/typography": "^0.5.19",
-    "@types/electron": "^1.4.38",
     "@vitest/ui": "^4.0.17",
     "autoprefixer": "^10.4.23",
     "concurrently": "^9.2.1",
