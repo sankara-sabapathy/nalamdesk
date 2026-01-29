@@ -1,13 +1,13 @@
 # See http://help.github.com/ignore-files/ for more about ignoring files.
 
 # Compiled output
-/dist
-/tmp
-/out-tsc
-/bazel-out
+dist/
+tmp/
+out-tsc/
+bazel-out/
 
 # Node
-/node_modules
+node_modules/
 npm-debug.log
 yarn-error.log
 
@@ -29,13 +29,13 @@ yarn-error.log
 .history/*
 
 # Miscellaneous
-/.angular
+.angular/
 .sass-cache/
-/connect.lock
-/coverage
-/libpeerconnection.log
+connect.lock
+coverage/
+libpeerconnection.log
 testem.log
-/typings
+typings/
 
 # System files
 .DS_Store
@@ -43,10 +43,12 @@ Thumbs.db
 
 # release artifacts
 /release
-/build
 
 # Local Database
 *.db
+*.db-shm
+*.db-wal
+/data
 nalamdesk.db
 
 # Test reports and artifacts
@@ -61,3 +63,13 @@ tsc_output.txt
 
 # Scripts
 fix-images.js
+debug_client_db.js
+debug_db_check.js
+debug_db_encrypted.js
+get_db_key.js
+
+# Crash Reports and Backups
+nalamdesk-crash-report-*.json
+nalamdesk-backup-*.db
+*.bak
+test-results*.json
