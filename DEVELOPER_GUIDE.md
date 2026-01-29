@@ -6,11 +6,11 @@ NalamDesk uses a **Hybrid Architecture** combining a secure "Offline-First" Desk
 
 ### 1. The Desktop App (The "Fortress")
 *   **Tech Stack:**
-    *   **Runtime:** [Electron](https://www.electronjs.org/)
-    *   **Frontend:** [Angular v17+](https://angular.io/) (Standalone Components)
-    *   **Database:** [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) with [SQLCipher](https://github.com/m4heshd/better-sqlite3-multiple-ciphers)
-    *   **Migrations:** robust, versioned system in `src/main/schema/migrations.ts`.
-    *   **Encryption:** AES-256 (Data at Rest). Key derived via `argon2` from user password.
+  *   **Runtime:** [Electron](https://www.electronjs.org/)
+  *   **Frontend:** [Angular v17+](https://angular.io/) (Standalone Components)
+  *   **Database:** [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) with [SQLCipher](https://github.com/m4heshd/better-sqlite3-multiple-ciphers)
+  *   **Migrations:** robust, versioned system in `src/main/schema/migrations.ts`.
+  *   **Encryption:** AES-256 (Data at Rest). Key derived via `argon2` from user password.
 *   **Role:** The "Source of Truth". All patient medical data lives here. It never leaves the device decrypted.
 
 ### 2. Database Schema Migrations 🧱
@@ -27,9 +27,9 @@ NalamDesk uses a **Hybrid Architecture** combining a secure "Offline-First" Desk
 
 ### 3. The Cloud Intake (The "Mailbox")
 *   **Tech Stack:**
-    *   **Server:** Node.js (Fastify) - Reuses core logic from `src/server/app.ts`.
-    *   **Database:** SQLite (WAL Mode).
-    *   **Deployment:** Docker on AWS Lightsail.
+  *   **Server:** Node.js (Fastify) - Reuses core logic from `src/server/app.ts`.
+  *   **Database:** SQLite (WAL Mode).
+  *   **Deployment:** Docker on AWS Lightsail.
 *   **Role:** A temporary holding area for *incoming* appointments. It does NOT store medical history.
 *   **Flow:**
     1.  Patient POSTs to `/api/v1/book` (Cloud).
@@ -42,7 +42,7 @@ NalamDesk uses a **Hybrid Architecture** combining a secure "Offline-First" Desk
 New enterprise features have been integrated into the Main process:
 *   **Role-Based Access Control (RBAC):**
     *   **Permissions:** Stored in DB table `roles`. Seeded via Migration V2.
-    *   **Enforcement:** `server.ts` uses `DatabaseService.getPermissions(role)` to validate IPC calls dynamically.
+    *   **Enforcement:** `src/server/app.ts` (`ApiServer`) uses `DatabaseService.getPermissions(role)` to validate IPC calls dynamically.
     *   **Public Data:** `getPublicSettings` endpoint allows safe access to branding without exposing secrets.
 *   **Session Management:** `SessionService.ts` replaces global state, managing user identity in memory safely.
 *   **Automated Backups:** `BackupService.ts` uses `cron` to securely upload the encrypted database to Google Drive (if authenticated) every night at 10 PM.

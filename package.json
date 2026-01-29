@@ -25,7 +25,7 @@
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:mac": "npm run build && electron-builder --mac",
     "build:server": "tsc -p tsconfig.server.json",
-    "start:server": "node dist/server/index.js"
+    "start:server": "npm run build:server && node dist/server/index.js"
   },
   "private": true,
   "build": {

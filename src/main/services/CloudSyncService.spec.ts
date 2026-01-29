@@ -8,28 +8,32 @@ vi.mock('electron-log');
 describe('CloudSyncService', () => {
     let service: CloudSyncService;
     let dbService: DatabaseService;
-
-    // Mock DatabaseService methods
-    const mockDb = {
-        getSettings: vi.fn(),
-        saveSettings: vi.fn(),
-        getPatients: vi.fn(),
-        savePatient: vi.fn(),
-        addToQueue: vi.fn(),
-        saveAppointmentRequest: vi.fn()
-    };
+    let mockDb: any;
+    let originalFetch: any;
 
     beforeEach(() => {
         vi.clearAllMocks();
-        // @ts-ignore
+
+        // Mock DB Setup per test
+        mockDb = {
+            getSettings: vi.fn(),
+            saveSettings: vi.fn(),
+            getPatients: vi.fn(),
+            savePatient: vi.fn(),
+            addToQueue: vi.fn(),
+            saveAppointmentRequest: vi.fn()
+        };
+
         dbService = mockDb as unknown as DatabaseService;
         service = new CloudSyncService(dbService);
 
         // Mock Fetch
+        originalFetch = global.fetch;
         global.fetch = vi.fn();
     });
 
     afterEach(() => {
+        global.fetch = originalFetch;
         vi.restoreAllMocks();
     });
 
@@ -54,7 +58,7 @@ describe('CloudSyncService', () => {
         });
     });
 
-    it('should handled poll with no settings', async () => {
+    it('should handle poll with no settings', async () => {
         mockDb.getSettings.mockReturnValue(null);
         await service.poll();
         expect(global.fetch).not.toHaveBeenCalled();
@@ -121,7 +125,8 @@ describe('CloudSyncService', () => {
     });
 
     it('should handle request save failure but still continue', async () => {
-        mockDb.getSettings.mockReturnValue({ cloud_enabled: 1, cloud_api_key: 'k' });
+        // Updated mock to include clinic_id so poll proceeds
+        mockDb.getSettings.mockReturnValue({ cloud_enabled: 1, cloud_api_key: 'k', cloud_clinic_id: 'clinic_1' });
 
         (global.fetch as any).mockResolvedValueOnce({
             ok: true,

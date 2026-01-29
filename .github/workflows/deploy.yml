@@ -48,6 +48,9 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          CR_PAT: ${{ secrets.CR_PAT }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         with:
           host: ${{ secrets.LIGHTSAIL_IP }}
           username: ubuntu

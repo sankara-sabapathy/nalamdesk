@@ -36,6 +36,7 @@ const sessionService = new SessionService();
 const backupService = new BackupService(databaseService, googleDriveService, securityService);
 
 // ... (cloud sync init logic)
+// DB init happens via IPC. ApiServer will report 503 if DB not ready (guarded in handler).
 apiServer.start();
 
 // Removing global currentUser variable
@@ -82,6 +83,7 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         } else {
             try {
                 const db = securityService.getDb();
+                if (!db) return { success: false, error: 'SYSTEM_LOCKED' }; // DB not open
                 databaseService.setDb(db);
             } catch (e) {
                 return { success: false, error: 'SYSTEM_LOCKED' };
@@ -109,7 +111,11 @@ ipcMain.handle('auth:login', async (event, credentials) => {
 // ... (Database IPC Handlers)
 
 // Queue IPC Handlers
-ipcMain.handle('db:getQueue', () => databaseService.getQueue());
+ipcMain.handle('db:getQueue', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getQueue();
+});
 ipcMain.handle('db:addToQueue', (_, { patientId, priority }) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');

@@ -9,7 +9,8 @@ dotenv.config();
 import { DatabaseService } from '../main/services/DatabaseService';
 import { ApiServer } from './app';
 
-const PORT = parseInt(process.env['PORT'] || '3000');
+const PORT_RAW = parseInt(process.env['PORT'] || '3000', 10);
+const PORT = (Number.isFinite(PORT_RAW) && PORT_RAW > 0 && PORT_RAW < 65536) ? PORT_RAW : 3000;
 const HOST = process.env['HOST'] || '0.0.0.0';
 const DB_PATH = process.env['DB_PATH'] || 'nalamdesk.db';
 

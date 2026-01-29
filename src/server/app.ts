@@ -10,6 +10,10 @@ import * as dotenv from 'dotenv';
 // Load env vars if present (e.g. in standalone mode)
 dotenv.config();
 
+if (process.env['NODE_ENV'] === 'production' && !process.env['JWT_SECRET']) {
+    console.error('FATAL: JWT_SECRET must be set in production');
+    process.exit(1);
+}
 const JWT_SECRET = process.env['JWT_SECRET'] || crypto.randomBytes(64).toString('hex');
 
 const ALLOWED_IPC_METHODS = [
@@ -109,7 +113,12 @@ export class ApiServer {
     // Login Handler
     private async handleLogin(request: FastifyRequest, reply: FastifyReply) {
         const { username, password } = request.body as any;
-        const user = this.dbService.getUserByUsername(username);
+        let user;
+        try {
+            user = this.dbService.getUserByUsername(username);
+        } catch (e) {
+            return reply.code(503).send({ error: 'System initialization in progress. Please try again.' });
+        }
 
         if (!user || user.active === 0) {
             return reply.code(401).send({ error: 'Invalid credentials' });
@@ -147,6 +156,12 @@ export class ApiServer {
     private async handleIpcCall(request: FastifyRequest, reply: FastifyReply) {
         const { method } = request.params as any;
         const args = request.body as any[]; // Expect array of args
+
+        // Guard: Args must be array
+        if (!Array.isArray(args)) {
+            return reply.code(400).send({ error: 'Invalid args: expected array' });
+        }
+
         const user = (request as any).user;
 
         // 1. Allowlist Check (Security)
