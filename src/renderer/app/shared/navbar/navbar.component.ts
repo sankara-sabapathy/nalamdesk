@@ -68,7 +68,7 @@ export class NavbarComponent implements OnInit {
 
   async loadSettings() {
     try {
-      const settings = await this.dataService.invoke<any>('getSettings');
+      const settings = await this.dataService.invoke<any>('getPublicSettings');
       this.ngZone.run(() => {
         if (settings) {
           this.clinicName = settings.clinic_name;

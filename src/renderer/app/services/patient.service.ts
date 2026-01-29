@@ -51,4 +51,16 @@ export class PatientService {
   async savePatient(patient: Patient): Promise<any> {
     return await this.dataService.invoke<any>('savePatient', patient);
   }
+
+  isPatientComplete(patient: Patient): boolean {
+    if (!patient) return false;
+    // Required: Name, Mobile, Age, Gender
+    if (!patient.name || !patient.name.trim()) return false;
+    if (!patient.mobile || !patient.mobile.trim()) return false;
+    if (!patient.gender || !patient.gender.trim() || patient.gender === 'Unknown') return false;
+    // Age or DOB
+    if ((patient.age === null || patient.age === undefined || patient.age === 0) && !patient.dob) return false;
+
+    return true;
+  }
 }

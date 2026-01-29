@@ -45,6 +45,11 @@ declare global {
                 onDownloadProgress: (callback: (progress: any) => void) => void;
                 onUpdateError: (callback: (err: any) => void) => void;
             };
+            cloud: {
+                getStatus: () => Promise<{ enabled: boolean; clinicId: string | null }>;
+                onboard: (data: { name: string; city: string }) => Promise<{ success: boolean; clinicId: string }>;
+                toggle: (enabled: boolean) => Promise<void>;
+            };
         };
     }
 }

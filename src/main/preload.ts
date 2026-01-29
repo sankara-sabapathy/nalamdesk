@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electron', {
         saveVisit: (visit: any) => ipcRenderer.invoke('db:saveVisit', visit),
         deleteVisit: (id: number) => ipcRenderer.invoke('db:deleteVisit', id),
         getSettings: () => ipcRenderer.invoke('db:getSettings'),
+        getPublicSettings: () => ipcRenderer.invoke('db:getPublicSettings'),
         saveSettings: (settings: any) => ipcRenderer.invoke('db:saveSettings', settings),
         getDashboardStats: () => ipcRenderer.invoke('db:getDashboardStats'),
         getDoctors: () => ipcRenderer.invoke('db:getDoctors'),
@@ -28,7 +29,13 @@ contextBridge.exposeInMainWorld('electron', {
         updateQueueStatusByPatientId: (data: { patientId: number, status: string }) => ipcRenderer.invoke('db:updateQueueStatusByPatientId', data),
         removeFromQueue: (id: number) => ipcRenderer.invoke('db:removeFromQueue', id),
         // Audit
-        getAuditLogs: (limit: number) => ipcRenderer.invoke('db:getAuditLogs', limit)
+        getAuditLogs: (limit: number) => ipcRenderer.invoke('db:getAuditLogs', limit),
+        // Appointment Requests
+        getAppointmentRequests: () => ipcRenderer.invoke('db:getAppointmentRequests'),
+        updateAppointmentRequestStatus: (data: { id: string, status: string }) => ipcRenderer.invoke('db:updateAppointmentRequestStatus', data),
+        // Appointments
+        getAppointments: (date: string) => ipcRenderer.invoke('db:getAppointments', date),
+        saveAppointment: (appt: any) => ipcRenderer.invoke('db:saveAppointment', appt)
     },
     drive: {
         authenticate: () => ipcRenderer.invoke('drive:authenticate'),
@@ -51,5 +58,13 @@ contextBridge.exposeInMainWorld('electron', {
         onUpdateError: (callback: (err: any) => void) => {
             ipcRenderer.on('update-error', (_, err) => callback(err));
         }
+    },
+    cloud: {
+        getStatus: () => ipcRenderer.invoke('cloud:getStatus'),
+        onboard: (data: { name: string, city: string }) => ipcRenderer.invoke('cloud:onboard', data),
+        toggle: (enabled: boolean) => ipcRenderer.invoke('cloud:toggle', enabled),
+        publishSlots: (slots: any[], dates: string[]) => ipcRenderer.invoke('cloud:publishSlots', slots, dates),
+        syncNow: () => ipcRenderer.invoke('cloud:syncNow'),
+        getPublishedSlots: (date: string) => ipcRenderer.invoke('cloud:getPublishedSlots', date)
     }
 });

@@ -7,6 +7,7 @@ import { PatientListComponent } from './patient-list.component';
 import { DataService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { of } from 'rxjs';
+import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 
 // Mock inject
 vi.mock('@angular/core', async () => {
@@ -26,32 +27,24 @@ describe('PatientListComponent', () => {
     let mockDataService: any;
     let mockAuthService: any;
     let mockCdr: any;
+    let mockRoute: any;
+    let realFb: FormBuilder;
 
     beforeEach(() => {
         mockPatientService = {
             getPatients: vi.fn().mockResolvedValue([]),
-            savePatient: vi.fn().mockResolvedValue({ id: 1 })
+            savePatient: vi.fn().mockResolvedValue({ id: 1 }),
+            isPatientComplete: vi.fn().mockReturnValue(true) // Added mock
         };
         mockNgZone = { run: vi.fn((fn) => fn()) };
         mockRouter = { navigate: vi.fn() };
         mockDataService = { invoke: vi.fn() };
         mockAuthService = { getUser: vi.fn().mockReturnValue({ role: 'admin' }) };
-        mockCdr = { detectChanges: vi.fn() }; // Mock CDR
-        const mockFb = {
-            group: vi.fn().mockImplementation((config) => ({
-                value: { name: '', ...config },
-                patchValue: vi.fn(),
-                reset: vi.fn(),
-                get: vi.fn().mockReturnValue({
-                    value: '',
-                    invalid: false,
-                    touched: false,
-                    valueChanges: of(null)
-                }),
-                invalid: false,
-                markAllAsTouched: vi.fn()
-            }))
-        };
+        mockCdr = { detectChanges: vi.fn() };
+        mockRoute = { queryParams: of({}) }; // Added mock Route
+
+        // Use REAL FormBuilder
+        realFb = new FormBuilder();
 
         vi.mocked(inject).mockImplementation((token: any) => {
             if (token === DataService) return mockDataService;
@@ -60,7 +53,9 @@ describe('PatientListComponent', () => {
             return null;
         });
 
-        component = new PatientListComponent(mockFb as any, mockPatientService, mockNgZone, mockRouter, mockCdr);
+        component = new PatientListComponent(realFb, mockPatientService, mockNgZone, mockRouter, mockCdr, mockRoute);
+        // Manually trigger form init since it's typically called in constructor or ngOnInit
+        // In this component it is called in constructor.
     });
 
     it('should load patients on init', async () => {
@@ -69,11 +64,6 @@ describe('PatientListComponent', () => {
         mockDataService.invoke.mockResolvedValue([]); // Queue status
 
         await component.ngOnInit();
-        // Since loadPatients is called in ngOnInit, but async, we might need to wait.
-        // However, ngOnInit calls loadPatients which calls getPatients.
-        // getPatients is verified.
-        // But ngOnInit is NOT awaited by test runner.
-        // So we wait for macro task or call methods directly.
         await component.loadPatients();
 
         expect(component.patients).toEqual(patients);
@@ -104,13 +94,40 @@ describe('PatientListComponent', () => {
     it('should open modal for new patient', () => {
         component.openAddModal();
         expect(component.showModal).toBe(true);
-        expect(component.patientForm.get('name')?.value).toBe('');
+        expect(component.patientForm.get('name')?.value).toBeNull();
     });
 
     it('should edit patient', () => {
-        const patient = { id: 1, name: 'John' } as any;
+        const patient = { id: 1, name: 'John', mobile: '1234567890', age: 30, gender: 'Male' } as any; // valid data
         component.editPatient(patient);
         expect(component.showModal).toBe(true);
-        expect(component.patientForm.patchValue).toHaveBeenCalledWith(patient);
+        expect(component.patientForm.get('name')?.value).toBe('John');
+        // Verify isEditMode relies on ID being set
+        expect(component.isEditMode).toBe(true);
+    });
+
+    it('should calculate minDate as 110 years ago', () => {
+        const minDate = component.minDate;
+        const currentYear = new Date().getFullYear();
+        const minYear = new Date(minDate).getFullYear();
+        expect(currentYear - minYear).toBe(110);
+    });
+
+    it('should return today date string', () => {
+        const today = new Date().toISOString().split('T')[0];
+        expect(component.today).toBe(today);
+    });
+
+    // We can now test real validation!
+    it('should validate max age', () => {
+        const ageControl = component.patientForm.get('age');
+
+        // Valid age
+        ageControl?.setValue(50);
+        expect(ageControl?.valid).toBe(true);
+
+        // Invalid age (> 110)
+        ageControl?.setValue(111);
+        expect(ageControl?.hasError('max')).toBe(true);
     });
 });

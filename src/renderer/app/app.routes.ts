@@ -16,6 +16,7 @@ export const routes: Routes = [
             { path: 'patients', loadComponent: () => import('./patients/patient-list/patient-list.component').then(m => m.PatientListComponent) },
             { path: 'visits', loadComponent: () => import('./visits/visit-list/visit-list.component').then(m => m.VisitListComponent) },
             { path: 'visit/:id', loadComponent: () => import('./visits/visit/visit.component').then(m => m.VisitComponent) },
+            { path: 'online-booking', loadComponent: () => import('./online-booking/online-booking.component').then(m => m.OnlineBookingComponent) },
             { path: 'settings', loadComponent: () => import('./settings/settings.component').then(m => m.SettingsComponent) },
             { path: 'queue', loadComponent: () => import('./queue/queue.component').then(m => m.QueueComponent) }
         ]

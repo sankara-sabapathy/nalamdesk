@@ -316,7 +316,7 @@ export class VisitComponent implements OnInit {
   async printPrescription() {
     // Get current doctor
     try {
-      const settings = await this.dataService.invoke<any>('getSettings');
+      const settings = await this.dataService.invoke<any>('getPublicSettings');
       const currentUser = this.authService.getUser();
 
       const doctor = {

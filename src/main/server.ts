@@ -28,11 +28,14 @@ export class ApiServer {
         });
 
         // Static Files (Angular App)
-        // In Prod: resources/app/dist/nalamdesk/browser
-        // In Dev: dist/nalamdesk/browser (relative to main.js in dist/main) or project root dist
-        const staticPath = app.isPackaged
-            ? path.join(process.resourcesPath, 'app/dist/nalamdesk/browser')
-            : path.join(__dirname, '../../dist/nalamdesk/browser');
+        // In Dev, we are running from dist/main, so we go up one level.
+        // In Prod, app.getAppPath() points to the root of the packaged app.
+        const isDev = !app.isPackaged;
+        const staticPath = isDev
+            ? path.join(__dirname, '../nalamdesk/browser')
+            : path.join(app.getAppPath(), 'dist/nalamdesk/browser');
+
+        console.log(`[API Server] Serving static files from: ${staticPath}`);
 
         this.fastify.register(fastifyStatic, {
             root: staticPath,
@@ -146,25 +149,13 @@ export class ApiServer {
         // Admin: All access
         if (role === 'admin') return true;
 
-        const doctorAllowed = [
-            'getPatients', 'savePatient', 'getVisits', 'getAllVisits', 'saveVisit',
-            'getQueue', 'addToQueue', 'removeFromQueue', 'updateQueueStatus',
-            'getDashboardStats', 'getDoctors'
-        ];
-
-        const receptionistAllowed = [
-            'getPatients', 'savePatient',  // Can they delete? No method in list usually
-            'getQueue', 'addToQueue', 'removeFromQueue', 'updateQueueStatus', 'updateQueueStatusByPatientId'
-        ];
-
-        const nurseAllowed = [
-            'getPatients', 'getQueue', 'updateQueueStatus'
-        ];
-
-        if (role === 'doctor') return doctorAllowed.includes(method);
-        if (role === 'receptionist') return receptionistAllowed.includes(method);
-        if (role === 'nurse') return nurseAllowed.includes(method);
-
-        return false;
+        // Dynamic DB-based RBAC
+        try {
+            const permissions = this.dbService.getPermissions(role);
+            return permissions.includes(method);
+        } catch (e) {
+            console.error(`[RBAC] Permission check failed for role ${role}:`, e);
+            return false;
+        }
     }
 }

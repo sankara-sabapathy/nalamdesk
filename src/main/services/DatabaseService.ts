@@ -1,3 +1,4 @@
+import { MIGRATIONS } from '../schema/migrations';
 
 export class DatabaseService {
     private db: any;
@@ -6,182 +7,45 @@ export class DatabaseService {
         this.db = db;
     }
 
-    migrate() {
+    async migrate() {
         if (!this.db) throw new Error('DB not initialized');
 
-        // Settings Table
-        this.db.exec(`
-          CREATE TABLE IF NOT EXISTS settings (
-            clinic_name TEXT,
-            doctor_name TEXT,
-            logo_path TEXT,
-            license_key TEXT,
-            drive_tokens TEXT
-          );
-        `);
-
-        // Ensure columns exist (Non-destructive migration)
+        // Safety: Backup before migrating
         try {
-            this.db.exec(`ALTER TABLE settings ADD COLUMN drive_tokens TEXT`);
-        } catch (e) { } // Column likely exists
-        try {
-            this.db.exec(`ALTER TABLE settings ADD COLUMN clinic_name TEXT`);
-        } catch (e) { }
-        try {
-            this.db.exec(`ALTER TABLE settings ADD COLUMN doctor_name TEXT`);
-        } catch (e) { }
-
-        // Doctors Table
-
-        this.db.exec(`
-          CREATE TABLE IF NOT EXISTS patients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            uuid TEXT UNIQUE,
-            name TEXT,
-            mobile TEXT,
-            age INTEGER,
-            gender TEXT,
-            address TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          );
-        `);
-
-        this.db.exec(`
-          CREATE TABLE IF NOT EXISTS visits(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            patient_id INTEGER,
-            doctor_id INTEGER,
-            date DATETIME DEFAULT CURRENT_TIMESTAMP,
-            diagnosis TEXT,
-            prescription_json TEXT,
-            amount_paid REAL,
-            FOREIGN KEY(patient_id) REFERENCES patients(id),
-            FOREIGN KEY(doctor_id) REFERENCES users(id)
-        );
-        `);
-
-        // Audit Logs Table
-        this.db.exec(`
-          CREATE TABLE IF NOT EXISTS audit_logs(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            action TEXT,
-            table_name TEXT,
-            record_id INTEGER,
-            user_id INTEGER,
-            details TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        `);
-
-        // Patient Queue Table
-        this.db.exec(`
-          CREATE TABLE IF NOT EXISTS patient_queue(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            patient_id INTEGER,
-            status TEXT DEFAULT 'waiting', --waiting, in -consult, completed
-            priority INTEGER DEFAULT 1, --1: Normal, 2: Emergency
-            check_in_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(patient_id) REFERENCES patients(id) on DELETE CASCADE
-        );
-        `);
-
-        // Migration: Add doctor_id if missing
-        try {
-            this.db.exec(`ALTER TABLE visits ADD COLUMN doctor_id INTEGER`);
-        } catch (e) { }
-
-        // Users Table
-        this.db.exec(`
-          CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            password TEXT,
-            role TEXT,
-            name TEXT,
-            specialty TEXT,
-            license_number TEXT,
-            active INTEGER DEFAULT 1,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          );
-        `);
-
-        // Vitals Table (New)
-        this.db.exec(`
-            CREATE TABLE IF NOT EXISTS vitals (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                visit_id INTEGER,
-                patient_id INTEGER,
-                height REAL,
-                weight REAL,
-                bmi REAL,
-                temperature REAL,
-                systolic_bp INTEGER,
-                diastolic_bp INTEGER,
-                pulse INTEGER,
-                respiratory_rate INTEGER,
-                spo2 INTEGER,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(visit_id) REFERENCES visits(id) ON DELETE CASCADE,
-                FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
-            );
-        `);
-
-        // Migrations for Patients Table
-        const patientColumns = [
-            'dob DATE',
-            'blood_group TEXT',
-            'email TEXT',
-            'emergency_contact_name TEXT',
-            'emergency_contact_mobile TEXT',
-            'street TEXT',
-            'city TEXT',
-            'state TEXT',
-            'zip_code TEXT',
-            'insurance_provider TEXT',
-            'policy_number TEXT'
-        ];
-
-        patientColumns.forEach(col => {
-            try {
-                const colName = col.split(' ')[0];
-                this.db.exec(`ALTER TABLE patients ADD COLUMN ${col}`);
-                console.log(`Added column ${colName} to patients`);
-            } catch (e) {
-                // Ignore if column exists
+            const dbName = this.db.name;
+            if (dbName && dbName !== ':memory:') {
+                const backupName = `${dbName}.bak`;
+                console.log(`[DB] Backing up to ${backupName}...`);
+                await this.db.backup(backupName);
+                console.log('[DB] Backup complete.');
             }
-        });
-
-        // Migrations for Visits Table (SOAP)
-        const visitColumns = [
-            'symptoms TEXT',          // Subjective
-            'examination_notes TEXT', // Objective
-            'diagnosis_type TEXT'     // Assessment Type
-        ];
-
-        visitColumns.forEach(col => {
-            try {
-                const colName = col.split(' ')[0];
-                this.db.exec(`ALTER TABLE visits ADD COLUMN ${col}`);
-                console.log(`Added column ${colName} to visits`);
-            } catch (e) {
-                // Ignore if column exists
-            }
-        });
-
-
-        // Seed Default Admin if not exists
-        const admin = this.db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
-        if (!admin) {
-            // Default password 'admin' - hashed (Argon2 hash for 'admin')
-            // We will handle the hashing in the method, but for seed we insert a known hash or handle it dynamically
-            // For now, let's insert a placeholder and we can update it or assume the saveUser handles it.
-            // Actually, simplest is to use the saveUser logic, but we can't call it easily inside migrate if it depends on async argon2.
-            // So we will insert a pre-calculated hash for 'admin' or just 'admin' and rely on auth service to handle migration or just set it insecurely first?
-            // Better: Let's NOT seed syncronously if argon2 is async.
-            // Strategy: We will add a 'seedAdmin' method that is called after init.
+        } catch (e) {
+            console.error('[DB] Backup failed! Proceeding with caution...', e);
+            // Optional: Throw if backup is critical? For now, log and proceed (or user can't login).
         }
 
-        console.log('Database migration completed.');
+        // Check Version
+        const currentVersion = this.db.pragma('user_version', { simple: true });
+        console.log(`[DB] Current Schema Version: ${currentVersion}`);
+
+        // Transactional Migration
+        const runMigrations = this.db.transaction(() => {
+            for (const migration of MIGRATIONS) {
+                if (migration.version > currentVersion) {
+                    console.log(`[DB] Migrating to v${migration.version}...`);
+                    migration.up(this.db);
+                    this.db.pragma(`user_version = ${migration.version}`);
+                }
+            }
+        });
+
+        try {
+            runMigrations();
+            console.log(`[DB] Migration check complete. Version: ${this.db.pragma('user_version', { simple: true })}`);
+        } catch (err) {
+            console.error('[DB] MIGRATION FAILED! Rolling back transaction.', err);
+            throw err; // Critical failure
+        }
     }
 
     async ensureAdminUser(password: string) {
@@ -263,7 +127,35 @@ export class DatabaseService {
         return this.db.prepare('SELECT * FROM settings LIMIT 1').get();
     }
 
+    // ... (existing code)
+
+    getPublicSettings() {
+        return this.db.prepare('SELECT clinic_name, doctor_name, logo_path, cloud_enabled FROM settings LIMIT 1').get();
+    }
+
+    // RBAC
+    getPermissions(role: string): string[] {
+        const result = this.db.prepare('SELECT permissions FROM roles WHERE name = ?').get(role);
+        if (result && result.permissions) {
+            try { return JSON.parse(result.permissions); } catch (e) { return []; }
+        }
+        return [];
+    }
+
+    getAllRoles() {
+        return this.db.prepare('SELECT * FROM roles').all().map((r: any) => ({
+            name: r.name,
+            permissions: JSON.parse(r.permissions)
+        }));
+    }
+
+    saveRole(name: string, permissions: string[]) {
+        const json = JSON.stringify(permissions);
+        return this.db.prepare('INSERT INTO roles (name, permissions) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET permissions = excluded.permissions').run(name, json);
+    }
+
     saveSettings(settings: any) {
+        // ... (existing code)
         const existing = this.getSettings();
         if (existing) {
             // Build dynamic update query to allow partial updates
@@ -310,7 +202,18 @@ export class DatabaseService {
         return this.db.prepare('SELECT * FROM patients WHERE id = ?').get(id);
     }
 
-    savePatient(patient: any) {
+    savePatient(patientData: any) {
+        // Ensure all fields exist for named parameters
+        const defaults = {
+            dob: null, blood_group: null, email: null,
+            emergency_contact_name: null, emergency_contact_mobile: null,
+            street: null, city: null, state: null, zip_code: null,
+            insurance_provider: null, policy_number: null,
+            address: '', age: 0, gender: 'Unknown', mobile: '', name: ''
+        };
+
+        const patient = { ...defaults, ...patientData };
+
         if (patient.id) {
             return this.db.prepare(`
         UPDATE patients SET
@@ -534,4 +437,52 @@ export class DatabaseService {
     getAuditLogs(limit: number = 100) {
         return this.db.prepare('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ?').all(limit);
     }
+
+    // Appointment Requests
+    getAppointmentRequests() {
+        // Debug: Return ALL requests to see if status is wrong
+        const reqs = this.db.prepare("SELECT * FROM appointment_requests ORDER BY created_at DESC").all();
+        console.log('[DB] getAppointmentRequests (ALL):', reqs.length);
+        if (reqs.length > 0) console.log('Sample:', reqs[0]);
+        return reqs;
+    }
+
+    saveAppointmentRequest(req: any) {
+        return this.db.prepare(`
+            INSERT OR IGNORE INTO appointment_requests (id, patient_name, phone, date, time, reason)
+            VALUES (@id, @patient_name, @phone, @date, @time, @reason)
+        `).run(req);
+    }
+
+    updateAppointmentRequestStatus(id: string, status: string) {
+        return this.db.prepare('UPDATE appointment_requests SET status = ? WHERE id = ?').run(status, id);
+    }
+
+    // Appointments (Bookings)
+    getAppointments(date: string) {
+        if (!this.db) throw new Error('DB not initialized');
+        // Join with patients to get name
+        return this.db.prepare(`
+            SELECT a.*, p.name as patient_name, p.mobile as patient_mobile, p.age as patient_age, p.gender as patient_gender, p.address
+            FROM appointments a
+            LEFT JOIN patients p ON a.patient_id = p.id
+            WHERE a.date = ?
+            ORDER BY a.time ASC
+        `).all(date);
+    }
+
+    saveAppointment(appt: any) {
+        if (!this.db) throw new Error('DB not initialized');
+        if (appt.id) {
+            return this.db.prepare(`
+                UPDATE appointments SET status = ? WHERE id = ?
+            `).run(appt.status, appt.id);
+        } else {
+            return this.db.prepare(`
+                INSERT INTO appointments (patient_id, date, time, reason, status)
+                VALUES (?, ?, ?, ?, 'CONFIRMED')
+            `).run(appt.patient_id, appt.date, appt.time, appt.reason);
+        }
+    }
 }
+

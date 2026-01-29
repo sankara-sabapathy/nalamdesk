@@ -4,6 +4,8 @@ import { Router } from '@angular/router';
 
 import { DataService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
+import { CloudService } from '../services/cloud.service';
+import { PatientService } from '../services/patient.service';
 
 @Component({
   // ... (template omitted, same as before) 
@@ -13,11 +15,13 @@ import { AuthService } from '../services/auth.service';
   template: `
     <div class="container mx-auto max-w-7xl">
         <!-- Welcome Section -->
-        <div class="mb-8 mt-2">
-            <h1 class="text-3xl font-display font-bold text-base-content">
-                Good {{ getTimeOfDay() }}, <span class="text-primary">{{ currentUser?.name || doctorName || 'Doctor' }}</span>
-            </h1>
-            <p class="text-base-content/60 mt-1">Here's what's happening at {{ clinicName || 'your clinic' }} today.</p>
+        <div class="flex justify-between items-center mb-8 mt-2">
+            <div>
+                <h1 class="text-3xl font-display font-bold text-base-content">
+                    Good {{ getTimeOfDay() }}, <span class="text-primary">{{ currentUser?.name || doctorName || 'Doctor' }}</span>
+                </h1>
+                <p class="text-base-content/60 mt-1">Here's what's happening at {{ clinicName || 'your clinic' }} today.</p>
+            </div>
         </div>
 
         <!-- Stats Grid -->
@@ -32,14 +36,29 @@ import { AuthService } from '../services/auth.service';
             <div class="stat-desc text-gray-400">Registered in system</div>
           </div>
 
-          <!-- Today's Visits -->
-          <div class="stat bg-white shadow-sm border border-gray-200 rounded-2xl group hover:border-gray-500/20 transition-all duration-300">
-            <div class="stat-figure text-gray-600 opacity-20 group-hover:opacity-100 transition-opacity">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-            </div>
-            <div class="stat-title text-gray-500 font-medium tracking-wide text-xs uppercase">Visits Today</div>
-            <div class="stat-value text-gray-700 font-display">{{ stats.todayVisits }}</div>
-            <div class="stat-desc text-gray-400">Checked in so far</div>
+          <!-- Online Booking Status -->
+          <div class="stat bg-white shadow-sm border border-gray-200 rounded-2xl group hover:border-sky-500/20 transition-all duration-300 relative overflow-hidden">
+             <!-- Pulse effect if syncing -->
+             <div *ngIf="isSyncing" class="absolute inset-0 bg-sky-50 opacity-20 animate-pulse"></div>
+
+             <div class="stat-figure text-sky-500 opacity-20 group-hover:opacity-100 transition-opacity">
+                <!-- Cloud Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg>
+             </div>
+             <div class="stat-title text-gray-500 font-medium tracking-wide text-xs uppercase">Online Booking</div>
+             <div class="stat-value text-sky-600 font-display text-2xl mt-1">
+                 <span *ngIf="requests.length > 0">{{ requests.length }} New</span>
+                 <span *ngIf="requests.length === 0" class="text-gray-400 text-xl font-normal">All Caught Up</span>
+             </div>
+             <div class="stat-actions mt-2">
+                 <button class="btn btn-xs btn-outline btn-info gap-1" (click)="refresh()" [disabled]="isSyncing">
+                    <svg *ngIf="isSyncing" class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    {{ isSyncing ? 'Syncing...' : 'Sync Now' }}
+                </button>
+             </div>
           </div>
 
            <!-- Quick Action -->
@@ -59,6 +78,62 @@ import { AuthService } from '../services/auth.service';
                 </div>
             </div>
            </div>
+        </div>
+
+        <!-- Appointment Requests -->
+        <div *ngIf="requests.length > 0" class="mb-8">
+            <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                <span class="relative flex h-3 w-3">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span>
+                </span>
+                Online Requests
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div *ngFor="let req of requests" class="card bg-white shadow-sm border border-l-4 border-l-sky-500 border-gray-200">
+                    <div class="card-body p-4">
+                        <div class="flex justify-between items-start">
+                            <h3 class="font-bold text-lg">{{ req.patient_name }}</h3>
+                            <span class="text-xs font-mono bg-gray-100 px-2 py-1 rounded">{{ req.time }}</span>
+                        </div>
+                        <p class="text-sm text-gray-500">{{ req.phone }}</p>
+                        <p class="text-sm mt-2 italic text-gray-600" *ngIf="req.reason">"{{ req.reason }}"</p>
+                        <div class="card-actions justify-end mt-4">
+                            <button class="btn btn-sm btn-primary">Accept</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recent Visits -->
+        <div class="card bg-base-100 shadow-sm border border-base-200 mb-8">
+            <div class="card-body">
+                <h2 class="card-title text-lg font-bold">Recent Visits</h2>
+                <div class="overflow-x-auto">
+                    <table class="table w-full">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Patient</th>
+                                <th>Diagnosis</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr *ngFor="let visit of visits" class="hover">
+                                <td>{{ visit.date | date:'shortDate' }}</td>
+                                <td class="font-bold">{{ visit.patient_name }}</td>
+                                <td>{{ visit.diagnosis || 'No diagnosis' }}</td>
+                                <td><span class="badge badge-success badge-outline">Completed</span></td>
+                            </tr>
+                            <tr *ngIf="visits.length === 0">
+                                <td colspan="4" class="text-center text-gray-400 py-4">No recent visits</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- Secondary Actions -->
@@ -104,21 +179,41 @@ export class DashboardComponent implements OnInit, OnDestroy {
   doctorName = '';
   stats = { totalPatients: 0, todayVisits: 0 };
   waitingCount = 0;
+  requests: any[] = [];
+  visits: any[] = [];
   currentUser: any = null;
+  isSyncing = false;
+  todayAppointments: any[] = [];
 
   constructor(
     private router: Router,
     private ngZone: NgZone,
     private dataService: DataService,
-    private authService: AuthService
+    private authService: AuthService,
+    private cloudService: CloudService,
+    private patientService: PatientService
   ) { }
+
+  async refresh() {
+    this.isSyncing = true;
+    try {
+      await this.cloudService.syncNow();
+      await this.loadData();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      this.isSyncing = false;
+    }
+  }
 
   ngOnInit() {
     this.currentUser = this.authService.getUser();
+    this.loadData();
+
+    // Live Clock
     this.timer = setInterval(() => {
       this.currentTime = new Date();
     }, 1000);
-    this.loadData();
   }
 
   ngOnDestroy() {
@@ -126,28 +221,93 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getTimeOfDay(): string {
-    const hours = this.currentTime.getHours();
-    if (hours < 12) return 'Morning';
-    if (hours < 18) return 'Afternoon';
+    const hr = this.currentTime.getHours();
+    if (hr < 12) return 'Morning';
+    if (hr < 18) return 'Afternoon';
     return 'Evening';
   }
 
   async loadData() {
     try {
-      const settings = await this.dataService.invoke<any>('getSettings');
-      const stats = await this.dataService.invoke<any>('getDashboardStats');
-      const queue = await this.dataService.invoke<any>('getQueue');
-
+      const dashboardStats = await this.dataService.invoke<any>('getDashboardStats');
       this.ngZone.run(() => {
-        if (settings) {
-          this.clinicName = settings.clinic_name;
-          this.doctorName = settings.doctor_name;
-        }
-        this.stats = stats;
-        this.waitingCount = queue.length;
+        this.stats = dashboardStats || { totalPatients: 0, todayVisits: 0 };
       });
+
+      // Load Queue Count
+      const queue = await this.dataService.invoke<any>('getQueue');
+      const waiting = queue.filter((q: any) => q.status !== 'completed');
+      this.waitingCount = waiting.length;
+
+      // Load Settings for Clinic Name
+      const settings = await this.dataService.invoke<any>('getPublicSettings');
+      if (settings) {
+        this.clinicName = settings.clinic_name;
+        this.doctorName = settings.doctor_name;
+      }
+
+      // Load Requests
+      const reqs = await this.dataService.invoke<any>('getAppointmentRequests');
+      this.requests = (reqs || []).filter((r: any) => r.status === 'pending');
+
+      // Load Recent Visits
+      this.visits = await this.dataService.invoke<any>('getAllVisits', 5);
+
+      // Load Today's Appointments
+      await this.loadAppointments();
+
     } catch (e) {
+      console.error('Failed to load dashboard data', e);
+    }
+  }
+
+  async loadAppointments() {
+    const today = new Date().toISOString().split('T')[0];
+    const appts = await this.cloudService.getAppointments(today);
+    // Filter out Checked In? 
+    // Status: CONFIRMED, CHECKED_IN. We want to show CONFIRMED ones to check them in.
+    this.todayAppointments = (appts || []).filter((a: any) => a.status === 'CONFIRMED');
+  }
+
+  async checkIn(appt: any) {
+    if (!confirm(`Check in ${appt.patient_name}?`)) return;
+
+    // Validate Patient
+    // Map flatten appt fields to Patient object style for validation
+    const patientObj = {
+      id: appt.patient_id,
+      name: appt.patient_name,
+      mobile: appt.patient_mobile,
+      age: appt.patient_age,
+      gender: appt.patient_gender,
+      // address? might be missing in join if not selected, but schema has it. 
+      // DatabaseService.getAppointments selects p.* so it should be there.
+      address: (appt as any).address
+    };
+
+    if (!this.patientService.isPatientComplete(patientObj as any)) {
+      alert('Patient details incomplete. Redirecting to update details...');
+      this.router.navigate(['/patients'], { queryParams: { editId: appt.patient_id } });
+      return;
+    }
+
+    try {
+      // Add to Queue
+      await this.dataService.invoke('addToQueue', { patientId: appt.patient_id, priority: 1 });
+      // Update Appointment Status
+      await this.cloudService.saveAppointment({ id: appt.id, status: 'CHECKED_IN' });
+
+      alert(`Checked in ${appt.patient_name}!`);
+      this.loadData(); // Refresh list
+    } catch (e: any) {
       console.error(e);
+      if (e.message && e.message.includes('already in queue')) {
+        // Just update status if already keyed
+        await this.cloudService.saveAppointment({ id: appt.id, status: 'CHECKED_IN' });
+        this.loadData();
+      } else {
+        alert('Check-in failed: ' + e.message);
+      }
     }
   }
 

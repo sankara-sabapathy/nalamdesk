@@ -7,6 +7,6 @@ module.exports = {
             provider: 'v8',
             reporter: ['text', 'json', 'html'],
         },
-        exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**'],
+        exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**', '**/server/**', '**/web/**'],
     },
 };

@@ -34,10 +34,52 @@ import { AuthService } from '../services/auth.service';
                 </form>
             </div>
 
-            <!-- Google Drive Connection -->
+            <!-- Online Booking / Cloud Integration -->
             <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="isElectron">
-            <h2 class="text-xl font-semibold mb-4 text-blue-600">Cloud Connection</h2>
-            <div class="flex items-center justify-between">
+                <h2 class="text-xl font-semibold mb-4 text-purple-600">Online Booking</h2>
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="font-medium text-gray-800">Enable Public Online Booking</p>
+                        <p class="text-sm text-gray-500">Allow patients to find you on nalamdesk.com and book appointments.</p>
+                        <p *ngIf="cloudClinicId" class="text-xs text-green-600 mt-1">Status: Active (ID: {{ cloudClinicId }})</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" class="sr-only peer" [checked]="cloudEnabled" (change)="toggleCloud($event)">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Cloud Onboard Modal -->
+            <div *ngIf="showCloudModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-lg p-6 w-full max-w-sm">
+                    <h3 class="text-xl font-bold mb-2">Setup Online Booking</h3>
+                    <p class="text-sm text-gray-500 mb-4">Register your clinic on our public directory.</p>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Clinic Name (Public)</label>
+                            <input [(ngModel)]="cloudForm.name" class="input input-bordered w-full" placeholder="e.g. City Health">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">City</label>
+                            <input [(ngModel)]="cloudForm.city" class="input input-bordered w-full" placeholder="e.g. Chennai">
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex justify-end gap-2">
+                        <button (click)="showCloudModal = false" class="btn btn-ghost" [disabled]="cloudLoading">Cancel</button>
+                        <button (click)="submitCloudOnboard()" class="btn btn-primary" [disabled]="cloudLoading">
+                            {{ cloudLoading ? 'Registering...' : 'Enable' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+             <!-- Google Drive Connection -->
+             <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="isElectron">
+             <h2 class="text-xl font-semibold mb-4 text-blue-600">Backup (Google Drive)</h2>
+             <div class="flex items-center justify-between">
                 <p class="text-gray-600">Link your Google Drive to enable secure off-site backups.</p>
                 <button (click)="connectDrive()" [disabled]="isLoading" class="btn btn-primary">
                 {{ isLoading ? 'Connecting...' : 'Connect Google Drive' }}
@@ -202,6 +244,13 @@ export class SettingsComponent implements OnInit {
   errorMessage = '';
   appVersion = '0.0.0';
 
+  // Cloud Integration
+  cloudEnabled = false;
+  cloudClinicId: string | null = null;
+  showCloudModal = false;
+  cloudForm = { name: '', city: '' };
+  cloudLoading = false;
+
   constructor(private ngZone: NgZone) { }
 
   ngOnInit() {
@@ -214,11 +263,13 @@ export class SettingsComponent implements OnInit {
 
     if (this.isElectron) {
       this.listBackups();
+      this.loadCloudStatus();
     }
     this.loadUsers();
 
     // Listen for updates
     if (window.electron && window.electron.updater) {
+      // ... existing updater listeners ...
       window.electron.updater.onUpdateAvailable(() => {
         this.ngZone.run(() => this.updateStatus = 'available');
       });
@@ -236,6 +287,64 @@ export class SettingsComponent implements OnInit {
       });
     }
   }
+
+  async loadCloudStatus() {
+    if (!this.isElectron) return;
+    try {
+      const status = await window.electron.cloud.getStatus();
+      this.ngZone.run(() => {
+        this.cloudEnabled = status.enabled;
+        this.cloudClinicId = status.clinicId;
+      });
+    } catch (e) {
+      console.error('Failed to load cloud status', e);
+    }
+  }
+
+  async toggleCloud(event: any) {
+    if (!this.isElectron) return;
+    const enabled = event.target.checked;
+
+    if (enabled && !this.cloudClinicId) {
+      // First time - show modal
+      this.ngZone.run(() => {
+        this.showCloudModal = true;
+        // Revert toggle visually until authed
+        event.target.checked = false;
+      });
+    } else {
+      // Just toggle
+      await window.electron.cloud.toggle(enabled);
+      this.loadCloudStatus();
+    }
+  }
+
+  async submitCloudOnboard() {
+    if (!this.cloudForm.name || !this.cloudForm.city) {
+      alert('Name and City required');
+      return;
+    }
+    this.cloudLoading = true;
+    try {
+      const res = await window.electron.cloud.onboard(this.cloudForm);
+      this.ngZone.run(() => {
+        this.cloudLoading = false;
+        this.showCloudModal = false;
+        if (res.success) {
+          this.cloudEnabled = true;
+          this.cloudClinicId = res.clinicId;
+          alert('Online Booking Enabled!');
+        }
+      });
+    } catch (e) {
+      this.ngZone.run(() => {
+        this.cloudLoading = false;
+        alert('Failed to register. Check internet connection.');
+      });
+    }
+  }
+
+  // ... existing methods (loadSettings, saveSettings, drive...)
 
   async loadSettings() {
     try {

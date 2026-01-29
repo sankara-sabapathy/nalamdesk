@@ -3,6 +3,7 @@
   "version": "0.0.4",
   "author": "Sankara Sabapathy <sankara.sabapathy@gmail.com>",
   "description": "NalamDesk - Medical Practice Management",
+  "license": "AGPL-3.0-only",
   "productName": "NalamDesk",
   "main": "dist/main/main.js",
   "scripts": {
@@ -75,6 +76,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/pdfmake": "^0.2.12",
     "argon2": "^0.44.0",
+    "better-sqlite3": "^12.6.2",
     "better-sqlite3-multiple-ciphers": "^12.6.2",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.7.3",

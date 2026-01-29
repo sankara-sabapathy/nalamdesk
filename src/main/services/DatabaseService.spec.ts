@@ -20,8 +20,12 @@ describe('DatabaseService', () => {
         };
 
         mockDb = {
-            exec: vi.fn(),
-            prepare: vi.fn().mockReturnValue(mockStatement)
+            exec: vi.fn((sql) => console.log('[Test] db.exec called:', sql ? sql.substring(0, 50) : 'null')),
+            prepare: vi.fn().mockReturnValue(mockStatement),
+            pragma: vi.fn(() => { console.log('[Test] db.pragma called'); return 0; }),
+            transaction: vi.fn((fn) => { console.log('[Test] db.transaction called'); return fn; }),
+            backup: vi.fn(),
+            name: ':memory:'
         };
 
         service = new DatabaseService();
@@ -143,6 +147,28 @@ describe('DatabaseService', () => {
             service.updateQueueStatus(1, 'in-consult', 999);
             // Check for Audit Log Insert
             expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO audit_logs'));
+        });
+    });
+    describe('RBAC', () => {
+        it('should get permissions for a role', () => {
+            const permissions = ['perm1', 'perm2'];
+            mockStatement.get.mockReturnValue({ permissions: JSON.stringify(permissions) });
+
+            const result = service.getPermissions('doctor');
+            expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('SELECT permissions FROM roles'));
+            expect(result).toEqual(permissions);
+        });
+
+        it('should return empty array if role not found', () => {
+            mockStatement.get.mockReturnValue(undefined);
+            const result = service.getPermissions('unknown');
+            expect(result).toEqual([]);
+        });
+
+        it('should save a role with permissions', () => {
+            service.saveRole('nurse', ['perm1']);
+            expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO roles'));
+            expect(mockStatement.run).toHaveBeenCalledWith('nurse', JSON.stringify(['perm1']));
         });
     });
 });
