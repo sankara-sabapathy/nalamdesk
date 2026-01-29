@@ -1,6 +1,9 @@
-import { Component, NgZone, OnInit } from '@angular/core';
+import { Component, NgZone, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { DataService } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-settings',
@@ -13,8 +16,8 @@ import { FormsModule } from '@angular/forms';
         
         <!-- Tabs -->
         <div class="flex space-x-4 mb-6 border-b">
-            <button class="pb-2 px-4 font-medium" [class.border-b-2]="activeTab === 'general'" [class.border-blue-500]="activeTab === 'general'" [class.text-blue-600]="activeTab === 'general'" (click)="activeTab = 'general'">General</button>
-            <button class="pb-2 px-4 font-medium" [class.border-b-2]="activeTab === 'doctors'" [class.border-blue-500]="activeTab === 'doctors'" [class.text-blue-600]="activeTab === 'doctors'" (click)="activeTab = 'doctors'">Doctors Management</button>
+            <button class="pb-2 px-4 font-medium" [class.border-b-2]="activeTab === 'general'" [class.border-primary]="activeTab === 'general'" [class.text-primary]="activeTab === 'general'" (click)="activeTab = 'general'">General</button>
+            <button *ngIf="currentUser?.role === 'admin'" class="pb-2 px-4 font-medium" [class.border-b-2]="activeTab === 'users'" [class.border-primary]="activeTab === 'users'" [class.text-primary]="activeTab === 'users'" (click)="activeTab = 'users'">Users</button>
         </div>
 
         <div *ngIf="activeTab === 'general'">
@@ -26,17 +29,59 @@ import { FormsModule } from '@angular/forms';
                         <label class="block text-sm font-medium text-gray-700 mb-1">Clinic Name</label>
                         <input [(ngModel)]="settings.clinic_name" name="clinic_name" class="w-full border p-2 rounded">
                     </div>
-                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">Save Details</button>
+                    <button type="submit" class="btn btn-primary">Save Details</button>
                     <span *ngIf="settingsSaved" class="text-green-600 ml-4 text-sm">Saved successfully!</span>
                 </form>
             </div>
 
-            <!-- Google Drive Connection -->
-            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-            <h2 class="text-xl font-semibold mb-4 text-blue-600">Cloud Connection</h2>
-            <div class="flex items-center justify-between">
+            <!-- Online Booking / Cloud Integration -->
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="isElectron">
+                <h2 class="text-xl font-semibold mb-4 text-purple-600">Online Booking</h2>
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="font-medium text-gray-800">Enable Public Online Booking</p>
+                        <p class="text-sm text-gray-500">Allow patients to find you on nalamdesk.com and book appointments.</p>
+                        <p *ngIf="cloudClinicId" class="text-xs text-green-600 mt-1">Status: Active (ID: {{ cloudClinicId }})</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" class="sr-only peer" [checked]="cloudEnabled" (change)="toggleCloud($event)">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Cloud Onboard Modal -->
+            <div *ngIf="showCloudModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                <div class="bg-white rounded-lg p-6 w-full max-w-sm">
+                    <h3 class="text-xl font-bold mb-2">Setup Online Booking</h3>
+                    <p class="text-sm text-gray-500 mb-4">Register your clinic on our public directory.</p>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Clinic Name (Public)</label>
+                            <input [(ngModel)]="cloudForm.name" class="input input-bordered w-full" placeholder="e.g. City Health">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">City</label>
+                            <input [(ngModel)]="cloudForm.city" class="input input-bordered w-full" placeholder="e.g. Chennai">
+                        </div>
+                    </div>
+
+                    <div class="mt-6 flex justify-end gap-2">
+                        <button (click)="showCloudModal = false" class="btn btn-ghost" [disabled]="cloudLoading">Cancel</button>
+                        <button (click)="submitCloudOnboard()" class="btn btn-primary" [disabled]="cloudLoading">
+                            {{ cloudLoading ? 'Registering...' : 'Enable' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+             <!-- Google Drive Connection -->
+             <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="isElectron">
+             <h2 class="text-xl font-semibold mb-4 text-blue-600">Backup (Google Drive)</h2>
+             <div class="flex items-center justify-between">
                 <p class="text-gray-600">Link your Google Drive to enable secure off-site backups.</p>
-                <button (click)="connectDrive()" [disabled]="isLoading" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+                <button (click)="connectDrive()" [disabled]="isLoading" class="btn btn-primary">
                 {{ isLoading ? 'Connecting...' : 'Connect Google Drive' }}
                 </button>
             </div>
@@ -44,15 +89,19 @@ import { FormsModule } from '@angular/forms';
                 {{ message }}
             </p>
             </div>
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="!isElectron">
+                 <h2 class="text-xl font-semibold mb-4 text-gray-400">Cloud Connection</h2>
+                 <p class="text-sm text-gray-500">Backup configuration is only available on the Master System.</p>
+            </div>
 
             <!-- Backup & Restore -->
-            <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="bg-white p-6 rounded-lg shadow-md" *ngIf="isElectron">
             <h2 class="text-xl font-semibold mb-4 text-green-600">Backup & Restore</h2>
             
             <div class="mb-6 pb-6 border-b">
                 <h3 class="font-bold text-gray-700 mb-2">Immediate Backup</h3>
                 <p class="text-sm text-gray-500 mb-3">Upload a snapshot of your current database to Google Drive.</p>
-                <button (click)="backupNow()" [disabled]="isBackupLoading" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition">
+                <button (click)="backupNow()" [disabled]="isBackupLoading" class="btn btn-success text-white">
                 {{ isBackupLoading ? 'Uploading...' : 'Backup Now' }}
                 </button>
             </div>
@@ -79,38 +128,83 @@ import { FormsModule } from '@angular/forms';
             </div>
         </div>
 
-        <div *ngIf="activeTab === 'doctors'">
+
+        <div *ngIf="activeTab === 'users' && currentUser?.role === 'admin'">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">Doctors</h2>
-                <button (click)="editDoctor({})" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">+ Add Doctor</button>
+                <h2 class="text-2xl font-bold text-gray-800">User Management</h2>
+                <button (click)="editUser({})" class="btn btn-primary">+ Add User</button>
             </div>
 
-            <div class="grid gap-4">
-                <div *ngFor="let doc of doctors" class="bg-white p-4 rounded-lg shadow flex justify-between items-center">
-                    <div>
-                        <h3 class="font-bold text-lg">{{ doc.name }}</h3>
-                        <p class="text-sm text-gray-600">{{ doc.specialty }} • {{ doc.license_number }}</p>
-                    </div>
-                    <div>
-                        <button (click)="editDoctor(doc)" class="text-blue-600 hover:underline mr-4">Edit</button>
-                        <button (click)="deleteDoctor(doc.id)" class="text-red-600 hover:underline">Delete</button>
-                    </div>
-                </div>
-                <p *ngIf="doctors.length === 0" class="text-gray-500">No doctors added yet.</p>
+            <div class="overflow-x-auto bg-white rounded-lg shadow">
+                <table class="table table-zebra">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr *ngFor="let u of users">
+                            <td class="font-bold">{{ u.username }}</td>
+                            <td>{{ u.name }}</td>
+                            <td>
+                                <span class="badge" [ngClass]="{
+                                    'badge-primary': u.role === 'admin',
+                                    'badge-secondary': u.role === 'doctor',
+                                    'badge-accent': u.role === 'receptionist'
+                                }">{{ u.role | titlecase }}</span>
+                            </td>
+                            <td>
+                                <button *ngIf="u.username !== 'admin'" (click)="editUser(u)" class="btn btn-xs btn-ghost text-blue-600">Edit</button>
+                                <button *ngIf="u.username !== 'admin' && u.id !== currentUser?.id" (click)="deleteUser(u.id)" class="btn btn-xs btn-ghost text-red-600">Delete</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
-            <!-- Edit Modal (Simple Inline for now) -->
-            <div *ngIf="editingDoctor" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+            <!-- Edit User Modal -->
+            <div *ngIf="editingUser" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
                 <div class="bg-white rounded-lg p-6 w-full max-w-md">
-                    <h3 class="text-xl font-bold mb-4">{{ editingDoctor.id ? 'Edit Doctor' : 'Add Doctor' }}</h3>
+                    <h3 class="text-xl font-bold mb-4">{{ editingUser.id ? 'Edit User' : 'Add User' }}</h3>
                     <div class="space-y-4">
-                        <input [(ngModel)]="editingDoctor.name" placeholder="Doctor Name" class="w-full border p-2 rounded">
-                        <input [(ngModel)]="editingDoctor.specialty" placeholder="Specialty (e.g. General Physician)" class="w-full border p-2 rounded">
-                        <input [(ngModel)]="editingDoctor.license_number" placeholder="License Number" class="w-full border p-2 rounded">
+                        <div class="form-control">
+                            <label class="label">Username</label>
+                            <input [(ngModel)]="editingUser.username" [disabled]="editingUser.id" class="input input-bordered w-full">
+                        </div>
+                        <div class="form-control">
+                             <label class="label">Name</label>
+                             <input [(ngModel)]="editingUser.name" class="input input-bordered w-full">
+                        </div>
+                         <div class="form-control">
+                             <label class="label">Role</label>
+                             <select [(ngModel)]="editingUser.role" class="select select-bordered w-full">
+                                 <option value="admin">Admin</option>
+                                 <option value="doctor">Doctor</option>
+                                 <option value="receptionist">Receptionist</option>
+                                 <option value="nurse">Nurse</option>
+                             </select>
+                        </div>
+                        <div *ngIf="editingUser.role === 'doctor'" class="space-y-4">
+                            <div class="form-control">
+                                <label class="label">Specialty</label>
+                                <input [(ngModel)]="editingUser.specialty" class="input input-bordered w-full" placeholder="e.g. General Physician">
+                            </div>
+                            <div class="form-control">
+                                <label class="label">License Number</label>
+                                <input [(ngModel)]="editingUser.license_number" class="input input-bordered w-full">
+                            </div>
+                        </div>
+                        <div class="form-control">
+                            <label class="label">{{ editingUser.id ? 'New Password (Optional)' : 'Password' }}</label>
+                            <input [(ngModel)]="editingUser.password" type="password" class="input input-bordered w-full" placeholder="********">
+                        </div>
                     </div>
                     <div class="mt-6 flex justify-end gap-2">
-                        <button (click)="editingDoctor = null" class="px-4 py-2 border rounded hover:bg-gray-50">Cancel</button>
-                        <button (click)="saveDoctor()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save</button>
+                        <button (click)="editingUser = null" class="btn btn-ghost">Cancel</button>
+                        <button (click)="saveUser()" class="btn btn-primary">Save</button>
                     </div>
                 </div>
             </div>
@@ -122,7 +216,7 @@ import { FormsModule } from '@angular/forms';
   styles: []
 })
 export class SettingsComponent implements OnInit {
-  activeTab: 'general' | 'doctors' = 'general';
+  activeTab: 'general' | 'users' = 'general';
 
   // General
   isLoading = false;
@@ -132,20 +226,50 @@ export class SettingsComponent implements OnInit {
   backups: any[] = [];
   settings = { clinic_name: '' };
   settingsSaved = false;
+  isElectron = !!window.electron;
 
-  // Doctors
-  doctors: any[] = [];
-  editingDoctor: any = null;
+  // Users
+  users: any[] = [];
+  editingUser: any = null;
+
+  currentUser: any = null;
+
+  private dataService: DataService = inject(DataService);
+  private authService: AuthService = inject(AuthService);
+  private router: Router = inject(Router);
+
+  // Updater
+  updateStatus: 'idle' | 'checking' | 'available' | 'downloaded' | 'uptodate' | 'error' = 'idle';
+  downloadProgress = 0;
+  errorMessage = '';
+  appVersion = '0.0.0';
+
+  // Cloud Integration
+  cloudEnabled = false;
+  cloudClinicId: string | null = null;
+  showCloudModal = false;
+  cloudForm = { name: '', city: '' };
+  cloudLoading = false;
 
   constructor(private ngZone: NgZone) { }
 
   ngOnInit() {
+    this.currentUser = this.authService.getUser();
+    if (this.currentUser?.role !== 'admin') {
+      this.router.navigate(['/dashboard']);
+      return;
+    }
     this.loadSettings();
-    this.listBackups();
-    this.loadDoctors();
+
+    if (this.isElectron) {
+      this.listBackups();
+      this.loadCloudStatus();
+    }
+    this.loadUsers();
 
     // Listen for updates
-    if (window.electron.updater) {
+    if (window.electron && window.electron.updater) {
+      // ... existing updater listeners ...
       window.electron.updater.onUpdateAvailable(() => {
         this.ngZone.run(() => this.updateStatus = 'available');
       });
@@ -164,9 +288,67 @@ export class SettingsComponent implements OnInit {
     }
   }
 
+  async loadCloudStatus() {
+    if (!this.isElectron) return;
+    try {
+      const status = await window.electron.cloud.getStatus();
+      this.ngZone.run(() => {
+        this.cloudEnabled = status.enabled;
+        this.cloudClinicId = status.clinicId;
+      });
+    } catch (e) {
+      console.error('Failed to load cloud status', e);
+    }
+  }
+
+  async toggleCloud(event: any) {
+    if (!this.isElectron) return;
+    const enabled = event.target.checked;
+
+    if (enabled && !this.cloudClinicId) {
+      // First time - show modal
+      this.ngZone.run(() => {
+        this.showCloudModal = true;
+        // Revert toggle visually until authed
+        event.target.checked = false;
+      });
+    } else {
+      // Just toggle
+      await window.electron.cloud.toggle(enabled);
+      this.loadCloudStatus();
+    }
+  }
+
+  async submitCloudOnboard() {
+    if (!this.cloudForm.name || !this.cloudForm.city) {
+      alert('Name and City required');
+      return;
+    }
+    this.cloudLoading = true;
+    try {
+      const res = await window.electron.cloud.onboard(this.cloudForm);
+      this.ngZone.run(() => {
+        this.cloudLoading = false;
+        this.showCloudModal = false;
+        if (res.success) {
+          this.cloudEnabled = true;
+          this.cloudClinicId = res.clinicId;
+          alert('Online Booking Enabled!');
+        }
+      });
+    } catch (e) {
+      this.ngZone.run(() => {
+        this.cloudLoading = false;
+        alert('Failed to register. Check internet connection.');
+      });
+    }
+  }
+
+  // ... existing methods (loadSettings, saveSettings, drive...)
+
   async loadSettings() {
     try {
-      const s = await window.electron.db.getSettings();
+      const s = await this.dataService.invoke<any>('getSettings');
       this.ngZone.run(() => {
         if (s) {
           this.settings.clinic_name = s.clinic_name || '';
@@ -177,7 +359,7 @@ export class SettingsComponent implements OnInit {
 
   async saveSettings() {
     try {
-      await window.electron.db.saveSettings(this.settings);
+      await this.dataService.invoke('saveSettings', this.settings);
       this.ngZone.run(() => {
         this.settingsSaved = true;
         setTimeout(() => this.settingsSaved = false, 3000);
@@ -187,6 +369,7 @@ export class SettingsComponent implements OnInit {
 
   // Drive methods
   async connectDrive() {
+    if (!this.isElectron) return;
     this.isLoading = true;
     try {
       const result = await window.electron.drive.authenticate();
@@ -207,6 +390,7 @@ export class SettingsComponent implements OnInit {
   }
 
   async backupNow() {
+    if (!this.isElectron) return;
     this.isBackupLoading = true;
     try {
       const result = await window.electron.drive.backup();
@@ -221,6 +405,7 @@ export class SettingsComponent implements OnInit {
   }
 
   async listBackups() {
+    if (!this.isElectron) return;
     try {
       const files = await window.electron.drive.listBackups();
       this.ngZone.run(() => { this.backups = files; });
@@ -228,6 +413,7 @@ export class SettingsComponent implements OnInit {
   }
 
   async restore(fileId: string) {
+    if (!this.isElectron) return;
     if (!confirm('Warning: Overwrite data?')) return;
     try {
       const result = await window.electron.drive.restore(fileId);
@@ -235,42 +421,6 @@ export class SettingsComponent implements OnInit {
     } catch (e) { alert('Error'); }
   }
 
-  // Doctor Methods
-  async loadDoctors() {
-    try {
-      const docs = await window.electron.db.getDoctors();
-      this.ngZone.run(() => { this.doctors = docs; });
-    } catch (e) { console.error(e); }
-  }
-
-  editDoctor(doc: any) {
-    this.editingDoctor = { ...doc };
-  }
-
-  async saveDoctor() {
-    if (!this.editingDoctor.name) return;
-    try {
-      await window.electron.db.saveDoctor(this.editingDoctor);
-      this.ngZone.run(() => {
-        this.editingDoctor = null;
-        this.loadDoctors();
-      });
-    } catch (e) { console.error(e); }
-  }
-
-  async deleteDoctor(id: number) {
-    if (!confirm('Delete this doctor?')) return;
-    try {
-      await window.electron.db.deleteDoctor(id);
-      this.ngZone.run(() => { this.loadDoctors(); });
-    } catch (e) { console.error(e); }
-  }
-
-  // Updater
-  updateStatus: 'idle' | 'checking' | 'available' | 'downloaded' | 'uptodate' | 'error' = 'idle';
-  downloadProgress = 0;
-  errorMessage = '';
-  appVersion = '0.0.0';
 
   checkForUpdates() {
     this.updateStatus = 'checking';
@@ -291,5 +441,41 @@ export class SettingsComponent implements OnInit {
 
   quitAndInstall() {
     window.electron.updater.quitAndInstall();
+  }
+
+  // User Methods
+  async loadUsers() {
+    try {
+      const users = await this.dataService.invoke<any>('getUsers');
+      this.ngZone.run(() => { this.users = users; });
+    } catch (e) { console.error(e); }
+  }
+
+  editUser(user: any) {
+    this.editingUser = { ...user };
+  }
+
+  async saveUser() {
+    if (!this.editingUser.username || (!this.editingUser.id && !this.editingUser.password)) return;
+    const allowedRoles = ['admin', 'doctor', 'receptionist', 'nurse'];
+    if (!this.editingUser.role || !allowedRoles.includes(this.editingUser.role)) {
+      alert('Invalid Role');
+      return;
+    }
+    try {
+      await this.dataService.invoke<any>('saveUser', this.editingUser);
+      this.ngZone.run(() => {
+        this.editingUser = null;
+        this.loadUsers();
+      });
+    } catch (e) { console.error(e); }
+  }
+
+  async deleteUser(id: any) {
+    if (!confirm('Delete this user?')) return;
+    try {
+      await this.dataService.invoke<any>('deleteUser', id);
+      this.ngZone.run(() => { this.loadUsers(); });
+    } catch (e) { console.error(e); }
   }
 }

@@ -1,0 +1,16 @@
+node_modules
+dist
+build
+release
+.git
+.github
+.vscode
+.agent
+tests
+e2e
+playwright-report
+test-results
+*.log
+*.db
+*.bak
+debug_*.js

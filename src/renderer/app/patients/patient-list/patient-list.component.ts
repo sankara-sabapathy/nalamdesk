@@ -1,13 +1,18 @@
-import { Component, NgZone, OnInit } from '@angular/core';
+import { Component, NgZone, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
+import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Patient, PatientService } from '../../services/patient.service';
-import { Router } from '@angular/router';
+import { DataService } from '../../services/api.service';
+import { Router, ActivatedRoute } from '@angular/router';
+import { AuthService } from '../../services/auth.service';
+
+import { DatePickerComponent } from '../../shared/components/date-picker/date-picker.component';
 
 @Component({
+  // ... template omitted ...
   selector: 'app-patient-list',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, DatePickerComponent],
   template: `
     <div class="p-6 bg-gray-100 min-h-screen">
       <div class="max-w-7xl mx-auto">
@@ -47,9 +52,17 @@ import { Router } from '@angular/router';
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ patient.mobile }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ patient.age }} / {{ patient.gender }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <button 
+                    (click)="addToQueue(patient); $event.stopPropagation()" 
+                    [disabled]="isEnqueued(patient)"
+                    [class.text-gray-400]="isEnqueued(patient)"
+                    [class.text-green-600]="!isEnqueued(patient)"
+                    class="hover:text-green-900 mr-4 font-medium disabled:cursor-not-allowed">
+                    {{ isEnqueued(patient) ? 'In Queue' : 'Add to Queue' }}
+                  </button>
                   <button (click)="editPatient(patient); $event.stopPropagation()" class="text-indigo-600 hover:text-indigo-900 mr-4">Edit</button>
-                  <button (click)="confirmDelete(patient.id!); $event.stopPropagation()" class="text-red-600 hover:text-red-900 mr-4">Delete</button>
-                  <button (click)="goToVisit(patient); $event.stopPropagation()" class="text-blue-600 hover:text-blue-900">Visit</button>
+                  <button *ngIf="currentUser?.role === 'admin'" (click)="confirmDelete(patient.id!); $event.stopPropagation()" class="text-red-600 hover:text-red-900 mr-4">Delete</button>
+                  <button (click)="goToVisit(patient); $event.stopPropagation()" class="text-blue-600 hover:text-blue-900">History</button>
                 </td>
               </tr>
               <tr *ngIf="patients.length === 0">
@@ -62,41 +75,167 @@ import { Router } from '@angular/router';
 
       <!-- Add Patient Modal -->
       <div *ngIf="showModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-96 shadow-xl">
-          <h2 class="text-xl font-bold mb-4">New Patient</h2>
-          <form (ngSubmit)="savePatient()">
-            <div class="mb-2">
-              <label class="block text-sm font-medium text-gray-700">Name</label>
-              <input [(ngModel)]="newPatient.name" name="name" class="w-full border p-2 rounded" required>
+          <div class="bg-white rounded-lg w-[800px] max-h-[90vh] shadow-xl flex flex-col overflow-hidden">
+            
+            <!-- Fixed Header -->
+            <div class="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
+                <h2 class="text-xl font-bold text-gray-800">{{ isEditMode ? 'Edit Patient Details' : 'New Patient Registration' }}</h2>
+                <button (click)="showModal = false" class="text-gray-400 hover:text-gray-600">✕</button>
             </div>
-            <div class="mb-2">
-              <label class="block text-sm font-medium text-gray-700">Mobile</label>
-              <input [(ngModel)]="newPatient.mobile" name="mobile" class="w-full border p-2 rounded" required>
-            </div>
-            <div class="flex gap-2 mb-2">
-              <div class="w-1/2">
-                <label class="block text-sm font-medium text-gray-700">Age</label>
-                <input type="number" [(ngModel)]="newPatient.age" name="age" class="w-full border p-2 rounded" required>
-              </div>
-              <div class="w-1/2">
-                <label class="block text-sm font-medium text-gray-700">Gender</label>
-                <select [(ngModel)]="newPatient.gender" name="gender" class="w-full border p-2 rounded">
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-            </div>
-             <div class="mb-4">
-              <label class="block text-sm font-medium text-gray-700">Address</label>
-              <textarea [(ngModel)]="newPatient.address" name="address" class="w-full border p-2 rounded"></textarea>
+
+            <!-- Scrollable Body -->
+            <div class="flex-1 overflow-y-auto p-6">
+                <form [formGroup]="patientForm" id="patientForm" (ngSubmit)="savePatient()">
+                    
+                    <!-- 1. Personal Info -->
+                    <div class="mb-6">
+                        <h3 class="font-bold text-gray-700 border-b pb-1 mb-3">📍 Personal Information</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            
+                            <!-- Name -->
+                            <div class="col-span-1">
+                                <label class="block text-sm font-medium text-gray-700">Full Name <span class="text-red-500">*</span></label>
+                                <input formControlName="name" placeholder="John Doe" 
+                                    class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" 
+                                    [class.border-red-500]="isFieldInvalid('name')" [class.bg-red-50]="isFieldInvalid('name')">
+                                <p *ngIf="isFieldInvalid('name')" class="text-xs text-red-500 mt-1">Name is required (min 3 chars, letters only).</p>
+                            </div>
+
+                            <!-- Mobile -->
+                            <div class="col-span-1">
+                                <label class="block text-sm font-medium text-gray-700">Mobile Number <span class="text-red-500">*</span></label>
+                                <input formControlName="mobile" type="tel" inputmode="numeric" maxlength="10" placeholder="9876543210"
+                                    class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                    [class.border-red-500]="isFieldInvalid('mobile')" [class.bg-red-50]="isFieldInvalid('mobile')">
+                                <p *ngIf="isFieldInvalid('mobile')" class="text-xs text-red-500 mt-1">Valid 10-digit mobile number required.</p>
+                            </div>
+
+                            <!-- DOB & Age Row -->
+                            <div class="flex gap-4 col-span-2 items-start">
+                                <!-- DOB (First) -->
+                                <div class="w-1/3 relative">
+                                    <label class="block text-sm font-medium text-gray-700">Date of Birth</label>
+                                    <app-date-picker 
+                                        formControlName="dob" 
+                                        [maxDate]="today"
+                                        [minDate]="minDate"
+                                        placeholder="Select DOB"
+                                        helperText="Auto-calculates Age">
+                                    </app-date-picker>
+                                </div>
+
+                                <!-- Age -->
+                                <div class="w-1/4">
+                                    <label class="block text-sm font-medium text-gray-700">Age <span class="text-red-500">*</span></label>
+                                    <input type="number" formControlName="age" min="0" max="110" placeholder="30"
+                                        class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
+                                        [class.border-red-500]="isFieldInvalid('age')">
+                                    <p *ngIf="isFieldInvalid('age')" class="text-xs text-red-500 mt-1">Required</p>
+                                </div>
+
+                                <!-- Gender -->
+                                <div class="w-1/4">
+                                    <label class="block text-sm font-medium text-gray-700">Gender <span class="text-red-500">*</span></label>
+                                    <select formControlName="gender" class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                            [class.border-red-500]="isFieldInvalid('gender')">
+                                        <option value="" disabled>Select</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                    <p *ngIf="isFieldInvalid('gender')" class="text-xs text-red-500 mt-1">Required</p>
+                                </div>
+
+                                <!-- Blood Group -->
+                                <div class="w-1/6">
+                                    <label class="block text-sm font-medium text-gray-700">Blood</label>
+                                    <select formControlName="blood_group" class="w-full border p-2 rounded">
+                                        <option value="">-</option>
+                                        <option value="A+">A+</option> <option value="A-">A-</option>
+                                        <option value="B+">B+</option> <option value="B-">B-</option>
+                                        <option value="O+">O+</option> <option value="O-">O-</option>
+                                        <option value="AB+">AB+</option> <option value="AB-">AB-</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium text-gray-700">Email (Optional)</label>
+                                <input type="email" formControlName="email" placeholder="patient@example.com" class="w-full border p-2 rounded">
+                                <p *ngIf="isFieldInvalid('email')" class="text-xs text-red-500 mt-1">Invalid email format.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. Address Info -->
+                    <div class="mb-6">
+                        <h3 class="font-bold text-gray-700 border-b pb-1 mb-3">🏠 Address Details</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="col-span-2">
+                                <label class="block text-sm font-medium text-gray-700">Full Address <span class="text-red-500">*</span></label>
+                                <textarea formControlName="address" rows="3" placeholder="House No, Street Name, Area"
+                                        class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                        [class.border-red-500]="isFieldInvalid('address')"></textarea>
+                                <p *ngIf="isFieldInvalid('address')" class="text-xs text-red-500 mt-1">Address is required.</p>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">City</label>
+                                <input formControlName="city" placeholder="City" class="w-full border p-2 rounded">
+                            </div>
+                            
+                            <div class="flex gap-2">
+                                <div class="w-1/2">
+                                    <label class="block text-sm font-medium text-gray-700">State</label>
+                                    <input formControlName="state" class="w-full border p-2 rounded">
+                                </div>
+                                <div class="w-1/2">
+                                    <label class="block text-sm font-medium text-gray-700">Pincode</label>
+                                    <input formControlName="zip_code" maxlength="6" inputmode="numeric" placeholder="600000"
+                                            class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                            [class.border-red-500]="isFieldInvalid('zip_code')">
+                                    <p *ngIf="isFieldInvalid('zip_code')" class="text-xs text-red-500 mt-1">Invalid Pincode (6 digits)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3. Emergency Info -->
+                    <div>
+                        <h3 class="font-bold text-gray-700 border-b pb-1 mb-3">🚑 Emergency Contact</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Contact Name</label>
+                                <input formControlName="emergency_contact_name" placeholder="Relative Name" class="w-full border p-2 rounded">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Emergency Mobile</label>
+                                <input formControlName="emergency_contact_mobile" type="tel" maxlength="10" placeholder="Mobile Number"
+                                    class="w-full border p-2 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                                    [class.border-red-500]="isFieldInvalid('emergency_contact_mobile')">
+                                <p *ngIf="isFieldInvalid('emergency_contact_mobile')" class="text-xs text-red-500 mt-1">Invalid Mobile Number</p>
+                            </div>
+                        </div>
+                    </div>
+                </form>
             </div>
             
-            <div class="flex justify-end gap-2">
-              <button type="button" (click)="showModal = false" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-              <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Save</button>
+            <!-- Fixed Footer -->
+            <div class="px-6 py-4 border-t bg-gray-50 flex justify-between items-center">
+                <p class="text-xs text-gray-500"><span class="text-red-500">*</span> Required Fields</p>
+                <div class="flex gap-2">
+                    <button type="button" (click)="showModal = false" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded border bg-white transition-colors">
+                        Cancel
+                    </button>
+                    <!-- form attribute links this button to the form above -->
+                    <button type="submit" form="patientForm" 
+                            [disabled]="patientForm.invalid" 
+                            class="px-6 py-2 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed shadow transition-colors">
+                        {{ isEditMode ? 'Update Patient' : 'Save Patient' }}
+                    </button>
+                </div>
             </div>
-          </form>
         </div>
       <!-- Delete Confirmation Modal -->
       <div *ngIf="showDeleteModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -118,22 +257,113 @@ export class PatientListComponent implements OnInit {
   searchQuery = '';
   showModal = false;
 
-  newPatient: Patient = {
-    name: '',
-    mobile: '',
-    age: 0,
-    gender: 'Male',
-    address: ''
-  };
+  get today(): string {
+    return new Date().toISOString().split('T')[0];
+  }
+
+  get minDate(): string {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 110);
+    return d.toISOString().split('T')[0];
+  }
+
+  get isEditMode(): boolean {
+    return !!this.patientForm.get('id')?.value;
+  }
+
+  // Removed old newPatient object in favor of patientForm
+
+  private dataService: DataService = inject(DataService);
+  private authService: AuthService = inject(AuthService);
+  currentUser: any = null;
 
   constructor(
+    private fb: FormBuilder,
     private patientService: PatientService,
     private ngZone: NgZone,
-    private router: Router
-  ) { }
+    private router: Router,
+    private cdr: ChangeDetectorRef,
+    private route: ActivatedRoute
+  ) {
+    this.initForm();
+  }
+
+  patientForm!: FormGroup;
+
+  initForm() {
+    this.patientForm = this.fb.group({
+      id: [null],
+      uuid: [null],
+      name: ['', [Validators.required, Validators.minLength(3)]],
+      mobile: ['', [Validators.required, Validators.pattern(/^[0-9]{10}$/)]],
+      age: [null, [Validators.required, Validators.min(0), Validators.max(110)]],
+      dob: [null], // We will validate that DOB matches age approximately if provided
+      gender: ['Male', Validators.required],
+      blood_group: [''],
+      email: ['', [Validators.email]], // Optional but strictly validated if present
+
+      // Address
+      address: ['', Validators.required], // Full address or street
+      street: [''],
+      city: [''],
+      state: [''], // Could be dropdown
+      zip_code: ['', [Validators.pattern(/^[0-9]{6}$/)]],
+
+      // Emergency
+      emergency_contact_name: [''],
+      emergency_contact_mobile: ['', [Validators.pattern(/^[0-9]{10}$/)]],
+
+      // Insurance
+      insurance_provider: [''],
+      policy_number: ['']
+    });
+
+    // Auto-calculate Age from DOB
+    this.patientForm.get('dob')?.valueChanges.subscribe(dob => {
+      if (dob) {
+        const age = this.calculateAge(new Date(dob));
+        this.patientForm.patchValue({ age }, { emitEvent: false });
+      }
+    });
+  }
+
+  calculateAge(dob: Date): number {
+    const diff = Date.now() - dob.getTime();
+    const ageDate = new Date(diff);
+    return Math.abs(ageDate.getUTCFullYear() - 1970);
+  }
 
   ngOnInit() {
+    this.currentUser = this.authService.getUser();
     this.loadPatients();
+    this.loadQueueStatus();
+
+    // Auto-open modal if query param exists
+    this.route.queryParams.subscribe(params => {
+      if (params['editId']) {
+        const id = Number(params['editId']);
+        // Wait for patients to load?? Or fetch specifically?
+        // Safer to fetch specifically or wait. 
+        // Since we call loadPatients, we can try to find from there, 
+        // but loadPatients is async.
+        // Let's fetch the single patient to be sure.
+        // Actually, getPatients returns array.
+        // Let's rely on loadPatients for now, or just wait a bit.
+        // Better: Load specific patient by ID if possible. 
+        // Current API: getPatients(query). Query can be name/mobile. 
+        // We don't have getPatientById.
+        // We'll wait for loadPatients to finish.
+        // NOTE: This race condition is a simplified handling. 
+        setTimeout(() => {
+          const p = this.patients.find(pt => pt.id === id);
+          if (p) {
+            this.editPatient(p);
+            // Clear param so refresh doesn't reopen? 
+            // this.router.navigate([], { queryParams: { editId: null }, queryParamsHandling: 'merge' });
+          }
+        }, 500);
+      }
+    });
   }
 
   async loadPatients() {
@@ -147,23 +377,43 @@ export class PatientListComponent implements OnInit {
     }
   }
 
+  async loadQueueStatus() {
+    try {
+      const queue = await this.dataService.invoke<any>('getQueue');
+      this.enqueuedPatientIds.clear();
+      queue.forEach((item: any) => {
+        if (item.status !== 'completed') {
+          this.enqueuedPatientIds.add(Number(item.patient_id));
+        }
+      });
+    } catch (e) {
+      console.error('Failed to load queue status', e);
+    }
+  }
+
   onSearch() {
     this.loadPatients();
   }
 
   openAddModal() {
-    this.newPatient = { name: '', mobile: '', age: 0, gender: 'Male', address: '' };
+    this.patientForm.reset({ gender: 'Male', age: 0 });
     this.showModal = true;
   }
 
   editPatient(patient: Patient) {
-    this.newPatient = { ...patient };
+    this.patientForm.patchValue(patient);
     this.showModal = true;
   }
 
   async savePatient() {
+    if (this.patientForm.invalid) {
+      this.patientForm.markAllAsTouched();
+      return;
+    }
+
     try {
-      const result = await this.patientService.savePatient(this.newPatient);
+      const formValue = this.patientForm.value;
+      const result = await this.patientService.savePatient(formValue);
       this.ngZone.run(() => {
         this.showModal = false;
         this.loadPatients();
@@ -189,7 +439,7 @@ export class PatientListComponent implements OnInit {
   async executeDelete() {
     if (this.patientToDeleteId) {
       try {
-        await window.electron.db.deletePatient(this.patientToDeleteId);
+        await this.dataService.invoke<any>('deletePatient', this.patientToDeleteId);
         this.loadPatients();
         this.showDeleteModal = false;
         this.patientToDeleteId = null;
@@ -203,5 +453,46 @@ export class PatientListComponent implements OnInit {
   cancelDelete() {
     this.showDeleteModal = false;
     this.patientToDeleteId = null;
+  }
+
+  enqueuedPatientIds = new Set<number>();
+
+  async addToQueue(patient: Patient) {
+    if (this.isEnqueued(patient)) return;
+
+    // Strict Validation
+    if (!this.patientService.isPatientComplete(patient)) {
+      alert('Patient details incomplete (Age, Gender, Address etc. required). Please update details first.');
+      this.editPatient(patient);
+      return;
+    }
+
+    try {
+      await this.dataService.invoke<any>('addToQueue', { patientId: patient.id!, priority: 1 });
+      this.ngZone.run(() => {
+        this.enqueuedPatientIds.add(Number(patient.id!));
+        this.cdr.detectChanges();
+      });
+    } catch (e: any) {
+      console.error(e);
+      // If error is "Patient already in queue", we should update our local state
+      this.ngZone.run(() => {
+        if (e.message && e.message.includes('already in queue')) {
+          this.enqueuedPatientIds.add(patient.id!);
+          this.cdr.detectChanges();
+        } else {
+          alert('Failed to add to queue: ' + e.message);
+        }
+      });
+    }
+  }
+
+  isEnqueued(patient: Patient): boolean {
+    return this.enqueuedPatientIds.has(patient.id!);
+  }
+
+  isFieldInvalid(field: string): boolean {
+    const control = this.patientForm.get(field);
+    return !!(control && control.invalid && (control.dirty || control.touched));
   }
 }

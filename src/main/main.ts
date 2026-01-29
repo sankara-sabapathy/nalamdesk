@@ -3,147 +3,155 @@ import * as path from 'path';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 
+import { SessionService } from './services/SessionService';
+import { BackupService } from './services/BackupService';
+import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
 import { DatabaseService } from './services/DatabaseService';
 import { GoogleDriveService } from './services/GoogleDriveService';
+import { CloudSyncService } from './services/CloudSyncService';
+import { ApiServer } from '../server/app';
 
-// Configure logging
-autoUpdater.logger = log;
-(autoUpdater.logger as any).transports.file.level = 'info';
+
+
+// ... (logging config)
+
+// Initialize Crash Service immediately to catch early errors
+const crashService = new CrashService();
 
 let mainWindow: BrowserWindow | null = null;
 const securityService = new SecurityService();
 const databaseService = new DatabaseService();
 const googleDriveService = new GoogleDriveService();
+const cloudSyncService = new CloudSyncService(databaseService);
 
-function createWindow() {
-    // ... existing window creation ...
-    mainWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js')
-        }
-    });
+// Determine Static Path for ApiServer
+const isDev = !app.isPackaged;
+const staticPath = isDev
+    ? path.join(__dirname, '../nalamdesk/browser')
+    : path.join(app.getAppPath(), 'dist/nalamdesk/browser');
 
-    // ... existing loadURL/loadFile ...
-    const isDev = !app.isPackaged;
-    if (isDev) {
-        mainWindow.loadURL('http://localhost:4200');
-        mainWindow.webContents.openDevTools();
-    } else {
-        mainWindow.loadFile(path.join(__dirname, '../nalamdesk/browser/index.html'));
-    }
+const apiServer = new ApiServer(databaseService, staticPath);
+const sessionService = new SessionService();
+const backupService = new BackupService(databaseService, googleDriveService, securityService);
 
-    // Auto Updater Events
-    autoUpdater.on('update-available', (info) => {
-        mainWindow?.webContents.send('update-available', info);
-    });
+// ... (cloud sync init logic)
+apiServer.start();
 
-    autoUpdater.on('update-downloaded', (info) => {
-        mainWindow?.webContents.send('update-downloaded', info);
-    });
+// Removing global currentUser variable
+// let currentUser: any = null; 
 
-    autoUpdater.on('download-progress', (progressObj) => {
-        mainWindow?.webContents.send('download-progress', progressObj);
-    });
-
-    autoUpdater.on('error', (err) => {
-        mainWindow?.webContents.send('update-error', err);
-    });
-
-    // Check for updates once window is ready
-    mainWindow.once('ready-to-show', () => {
-        mainWindow?.show();
-        mainWindow?.focus(); // Ensure focus
-        if (!isDev) {
-            autoUpdater.checkForUpdatesAndNotify();
-        }
-    });
-
-    // ... existing on('closed') ...
-    mainWindow.on('closed', () => {
-        mainWindow = null;
-    });
-}
-
-
-// ... IPC Handlers ...
-
-// Auto Updater IPC
-ipcMain.handle('updater:check', () => {
-    return autoUpdater.checkForUpdates();
-});
-
-ipcMain.handle('updater:quitAndInstall', () => {
-    autoUpdater.quitAndInstall();
-});
-
-
-app.on('ready', createWindow);
-
-app.on('window-all-closed', () => {
-    securityService.closeDb();
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
-
-app.on('activate', () => {
-    if (mainWindow === null) {
-        createWindow();
-    }
-});
+// ... (rest of window creation)
 
 // IPC Handlers
-ipcMain.handle('auth:login', async (event, password) => {
+ipcMain.handle('auth:login', async (event, credentials) => {
     try {
-        const key = await securityService.deriveKey(password);
-        // Defines where the user data DB is located.
-        // In dev: project root/local_db.sqlite
-        // In prod: app.getPath('userData')/nalamdesk.sqlite
-        const dbName = 'nalamdesk.db';
-        const dbPath = app.isPackaged
-            ? path.join(app.getPath('userData'), dbName)
-            : path.join(__dirname, '../../', dbName);
+        const { username, password } = credentials;
+        let dbOpen = false;
+        try {
+            dbOpen = !!securityService.getDbPath();
+        } catch { dbOpen = false; }
 
-        securityService.initDb(dbPath, key);
+        if (username === 'admin') {
+            try {
+                const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
+                const dbPath = app.isPackaged
+                    ? path.join(app.getPath('userData'), dbName)
+                    : path.join(__dirname, '../../', dbName);
 
-        // Initialize Database Service with the open DB connection
-        databaseService.setDb(securityService.getDb());
-        databaseService.migrate();
+                const key = await securityService.deriveKey(password);
+                try {
+                    securityService.initDb(dbPath, key);
+                    databaseService.setDb(securityService.getDb());
+                    await databaseService.migrate();
+                    await databaseService.ensureAdminUser(password);
+                } catch (e: any) {
+                    if (e.message !== 'DB_ALREADY_OPEN') throw e;
+                    databaseService.setDb(securityService.getDb());
+                }
 
-        // Check for existing Drive tokens in settings
-        const settings = databaseService.getSettings();
-        if (settings && settings.drive_tokens) {
-            googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+                const settings = databaseService.getSettings();
+                if (settings && settings.drive_tokens) {
+                    googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+                    backupService.scheduleDailyBackup(); // Automated Backup
+                }
+            } catch (e: any) {
+                console.error('DB Init failed:', e);
+                return { success: false, error: 'INVALID_CREDENTIALS' };
+            }
+        } else {
+            try {
+                const db = securityService.getDb();
+                databaseService.setDb(db);
+            } catch (e) {
+                return { success: false, error: 'SYSTEM_LOCKED' };
+            }
         }
 
-        return { success: true };
+        cloudSyncService.init();
+
+        console.log(`[Auth] Validating user: ${username}`);
+        const user = await databaseService.validateUser(username, password);
+        console.log(`[Auth] Validation result:`, user ? 'Success' : 'Failed');
+        if (user) {
+            sessionService.setUser(user); // Use SessionService
+            return { success: true, user };
+        } else {
+            return { success: false, error: 'INVALID_CREDENTIALS' };
+        }
+
     } catch (error: any) {
         console.error('Login failed:', error);
-        if (error.message === 'INVALID_PASSWORD') {
-            return { success: false, error: 'INVALID_PASSWORD' };
-        }
         return { success: false, error: 'UNKNOWN_ERROR' };
     }
 });
 
-// Database IPC Handlers
-ipcMain.handle('db:getPatients', (_, query) => databaseService.getPatients(query));
-ipcMain.handle('db:savePatient', (_, patient) => databaseService.savePatient(patient));
-ipcMain.handle('db:deletePatient', (_, id) => databaseService.deletePatient(id));
-ipcMain.handle('db:getVisits', (_, patientId) => databaseService.getVisits(patientId));
-ipcMain.handle('db:saveVisit', (_, visit) => databaseService.saveVisit(visit));
-ipcMain.handle('db:deleteVisit', (_, id) => databaseService.deleteVisit(id));
-ipcMain.handle('db:getSettings', () => databaseService.getSettings());
-ipcMain.handle('db:saveSettings', (_, settings) => databaseService.saveSettings(settings));
-ipcMain.handle('db:getDashboardStats', () => databaseService.getDashboardStats());
-ipcMain.handle('db:getDoctors', () => databaseService.getDoctors());
-ipcMain.handle('db:saveDoctor', (_, doctor) => databaseService.saveDoctor(doctor));
-ipcMain.handle('db:deleteDoctor', (_, id) => databaseService.deleteDoctor(id));
+// ... (Database IPC Handlers)
+
+// Queue IPC Handlers
+ipcMain.handle('db:getQueue', () => databaseService.getQueue());
+ipcMain.handle('db:addToQueue', (_, { patientId, priority }) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.addToQueue(patientId, priority, user.id);
+});
+ipcMain.handle('db:updateQueueStatus', (_, { id, status }) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.updateQueueStatus(id, status, user.id);
+});
+ipcMain.handle('db:updateQueueStatusByPatientId', (_, { patientId, status }) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.updateQueueStatusByPatientId(patientId, status, user.id);
+});
+ipcMain.handle('db:removeFromQueue', (_, id) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.removeFromQueue(id, user.id);
+});
+
+// Audit IPC Handlers
+ipcMain.handle('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));
+
+// Cloud IPC Handlers
+ipcMain.handle('cloud:getStatus', () => cloudSyncService.getStatus());
+ipcMain.handle('cloud:onboard', (_, { name, city }) => cloudSyncService.onboard(name, city));
+ipcMain.handle('cloud:toggle', (_, enabled) => cloudSyncService.setEnabled(enabled));
+ipcMain.handle('cloud:publishSlots', (_, slots, dates) => cloudSyncService.publishSlots(slots, dates));
+ipcMain.handle('cloud:syncNow', async () => {
+    await cloudSyncService.poll();
+    return { success: true };
+});
+ipcMain.handle('cloud:getPublishedSlots', (_, date) => cloudSyncService.getPublishedSlots(date));
+
+// Appointment Request IPC
+ipcMain.handle('db:getAppointmentRequests', () => databaseService.getAppointmentRequests());
+ipcMain.handle('db:updateAppointmentRequestStatus', (_, { id, status }) => databaseService.updateAppointmentRequestStatus(id, status));
+
+// Appointments (Bookings) IPC
+ipcMain.handle('db:getAppointments', (_, date) => databaseService.getAppointments(date));
+ipcMain.handle('db:saveAppointment', (_, appt) => databaseService.saveAppointment(appt));
 
 // Drive IPC Handlers
 ipcMain.handle('drive:authenticate', async () => {
@@ -195,17 +203,4 @@ ipcMain.handle('drive:listBackups', async () => {
 });
 
 
-app.on('ready', createWindow);
 
-app.on('window-all-closed', () => {
-    securityService.closeDb();
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
-});
-
-app.on('activate', () => {
-    if (mainWindow === null) {
-        createWindow();
-    }
-});

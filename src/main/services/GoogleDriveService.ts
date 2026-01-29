@@ -33,6 +33,10 @@ export class GoogleDriveService {
         return this.tokens;
     }
 
+    isAuthenticated(): boolean {
+        return !!this.tokens;
+    }
+
     async authenticate(mainWindow: BrowserWindow): Promise<boolean> {
         return new Promise((resolve, reject) => {
             const authUrl = this.oauth2Client.generateAuthUrl({

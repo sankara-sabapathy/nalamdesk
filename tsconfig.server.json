@@ -1,0 +1,21 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "outDir": "./dist/server",
+        "module": "commonjs",
+        "target": "es2020",
+        "types": [
+            "node"
+        ]
+    },
+    "include": [
+        "src/server/**/*.ts",
+        "src/main/services/**/*.ts",
+        "src/main/schema/**/*.ts"
+    ],
+    "exclude": [
+        "src/main/main.ts",
+        "src/main/preload.ts",
+        "**/*.spec.ts"
+    ]
+}
