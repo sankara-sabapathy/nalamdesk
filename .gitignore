@@ -8,8 +8,6 @@ bazel-out/
 
 # Node
 node_modules/
-npm-debug.log
-yarn-error.log
 
 # IDEs and editors
 .idea/
@@ -52,7 +50,7 @@ output.txt
 *.db-shm
 *.db-wal
 /data
-nalamdesk.db
+
 
 # Test reports and artifacts
 /playwright-report
@@ -73,6 +71,5 @@ get_db_key.js
 
 # Crash Reports and Backups
 nalamdesk-crash-report-*.json
-nalamdesk-backup-*.db
 *.bak
 test-results*.json

@@ -60,7 +60,7 @@ New enterprise features have been integrated into the Main process:
 ### Quick Start
 ```bash
 # 1. Clone
-git clone https://github.com/yourusername/nalamdesk.git
+git clone https://github.com/sankara-sabapathy/nalamdesk.git
 cd nalamdesk
 
 # 2. Install
@@ -79,7 +79,7 @@ npm start
 *   `src/server`: **NEW** Shared Server Core (Fastify). Runs in both Electron and Cloud.
 *   `infrastructure/`: Terraform scripts for AWS Lightsail.
 *   `.github/workflows`: CI/CD pipelines.
-*   `web/`: (Legacy/Reference) Old cloud server code.
+*   `web/`: **Web Booking App** (Angular Standalone). Contains the frontend components (booking modal, home) for the Cloud interface.
 *   `scripts/`: Utility scripts.
 
 ---
