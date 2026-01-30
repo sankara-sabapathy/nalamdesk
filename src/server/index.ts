@@ -1,7 +1,7 @@
 
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import Database from 'better-sqlite3';
+import Database from 'better-sqlite3-multiple-ciphers';
 
 // Load Env
 dotenv.config();

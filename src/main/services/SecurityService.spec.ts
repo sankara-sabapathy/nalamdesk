@@ -7,7 +7,7 @@ vi.mock('argon2', () => ({
     argon2id: 2
 }));
 
-// Mock better-sqlite3
+// Mock better-sqlite3-multiple-ciphers (used in app)
 const mockPragma = vi.fn();
 const mockPrepare = vi.fn();
 const mockGet = vi.fn();

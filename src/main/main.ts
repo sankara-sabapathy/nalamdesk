@@ -28,8 +28,15 @@ const cloudSyncService = new CloudSyncService(databaseService);
 // Determine Static Path for ApiServer
 const isDev = !app.isPackaged;
 const staticPath = isDev
-    ? path.join(__dirname, '../nalamdesk/browser')
+    ? path.join(__dirname, '../../nalamdesk/browser')
     : path.join(app.getAppPath(), 'dist/nalamdesk/browser');
+
+// Ensure static path exists (crucial for Dev mode if not built)
+const fs = require('fs');
+if (!fs.existsSync(staticPath)) {
+    console.log(`[Main] Creating missing static path: ${staticPath}`);
+    fs.mkdirSync(staticPath, { recursive: true });
+}
 
 const apiServer = new ApiServer(databaseService, staticPath);
 const sessionService = new SessionService();
@@ -37,12 +44,56 @@ const backupService = new BackupService(databaseService, googleDriveService, sec
 
 // ... (cloud sync init logic)
 // DB init happens via IPC. ApiServer will report 503 if DB not ready (guarded in handler).
-apiServer.start();
+// ... (cloud sync init logic)
+console.log('[Main] Starting ApiServer...');
+try {
+    apiServer.start(); // Fire and forget (it logs its own success)
+    console.log('[Main] ApiServer start command issued.');
+} catch (e) {
+    console.error('[Main] ApiServer failed to start immediately:', e);
+}
 
 // Removing global currentUser variable
 // let currentUser: any = null; 
 
 // ... (rest of window creation)
+
+async function createWindow() {
+    console.log('[Main] createWindow called');
+    try {
+        mainWindow = new BrowserWindow({
+            width: 1280,
+            height: 800,
+            webPreferences: {
+                nodeIntegration: true,
+                contextIsolation: true,
+                preload: path.join(__dirname, 'preload.js'),
+            },
+        });
+        console.log('[Main] BrowserWindow created');
+
+        if (isDev) {
+            console.log('[Main] Loading URL: http://localhost:4200');
+            await mainWindow.loadURL('http://localhost:4200');
+            console.log('[Main] URL loaded');
+        } else {
+            console.log(`[Main] Loading File: ${path.join(staticPath, 'index.html')}`);
+            await mainWindow.loadFile(path.join(staticPath, 'index.html'));
+            console.log('[Main] File loaded');
+        }
+    } catch (e) {
+        console.error('[Main] createWindow error:', e);
+    }
+}
+
+app.whenReady().then(() => {
+    console.log('[Main] app.whenReady fired');
+    createWindow();
+
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+});
 
 // IPC Handlers
 ipcMain.handle('auth:login', async (event, credentials) => {
@@ -58,7 +109,7 @@ ipcMain.handle('auth:login', async (event, credentials) => {
                 const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
                 const dbPath = app.isPackaged
                     ? path.join(app.getPath('userData'), dbName)
-                    : path.join(__dirname, '../../', dbName);
+                    : path.join(__dirname, '../../../', dbName);
 
                 const key = await securityService.deriveKey(password);
                 try {

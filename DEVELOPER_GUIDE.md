@@ -66,8 +66,7 @@ cd nalamdesk
 # 2. Install
 npm install
 
-# 3. Use Developer Mode (Rebuilds native deps for current OS)
-npm run rebuild:electron
+
 
 # 4. Start (Runs Angular + Electron concurrently)
 npm start
@@ -80,7 +79,7 @@ npm start
 *   `infrastructure/`: Terraform scripts for AWS Lightsail.
 *   `.github/workflows`: CI/CD pipelines.
 *   `web/`: **Web Booking App** (Angular Standalone). Contains the frontend components (booking modal, home) for the Cloud interface.
-*   `scripts/`: Utility scripts.
+
 
 ---
 
