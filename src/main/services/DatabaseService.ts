@@ -157,10 +157,17 @@ export class DatabaseService {
     }
 
     getAllRoles() {
-        return this.db.prepare('SELECT * FROM roles').all().map((r: any) => ({
-            name: r.name,
-            permissions: JSON.parse(r.permissions)
-        }));
+        return this.db.prepare('SELECT * FROM roles').all().map((r: any) => {
+            try {
+                return {
+                    name: r.name,
+                    permissions: JSON.parse(r.permissions)
+                };
+            } catch (e) {
+                console.warn(`[DB] Failed to parse permissions for role ${r.name}`, e);
+                return { name: r.name, permissions: [] };
+            }
+        });
     }
 
     saveRole(name: string, permissions: string[]) {
@@ -171,18 +178,35 @@ export class DatabaseService {
     saveSettings(settings: any) {
         // ... (existing code)
         const existing = this.getSettings();
+
+        // Allowed columns whitelist to prevent SQL injection
+        const ALLOWED_COLUMNS = [
+            'clinic_name', 'doctor_name', 'logo_path', 'license_key',
+            'drive_tokens', 'cloud_clinic_id', 'cloud_api_key', 'cloud_enabled'
+        ];
+
+        // Filter incoming settings to only allowed columns
+        const validKeys = Object.keys(settings).filter(k => ALLOWED_COLUMNS.includes(k));
+
+        if (validKeys.length === 0) return; // Nothing to update/insert
+
         if (existing) {
-            // Build dynamic update query to allow partial updates
-            const keys = Object.keys(settings);
-            if (keys.length === 0) return;
-            const setClause = keys.map(k => `${k} = @${k} `).join(', ');
-            this.db.prepare(`UPDATE settings SET ${setClause} `).run(settings);
+            // Build dynamic update query using whitelisted keys
+            const setClause = validKeys.map(k => `${k} = @${k}`).join(', ');
+            // We must pass only the valid properties to .run() to match the placeholders
+            const params: any = {};
+            validKeys.forEach(k => params[k] = settings[k]);
+
+            this.db.prepare(`UPDATE settings SET ${setClause}`).run(params);
         } else {
             // First insert
-            const keys = Object.keys(settings);
-            const placeholders = keys.map(k => `@${k} `).join(', ');
-            const cols = keys.join(', ');
-            this.db.prepare(`INSERT INTO settings(${cols}) VALUES(${placeholders})`).run(settings);
+            const placeholders = validKeys.map(k => `@${k}`).join(', ');
+            const cols = validKeys.join(', ');
+
+            const params: any = {};
+            validKeys.forEach(k => params[k] = settings[k]);
+
+            this.db.prepare(`INSERT INTO settings(${cols}) VALUES(${placeholders})`).run(params);
         }
     }
 
@@ -454,10 +478,8 @@ export class DatabaseService {
 
     // Appointment Requests
     getAppointmentRequests() {
-        // Debug: Return ALL requests to see if status is wrong
         const reqs = this.db.prepare("SELECT * FROM appointment_requests ORDER BY created_at DESC").all();
-        console.log('[DB] getAppointmentRequests (ALL):', reqs.length);
-        if (reqs.length > 0) console.log('Sample:', reqs[0]);
+        // Removed debug logs to prevent leak
         return reqs;
     }
 
