@@ -1,3 +1,5 @@
+import * as crypto from 'crypto';
+
 export interface UserSession {
     id: number;
     username: string;
@@ -5,13 +7,20 @@ export interface UserSession {
     name: string;
     specialty?: string;
     license_number?: string;
+    sessionId?: string;
 }
 
 export class SessionService {
     private currentUser: UserSession | null = null;
 
     setUser(user: UserSession) {
-        this.currentUser = user;
+        if (user == null || user.id == null || typeof user.id !== 'number' || !user.username || !user.role || !user.name) {
+            throw new Error('Invalid user session data');
+        }
+        this.currentUser = {
+            ...user,
+            sessionId: crypto.randomUUID()
+        };
     }
 
     getUser(): UserSession | null {

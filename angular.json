@@ -84,7 +84,7 @@
               "src/renderer/assets"
             ],
             "styles": [
-              "src/renderer/styles.css"
+              "src/styles.css"
             ],
             "scripts": []
           }

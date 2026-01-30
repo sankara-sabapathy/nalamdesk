@@ -44,7 +44,13 @@ server.get('/health', async (request, reply) => {
 
 const start = async () => {
     try {
-        const port = parseInt(process.env.PORT || '3001');
+        const rawPort = process.env.PORT || '3001';
+        const port = parseInt(rawPort, 10);
+
+        if (Number.isNaN(port) || port <= 0 || port > 65535) {
+            throw new Error(`Invalid PORT: ${rawPort}`);
+        }
+
         await server.listen({ port, host: '0.0.0.0' });
     } catch (err) {
         server.log.error(err);

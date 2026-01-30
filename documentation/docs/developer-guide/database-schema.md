@@ -12,7 +12,7 @@ Stores credentials and profile information for all system users (Doctors, Staff,
 | Column | Type | Description |
 | :--- | :--- | :--- |
 | `id` | INTEGER PK | Auto-incrementing ID. |
-| `username` | TEXT UNIQUE | login username. |
+| `username` | TEXT UNIQUE | Login username. |
 | `password` | TEXT | Argon2 Hash of the password. |
 | `role` | TEXT | `admin`, `doctor`, `receptionist`, `nurse`. |
 | `name` | TEXT | Display name. |
@@ -29,7 +29,7 @@ Core patient registry.
 | `uuid` | TEXT UNIQUE | System-generated UUID for syncing. |
 | `name` | TEXT | Patient Name. |
 | `mobile` | TEXT | Contact Number. |
-| `age` | INTEGER | Age in years. |
+| `date_of_birth` | DATE | Date of Birth (ISO format YYYY-MM-DD). Age is calculated dynamically. |
 | `gender` | TEXT | `Male`, `Female`, `Other`. |
 | `address` | TEXT | Residential address. |
 
@@ -44,7 +44,7 @@ Records clinical encounters.
 | `date` | DATETIME | Timestamp of the visit. |
 | `diagnosis` | TEXT | Medical diagnosis notes. |
 | `prescription_json` | TEXT | JSON string array of medicines. |
-| `amount_paid` | REAL | Consultation fee collected. |
+| `amount_paid` | NUMERIC(12,2) | Consultation fee collected. |
 
 ## Patient Queue Table
 Manages the daily patient flow.
@@ -55,13 +55,17 @@ Manages the daily patient flow.
 | `patient_id` | INTEGER FK | Links to `patients.id`. |
 | `status` | TEXT | `waiting`, `in-consult`, `completed`. |
 | `priority` | INTEGER | `1` (Normal), `2` (Emergency). |
+| `created_at` | DATETIME | Timestamp when patient joined queue (Default: Current Time). |
+| `completed_at` | DATETIME | Timestamp when status changed to `completed`. |
 
 ## Audit Logs Table
 Tracks critical system actions for security and compliance.
 
 | Column | Type | Description |
 | :--- | :--- | :--- |
+| `id` | INTEGER PK | Unique Log ID. |
 | `action` | TEXT | `INSERT`, `UPDATE`, `DELETE`. |
 | `table_name` | TEXT | Target table (e.g., `patient_queue`). |
 | `user_id` | INTEGER | ID of the user who performed the action. |
+| `timestamp` | DATETIME | Time of action (Default: Current Time). |
 | `details` | TEXT | Description of the change. |

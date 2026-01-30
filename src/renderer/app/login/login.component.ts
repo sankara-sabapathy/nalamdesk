@@ -90,8 +90,10 @@ export class LoginComponent {
       this.ngZone.run(() => {
         this.isLoading = false;
         if (result.success) {
+          this.password = ''; // Clear sensitive data
           this.router.navigate(['/dashboard']);
         } else {
+          this.password = ''; // Clear sensitive data on failure too
           this.error = result.error || 'Login failed';
         }
       });

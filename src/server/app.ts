@@ -28,18 +28,17 @@ export class ApiServer {
     private fastify: FastifyInstance;
     private dbService: DatabaseService;
     private staticPath: string;
+    private _started = false;
 
     constructor(dbService: DatabaseService, staticPath: string) {
         this.dbService = dbService;
         this.staticPath = staticPath;
         this.fastify = Fastify({ logger: true });
-        this.setup();
     }
 
-    private setup() {
+    private async setup() {
         // CORS
-        // CORS
-        this.fastify.register(fastifyCors, (instance: any) => {
+        this.fastify.register(fastifyCors, (_instance: any) => {
             return (req: any, callback: any) => {
                 const allowedOrigins = process.env['ALLOWED_ORIGINS']
                     ? process.env['ALLOWED_ORIGINS'].split(',')
@@ -64,7 +63,7 @@ export class ApiServer {
 
         this.fastify.register(fastifyStatic, {
             root: this.staticPath,
-            prefix: '/', // optional: default '/'
+            prefix: '/',
         });
 
         // API Routes
@@ -73,8 +72,6 @@ export class ApiServer {
         // Protected Routes
         this.fastify.register(async (instance) => {
             instance.addHook('preValidation', this.authenticate.bind(this));
-
-            // Data Wrappers
             instance.post('/api/ipc/:method', this.handleIpcCall.bind(this));
         });
 
@@ -88,11 +85,20 @@ export class ApiServer {
     }
 
     async start(port: number = 3000, host: string = '0.0.0.0') {
+        if (this._started) {
+            console.warn('[API Server] Already started');
+            return;
+        }
+        this._started = true;
+
         try {
+            await this.setup();
             await this.fastify.listen({ port, host });
             console.log(`API Server running on http://${host}:${port}`);
         } catch (err) {
-            this.fastify.log.error(err);
+            this._started = false;
+            console.error('[API Server] Failed to start:', err);
+            throw err;
         }
     }
 
@@ -100,19 +106,25 @@ export class ApiServer {
     private async authenticate(request: FastifyRequest, reply: FastifyReply) {
         try {
             const authHeader = request.headers.authorization;
-            if (!authHeader) throw new Error('No token provided');
+            if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                throw new Error('Missing or invalid token scheme');
+            }
             const token = authHeader.split(' ')[1];
             const decoded = jwt.verify(token, JWT_SECRET) as any;
             (request as any).user = decoded;
         } catch (err) {
             reply.code(401).send({ error: 'Unauthorized' });
-            return; // Short-circuit
+            return;
         }
     }
 
     // Login Handler
     private async handleLogin(request: FastifyRequest, reply: FastifyReply) {
-        const { username, password } = request.body as any;
+        const body = request.body as any;
+        if (!body || typeof body.username !== 'string' || typeof body.password !== 'string' || !body.username || !body.password) {
+            return reply.code(400).send({ error: 'Invalid input' });
+        }
+        const { username, password } = body;
         let user;
         try {
             user = this.dbService.getUserByUsername(username);
@@ -127,13 +139,6 @@ export class ApiServer {
         // Admin IP Restriction
         if (user.role === 'admin') {
             const ip = request.ip;
-            // Fastify IP might be ::1 or 127.0.0.1. In Docker/Cloud, it might be the Proxy IP.
-            // TODO: In Cloud/Docker behind Nginx/Lightsail LB, trustProxy needs to be set if we want real IP.
-            // For now, in "Instance" mode with Docker host network or mapped port, it might be the gateway.
-            // We will relax this for Cloud OR make it configurable. 
-            // FIXME: Relaxing for Cloud Deployment where Admin access is needed over public IP initially.
-            // Ideally, Admin should only be via VPN or restricted IP.
-            // Checking ENV to bypass strict check?
             if (process.env['STRICT_ADMIN_IP'] === 'true' && ip !== '127.0.0.1' && ip !== '::1') {
                 return reply.code(403).send({ error: 'Admin login restricted to Master System' });
             }
@@ -155,9 +160,8 @@ export class ApiServer {
     // Generic IPC wrapper for DataService
     private async handleIpcCall(request: FastifyRequest, reply: FastifyReply) {
         const { method } = request.params as any;
-        const args = request.body as any[]; // Expect array of args
+        const args = request.body as any[];
 
-        // Guard: Args must be array
         if (!Array.isArray(args)) {
             return reply.code(400).send({ error: 'Invalid args: expected array' });
         }
@@ -182,7 +186,8 @@ export class ApiServer {
                 const result = await dbAny[method](...args);
                 return result;
             } catch (e: any) {
-                return reply.code(500).send({ error: e.message });
+                console.error(`[IPC Error] method: ${method}`, e);
+                return reply.code(500).send({ error: 'Internal server error' });
             }
         } else {
             return reply.code(404).send({ error: 'Method not implemented' });

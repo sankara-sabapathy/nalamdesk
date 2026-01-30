@@ -1,10 +1,10 @@
 
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import Database from 'better-sqlite3-multiple-ciphers';
-
-// Load Env
+// Load Env BEFORE importing services that might use it
 dotenv.config();
+
+import Database from 'better-sqlite3-multiple-ciphers';
 
 import { DatabaseService } from '../main/services/DatabaseService';
 import { ApiServer } from './app';
@@ -55,8 +55,30 @@ databaseService.setDb(db);
     // Logic: 
     // If running from <Project>/dist/server/index.js
     // Client is at <Project>/dist/nalamdesk/browser
+    // 3. Start API Server
     const staticPath = process.env['STATIC_PATH'] || path.join(process.cwd(), 'dist', 'nalamdesk', 'browser');
 
     const apiServer = new ApiServer(databaseService, staticPath);
-    await apiServer.start(PORT, HOST);
+    try {
+        await apiServer.start(PORT, HOST);
+    } catch (e) {
+        console.error('[Server] Failed to start API Server:', e);
+        process.exit(1);
+    }
+
+    // Graceful Shutdown
+    const shutdown = () => {
+        console.log('[Server] Shutting down...');
+        try {
+            if (db && db.open) db.close();
+            console.log('[Server] DB Closed');
+        } catch (e) {
+            console.error('[Server] Error closing DB:', e);
+        }
+        process.exit(0);
+    };
+
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+
 })();

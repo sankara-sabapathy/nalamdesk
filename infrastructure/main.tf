@@ -14,7 +14,6 @@ terraform {
 variable "ssh_allowed_cidrs" {
   description = "List of CIDR blocks allowed to connect/SSH to port 22. Defaults to 0.0.0.0/0 (Open) but should be restricted."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
 }
 
 provider "aws" {

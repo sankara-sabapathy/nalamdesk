@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 
-// TODO: Move this to environment variable in production
+// Fail fast in production
+if (process.env.NODE_ENV === 'production' && !process.env.APP_SECRET) {
+    throw new Error('APP_SECRET must be set in production');
+}
 const APP_SECRET = process.env.APP_SECRET || 'nalam_build_secret_v1';
 
 export const generateApiKey = () => {
@@ -18,11 +21,28 @@ export const hashApiKey = (key: string): string => {
 };
 
 export const verifyApiKey = (key: string, storedHash: string): boolean => {
-    const [salt, hash] = storedHash.split(':');
-    const verifyHash = crypto.scryptSync(key, salt, 64).toString('hex');
-    return hash === verifyHash;
+    if (!storedHash || !storedHash.includes(':')) return false;
+    const parts = storedHash.split(':');
+    if (parts.length !== 2) return false;
+    const [salt, hash] = parts;
+
+    // Validate hex
+    if (!/^[0-9a-fA-F]+$/.test(hash)) return false;
+
+    const verifyHash = crypto.scryptSync(key, salt, 64);
+    const originalHash = Buffer.from(hash, 'hex');
+
+    // Constant time comparison
+    if (verifyHash.length !== originalHash.length) return false;
+    return crypto.timingSafeEqual(verifyHash, originalHash);
 };
 
 export const validateAppSecret = (incomingSecret: string): boolean => {
-    return incomingSecret === APP_SECRET;
+    if (!incomingSecret) return false;
+
+    // Use SHA-256 for fixed length comparison
+    const hashA = crypto.createHash('sha256').update(incomingSecret).digest();
+    const hashB = crypto.createHash('sha256').update(APP_SECRET).digest();
+
+    return crypto.timingSafeEqual(hashA, hashB);
 };

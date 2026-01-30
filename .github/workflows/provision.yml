@@ -27,6 +27,7 @@ jobs:
 
       - name: Bootstrap S3 State Bucket
         run: |
+          set -euo pipefail
           BUCKET="${{ secrets.TF_STATE_BUCKET }}"
           REGION="${{ env.AWS_REGION }}"
           
@@ -63,9 +64,18 @@ jobs:
             -backend-config="region=${{ env.AWS_REGION }}" \
             -backend-config="use_lockfile=true"
 
+      - name: Terraform Validate
+        working-directory: ./infrastructure
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: ./infrastructure
+        run: terraform plan -out=tfplan
+
       - name: Terraform Apply
         working-directory: ./infrastructure
-        run: terraform apply -auto-approve
+        # In a real environment, this should be gated by a manual approval protection rule on the environment
+        run: terraform apply tfplan
         
       - name: Output IP
         working-directory: ./infrastructure

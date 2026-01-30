@@ -46,6 +46,18 @@ Active-active replication for SQLite.
 
 ---
 
+## Security Considerations (Critical)
+
+Examples below use loose settings for demonstration. For production deployment of the **Local Server** model:
+
+1.  **Network Binding**: Do NOT bind to `0.0.0.0` unless strictly necessary. Bind to a specific interface or subnet range.
+2.  **Firewall**: Configure host firewall to allow inbound traffic on port 3000 *only* from the Front Desk IP.
+3.  **Authentication**: The server MUST implement auth protection (e.g., API Key, Token) via `server.addHook('onRequest')` to prevent unauthorized access to patient data.
+4.  **TLS/HTTPS**: Use a self-signed certificate or internal CA to encrypt traffic between Front Desk and Doctor's PC. Plain HTTP is unsafe (leaks patient data on WiFi).
+5.  **CORS**: Configure `@fastify/cors` to allow requests ONLY from the specific Front Desk origin.
+
+---
+
 ## Technical Implementation for "Local Server"
 
 If you choose the **Local Server** approach, the implementation changes:
@@ -53,9 +65,45 @@ If you choose the **Local Server** approach, the implementation changes:
 1.  **Backend**: Your Electron app's Main process must start a minimal HTTP server.
     ```javascript
     // fastify or express in main.ts
+    const path = require('path');
+    const Database = require('better-sqlite3');
+    let db;
+    try {
+      db = new Database('nalamdesk.db'); // Open DB instance
+    } catch (err) {
+      console.error('Failed to initialize database:', err);
+      process.exit(1); // Gradeful exit or fallback
+    }
+
     const server = require('fastify')();
     server.register(require('@fastify/static'), { root: path.join(__dirname, 'renderer') });
-    server.listen({ port: 3000, host: '0.0.0.0' });
+    
+    // Check local subnet or bind specific IP
+    server.listen({ port: 3000, host: '192.168.1.10' }, (err, address) => {
+      if (err) console.error(err);
+    });
+
+    // Expose DB function
+    server.get('/api/patients', async (req, reply) => {
+        // Auth Check
+        if (!req.headers['x-api-key']) {
+            return reply.code(401).send({ error: 'Unauthorized' });
+        }
+
+        try {
+            // Async wrapper / Worker simulation
+            const patients = await new Promise((resolve, reject) => {
+                try {
+                    const stmt = db.prepare('SELECT * FROM patients');
+                    resolve(stmt.all());
+                } catch (e) { reject(e); }
+            });
+            return patients;
+        } catch (err) {
+            req.log.error(err);
+            return reply.code(500).send({ error: 'Database error' });
+        }
+    });
     ```
 2.  **API**: You need to expose your `better-sqlite3` functions as REST API endpoints so the browser client can call them (since IPC only works for the local Electron window).
 3.  **Frontend**:

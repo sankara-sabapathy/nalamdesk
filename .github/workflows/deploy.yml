@@ -57,30 +57,29 @@ jobs:
           key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
           envs: CR_PAT,JWT_SECRET
           script: |
-            # Login to GHCR on the server using a PAT (Personal Access Token)
-            # You must set CR_PAT secret in GitHub Actions containing a PAT with 'read:packages' scope.
-            echo "$CR_PAT" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            # Login to GHCR using intermediate env vars
+            export SAFE_ACTOR="${{ github.actor }}"
+            # Note: We pass secret via stdin, SAFE_ACTOR is safe
+            echo "$CR_PAT" | docker login ghcr.io -u "$SAFE_ACTOR" --password-stdin
 
-            # Pull latest image
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            # Pull latest image using env vars
+            export SAFE_REGISTRY="${{ env.REGISTRY }}"
+            export SAFE_IMAGE="${{ env.IMAGE_NAME }}"
+            docker pull "$SAFE_REGISTRY/$SAFE_IMAGE:latest"
 
             # Stop existing container
             docker stop server || true
             docker rm server || true
 
-            # Create .env file from secrets
-            echo "JWT_SECRET=$JWT_SECRET" > .env
-            echo "PORT=3000" >> .env
-            echo "HOST=0.0.0.0" >> .env
-            echo "DB_PATH=/data/nalamdesk.db" >> .env
-
-            # Run new container
-            #  -v /data:/data : Persist DB
-            #  -p 80:3000 : Map Port 80
+            # Run new container directly passing env vars (no .env file on disk)
+            # Secrets like JWT_SECRET are passed securely via SSH env injection
             docker run -d \
               --name server \
               --restart unless-stopped \
-              --env-file .env \
+              -e JWT_SECRET="$JWT_SECRET" \
+              -e PORT=3000 \
+              -e HOST=0.0.0.0 \
+              -e DB_PATH=/data/nalamdesk.db \
               -p 80:3000 \
               -v /data:/data \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+              "$SAFE_REGISTRY/$SAFE_IMAGE:latest"

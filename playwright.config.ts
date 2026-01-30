@@ -9,5 +9,6 @@ export default defineConfig({
     reporter: 'html',
     use: {
         trace: 'on',
+        baseURL: 'http://localhost:4200',
     },
 });

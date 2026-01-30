@@ -18,7 +18,8 @@ test.describe('Cloud Sync E2E', () => {
             env: { ...process.env, PORT: SERVER_PORT.toString() },
             cwd: path.join(process.cwd(), 'server'),
             shell: true,
-            stdio: 'pipe'
+            stdio: 'pipe',
+            detached: true // Allows process group kill on POSIX
         });
 
         // Wait for server
@@ -27,14 +28,24 @@ test.describe('Cloud Sync E2E', () => {
         // Start Electron
         electronApp = await electron.launch({
             args: ['.'],
-            env: { ...process.env, NODE_ENV: 'test' }
+            env: { ...process.env, NODE_ENV: 'test', CLOUD_API_URL: `http://127.0.0.1:${SERVER_PORT}/api/v1` }
         });
     });
 
     test.afterAll(async () => {
         if (electronApp) await electronApp.close();
-        if (serverProcess) {
-            spawn('taskkill', ['/pid', serverProcess.pid?.toString(), '/f', '/t']);
+        if (serverProcess && serverProcess.pid) {
+            // Cross-platform process termination
+            if (process.platform === 'win32') {
+                spawn('taskkill', ['/pid', serverProcess.pid.toString(), '/f', '/t']);
+            } else {
+                // Kill the process group on POSIX (negative PID)
+                try {
+                    process.kill(-serverProcess.pid, 'SIGTERM');
+                } catch (e) {
+                    // Process may have already exited
+                }
+            }
         }
     });
 
@@ -42,25 +53,39 @@ test.describe('Cloud Sync E2E', () => {
         const window = await electronApp.firstWindow();
         await window.waitForLoadState('domcontentloaded');
 
-        // 1. Navigate to Settings
-        await window.click('text=Settings');
-        await window.click('text=Data Sync');
-
-        // 2. Enable Online Booking
-        // Check if toggle is off
-        const toggle = await window.locator('input[type="checkbox"]#cloudEnabled');
-        if (!await toggle.isChecked()) {
-            await toggle.check();
+        // Login if needed
+        const url = await window.url();
+        if (url.includes('login')) {
+            await window.fill('input[placeholder="Enter username..."]', 'admin');
+            await window.fill('input[placeholder="Enter password..."]', 'admin');
+            await window.click('button:has-text("Login")');
+            await window.waitForURL('**/dashboard');
         }
 
-        // Fill Clinic ID/City (if empty)
-        await window.fill('input[placeholder="Clinic Name"]', 'E2E Clinic');
-        await window.fill('input[placeholder="City"]', 'Test City');
+        // 1. Navigate to Settings
+        await window.click('text=Settings');
+        // 2. Enable Online Booking
+        // Find the toggle next to "Enable Public Online Booking"
+        const toggle = await window.locator('input[type="checkbox"]').first();
+        // Better selector if multiple: window.locator('div:has-text("Enable Public Online Booking") + label input');
 
-        await window.click('button:has-text("Save Changes")');
+        const isChecked = await toggle.isChecked();
+        if (!isChecked) {
+            await toggle.check();
 
-        // Wait for "Saved" toast or API call
-        await window.waitForTimeout(2000);
+            // Wait for modal
+            await window.waitForSelector('text=Setup Online Booking');
+
+            // Fill Modal
+            await window.fill('input[placeholder="e.g. City Health"]', 'E2E Clinic');
+            await window.fill('input[placeholder="e.g. Chennai"]', 'Test City');
+
+            // Click Enable
+            await window.click('button:has-text("Enable")');
+
+            // Wait for success alert or status change (modal closes)
+            await window.waitForSelector('text=Setup Online Booking', { state: 'hidden' });
+        }
 
         expect(await toggle.isChecked()).toBe(true);
     });

@@ -68,6 +68,11 @@ npm install
 
 
 
+# 3. Pre-Start Setup
+# Create .env with required keys (see server/README.md)
+# Run DB migrations if needed
+npm run db:migrate
+
 # 4. Start (Runs Angular + Electron concurrently)
 npm start
 ```
@@ -96,7 +101,9 @@ The cloud component is deployed to a **$3.50/mo AWS Lightsail Instance** (Ubuntu
 #### Infrastructure as Code (Terraform)
 Located in `infrastructure/main.tf`.
 *   **Provisions**: Lightsail Instance, Static IP, Firewall Rules (Ports 22, 80, 443).
-*   **State**: Stored in a private S3 bucket.
+*   **State**: Stored in a private S3 bucket (configured via `tf_state_bucket` var in `infrastructure/terraform.tfvars` or backend config).
+    *   **Backend**: Managed in `infrastructure/main.tf` (backend "s3" block).
+    *   **Access**: Run `terraform init -backend-config=...` with valid AWS credentials to access state.
 
 #### CI/CD Pipelines (GitHub Actions)
 1.  **Provision Infrastructure** (`provision.yml`):

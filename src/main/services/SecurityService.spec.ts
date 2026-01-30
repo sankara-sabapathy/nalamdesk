@@ -48,19 +48,20 @@ describe('SecurityService', () => {
     describe('deriveKey', () => {
         it('should derive a 32-byte key using argon2id', async () => {
             const password = 'my-secret-password';
-            const result = await service.deriveKey(password);
+            const salt = Buffer.alloc(16, 'a');
+            const result = await service.deriveKey(password, salt);
 
             expect(argon2.hash).toHaveBeenCalledWith(password, expect.objectContaining({
                 type: 2, // argon2id
                 raw: true,
-                salt: expect.any(Buffer) // Ensuring salt is passed
+                salt: salt // Ensuring salt is passed
             }));
             expect(result).toEqual(Buffer.from('mocked-hash-key'));
         });
 
         it('should propagate errors from argon2', async () => {
             argon2.hash.mockRejectedValue(new Error('Argon error'));
-            await expect(service.deriveKey('pass')).rejects.toThrow('Argon error');
+            await expect(service.deriveKey('pass', Buffer.alloc(16))).rejects.toThrow('Argon error');
         });
     });
 
@@ -69,7 +70,7 @@ describe('SecurityService', () => {
         const dbPath = 'test.db';
 
         it('should initialize database with correct pragma key', () => {
-            service.initDb(dbPath, mockKey);
+            (service as any).initDb(dbPath, mockKey);
 
             expect(mockPragma).toHaveBeenCalledWith(`key = "x'${mockKey.toString('hex')}'"`);
             expect(mockPrepare).toHaveBeenCalledWith('SELECT count(*) FROM sqlite_master'); // Verification query
@@ -80,19 +81,19 @@ describe('SecurityService', () => {
             // Simulate wrong password error
             mockGet.mockImplementation(() => { throw new Error('file is not a database'); });
 
-            expect(() => service.initDb(dbPath, mockKey)).toThrow('INVALID_PASSWORD');
+            expect(() => (service as any).initDb(dbPath, mockKey)).toThrow('INVALID_PASSWORD');
             expect(service.getDb()).toBeUndefined(); // Should not have set the db
         });
 
         it('should rethrow other errors', () => {
             mockGet.mockImplementation(() => { throw new Error('Disk full'); });
-            expect(() => service.initDb(dbPath, mockKey)).toThrow('Disk full');
+            expect(() => (service as any).initDb(dbPath, mockKey)).toThrow('Disk full');
         });
     });
 
     describe('closeDb', () => {
         it('should close the database if open', () => {
-            service.initDb('path', Buffer.from('key'));
+            (service as any).initDb('path', Buffer.from('key'));
             service.closeDb();
             expect(mockClose).toHaveBeenCalled();
             expect(service.getDb()).toBeNull();

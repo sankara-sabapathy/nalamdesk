@@ -15,7 +15,7 @@ This guide covers the daily workflows for Receptionists and Doctors.
 ## Managing the Queue
 The **Queue** is the heart of the clinic's flow.
 
-### Adding Usage to Queue
+### Adding Patient to Queue
 1. From the **Patient List**, click the **Add to Queue** icon next to a patient.
 2. Select Priority: **Normal** or **Emergency**.
 3. The patient will appear in the **Waiting** list.

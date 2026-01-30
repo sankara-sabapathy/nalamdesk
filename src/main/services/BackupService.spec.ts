@@ -34,6 +34,10 @@ vi.mock('cron', () => {
     };
 });
 
+vi.mock('fs', () => ({
+    existsSync: vi.fn().mockReturnValue(true) // Default to true for tests
+}));
+
 // Import CronJob to check constructor calls if needed, OR just rely on instance method checks
 import { CronJob } from 'cron';
 

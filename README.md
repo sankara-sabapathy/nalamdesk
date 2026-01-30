@@ -12,7 +12,7 @@
 
 ## ✨ Key Highlights
 
-*   **🔒 Zero-Knowledge Security:** AES-256 Encryption with Argon2id. Your password is the key. (Note: Currently uses a deterministic salt for key derivation; per-install random salt planned for future release).
+*   **🔒 Zero-Knowledge Security:** AES-256 Encryption with Argon2id. Your password is the key. (Implementation uses a random per-installation salt for robust security; older vaults will need migration).
 *   **⚡ Offline-First:** Works perfectly without internet.
 *   **☁️ Hybrid Cloud Sync:** Optional "Online Booking" module that securely syncs appointments to your offline desktop (Self-Hostable on AWS/Docker).
 *   **🛡️ Robust Security:** Advanced Role-Based Access Control (RBAC) and automated encrypted backups.

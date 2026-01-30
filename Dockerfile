@@ -23,18 +23,25 @@ RUN npm run build:server
 # Stage 2: Runner
 FROM node:20-slim AS runner
 
+# Create a non-root user
+RUN groupadd -r nalamdesk && useradd -r -g nalamdesk -d /app nalamdesk
+
 WORKDIR /app
 
 ARG NODE_ENV=production
 ENV NODE_ENV=${NODE_ENV}
 
-# Install runtime dependencies for better-sqlite3 (if native build needed)
-# simpler to often just include them or rely on prebuilds.
-# RUN apk add --no-cache python3 make g++ 
-
+# Copy package files
 COPY package*.json ./
-# Clean install production dependencies only
-RUN npm install --production
+
+# Clean install production dependencies
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Change ownership to non-root user
+RUN chown -R nalamdesk:nalamdesk /app
+
+# Switch to non-root user
+USER nalamdesk
 
 # Copy built artifacts from builder
 COPY --from=builder /app/dist/nalamdesk /app/dist/nalamdesk

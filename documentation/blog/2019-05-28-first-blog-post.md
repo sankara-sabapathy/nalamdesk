@@ -5,8 +5,12 @@ authors: [slorber, yangshun]
 tags: [hola, docusaurus]
 ---
 
-Lorem ipsum dolor sit amet...
+# Welcome to NalamDesk
 
-<!-- truncate -->
+We are excited to introduce NalamDesk, a secure, offline-first clinic management system.
 
-...consectetur adipiscing elit. Pellentesque elementum dignissim ultricies. Fusce rhoncus ipsum tempor eros aliquam consequat. Lorem ipsum dolor sit amet
+## Why NalamDesk?
+
+Medical data privacy is paramount. Unlike cloud-based systems where you lose control of your data, NalamDesk stores everything locally on your device, encrypted with AES-256.
+
+Stay tuned for more updates on our features and roadmap!

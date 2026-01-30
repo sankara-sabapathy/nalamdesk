@@ -21,7 +21,9 @@ describe('SessionService', () => {
             name: 'Test Doc'
         };
         service.setUser(user);
-        expect(service.getUser()).toEqual(user);
+        const retrieved = service.getUser();
+        expect(retrieved).toEqual(expect.objectContaining(user));
+        expect(retrieved?.sessionId).toBeDefined();
         expect(service.isAuthenticated()).toBe(true);
     });
 

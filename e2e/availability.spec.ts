@@ -27,10 +27,10 @@ test.describe('Availability Manager', () => {
             (window as any).electron = {
                 login: async (creds: any) => { return { success: true, user: { id: 'admin' } }; },
                 cloud: {
-                    getPublishedSlots: async (date) => {
+                    getPublishedSlots: async (date: any) => {
                         return db.slots.filter(s => s.date === date);
                     },
-                    publishSlots: async (slots, dates) => {
+                    publishSlots: async (slots: any, dates: any) => {
                         // Remove old slots for dates
                         db.slots = db.slots.filter(s => !dates.includes(s.date));
                         // Add new slots
@@ -109,11 +109,10 @@ test.describe('Availability Manager', () => {
         await expect(slot2).toHaveClass(/btn-info/);
 
         // Publish
-        // Mock the network request or expect alert?
-        // We can handle dialogs
         page.on('dialog', dialog => dialog.accept());
 
-        await page.click('button:text("Update Availability")');
+        const updateBtn = page.getByRole('button', { name: 'Update Availability' });
+        await updateBtn.click();
 
         // After publish, we expect a reload/refresh which sets them to Green (btn-success)
         // This depends on the backend actually working and responding.
@@ -137,10 +136,11 @@ test.describe('Availability Manager', () => {
         const slot1 = page.getByRole('button', { name: '10:00', exact: true });
         if (await slot1.evaluate(el => el.classList.contains('btn-success'))) {
             await slot1.click();
+            await slot1.click();
             await expect(slot1).toHaveClass(/btn-error/);
 
             page.on('dialog', dialog => dialog.accept());
-            await page.click('button:text("Update Availability")');
+            await page.getByRole('button', { name: 'Update Availability' }).click();
 
             // Should be gone (Gray / bg-base-200)
             await expect(slot1).toHaveClass(/bg-base-200/);

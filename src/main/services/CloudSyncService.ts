@@ -1,7 +1,7 @@
 import { DatabaseService } from './DatabaseService';
 import log from 'electron-log';
 
-const API_URL = 'http://127.0.0.1:3001/api/v1'; // Use IP to avoid resolution issues
+const API_URL = process.env['CLOUD_API_URL'] || 'http://127.0.0.1:3001/api/v1'; // Use IP to avoid resolution issues
 const APP_SECRET = 'nalam_build_secret_v1'; // Must match Server
 
 export class CloudSyncService {

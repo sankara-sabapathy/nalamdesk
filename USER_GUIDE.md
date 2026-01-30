@@ -64,7 +64,7 @@ Welcome to **NalamDesk**, your secure, offline-first Clinic Management System. T
 ### Data Management
 *   **Backup:** Manually export your encrypted database.
 *   **Restore:** Restore from a previous backup file.
-*   **Google Drive:** Link your Google Account to enable **Automated Daily Backups** (runs everyday at 10 PM if the app is open).
+*   **Google Drive:** Link your Google Account to enable **Automated Daily Backups** (runs every day at 10 PM if the app is open).
 *   **Crash Reporting:** If the application closes unexpectedly, you will see a popup asking to "Save Crash Report". Please save this file and email it to support for analysis. Your data remains private; the report only contains error details, not patient records.
 
 ---

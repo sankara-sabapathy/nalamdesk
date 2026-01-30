@@ -14,6 +14,8 @@ import { ApiServer } from '../server/app';
 
 
 
+import { session } from 'electron';
+
 // ... (logging config)
 
 // Initialize Crash Service immediately to catch early errors
@@ -94,6 +96,63 @@ async function createWindow() {
 
 app.whenReady().then(() => {
     console.log('[Main] app.whenReady fired');
+    // 1. CSP (Content Security Policy)
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+        // Skip external origins
+        try {
+            const url = new URL(details.url);
+            if (url.protocol !== 'file:' && url.hostname !== 'localhost') {
+                return callback({});
+            }
+        } catch { return callback({}); }
+
+        const devCSP = "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; connect-src 'self' http://localhost:3000 https://www.googleapis.com https://accounts.google.com; img-src 'self' data: https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;";
+        const prodCSP = "default-src 'self'; script-src 'self'; connect-src 'self' https://www.googleapis.com https://accounts.google.com; img-src 'self' data: https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;";
+
+        callback({
+            responseHeaders: {
+                ...details.responseHeaders,
+                'Content-Security-Policy': [isDev ? devCSP : prodCSP],
+            },
+        });
+    });
+
+    // 2. Permission Handler (Deny by default)
+    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+        // Allowed permissions
+        const allowedPermissions = ['media']; // e.g. for camera if needed later
+        if (allowedPermissions.includes(permission)) {
+            callback(true);
+        } else {
+            console.warn(`[Security] Denied permission request: ${permission}`);
+            callback(false);
+        }
+    });
+
+    // 3. Navigation Guard
+    session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+        let urlObj: URL;
+        try {
+            urlObj = new URL(details.url);
+        } catch {
+            return callback({ cancel: true }); // Invalid URL
+        }
+
+        // Allow DevTools, File, and Localhost
+        if (urlObj.protocol === 'devtools:' || urlObj.protocol === 'file:' || urlObj.hostname === 'localhost') {
+            return callback({ cancel: false });
+        }
+
+        // Allow specific Google hosts for OAuth
+        const trustedHosts = ['accounts.google.com', 'www.googleapis.com'];
+        if (urlObj.protocol === 'https:' && trustedHosts.some(h => urlObj.hostname === h || urlObj.hostname.endsWith('.' + h))) {
+            return callback({ cancel: false });
+        }
+
+        console.warn(`[Security] Blocked request: ${details.url}`);
+        callback({ cancel: true });
+    });
+
     createWindow();
 
     app.on('activate', () => {
@@ -113,20 +172,17 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         if (username === 'admin') {
             try {
                 const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
+                const userDataPath = app.getPath('userData');
                 const dbPath = app.isPackaged
-                    ? path.join(app.getPath('userData'), dbName)
+                    ? path.join(userDataPath, dbName)
                     : path.join(__dirname, '../../../', dbName);
 
-                const key = await securityService.deriveKey(password);
-                try {
-                    securityService.initDb(dbPath, key);
-                    databaseService.setDb(securityService.getDb());
-                    await databaseService.migrate();
-                    await databaseService.ensureAdminUser(password);
-                } catch (e: any) {
-                    if (e.message !== 'DB_ALREADY_OPEN') throw e;
-                    databaseService.setDb(securityService.getDb());
-                }
+                // Initialize Secure DB (handles salt migration/rekeying)
+                await securityService.initialize(password, dbPath, userDataPath);
+
+                databaseService.setDb(securityService.getDb());
+                await databaseService.migrate();
+                await databaseService.ensureAdminUser(password);
 
                 const settings = databaseService.getSettings();
                 if (settings && settings.drive_tokens) {
@@ -135,7 +191,9 @@ ipcMain.handle('auth:login', async (event, credentials) => {
                 }
             } catch (e: any) {
                 console.error('DB Init failed:', e);
-                return { success: false, error: 'INVALID_CREDENTIALS' };
+                // Return generic error so user doesn't know if PW was wrong or DB failed
+                if (e.message === 'INVALID_PASSWORD') return { success: false, error: 'INVALID_CREDENTIALS' };
+                return { success: false, error: 'SYSTEM_ERROR' };
             }
         } else {
             try {

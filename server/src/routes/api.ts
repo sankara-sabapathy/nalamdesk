@@ -42,7 +42,11 @@ export default async function apiRoutes(server: FastifyInstance) {
             return reply.code(403).send({ error: 'Invalid App Secret' });
         }
 
-        const body = OnboardSchema.parse(req.body);
+        const result = OnboardSchema.safeParse(req.body);
+        if (!result.success) {
+            return reply.code(400).send({ error: 'Validation Error', details: result.error });
+        }
+        const body = result.data;
         const id = generateId();
         const apiKey = generateApiKey();
         const hash = hashApiKey(apiKey);
@@ -79,8 +83,8 @@ export default async function apiRoutes(server: FastifyInstance) {
                 if (!slot) return { error: 'Slot not found', code: 404 };
                 if (slot.status !== 'AVAILABLE') return { error: 'Slot already taken', code: 409 };
 
-                // 1. Mark as HELD
-                db.prepare("UPDATE slots SET status = 'HELD' WHERE id = ?").run(body.slotId);
+                // 1. Mark as HELD with expiration
+                db.prepare("UPDATE slots SET status = 'HELD', held_until = datetime('now', '+15 minutes') WHERE id = ?").run(body.slotId);
                 clinicId = slot.clinic_id;
                 date = slot.date;
                 time = slot.time;
@@ -118,8 +122,8 @@ export default async function apiRoutes(server: FastifyInstance) {
         const { clinicId } = req.params as any;
         const { date } = req.query as any;
 
-        let query = "SELECT id, date, time, status FROM slots WHERE clinic_id = ? AND status = 'AVAILABLE' AND date >= date('now')";
-        const params = [clinicId];
+        let query = "SELECT id, date, time, status FROM slots WHERE clinic_id = ? AND (status = 'AVAILABLE' OR (status = 'HELD' AND held_until <= datetime('now'))) AND date >= date('now')";
+        const params: any[] = [clinicId];
 
         if (date) {
             query += " AND date = ?";
@@ -135,7 +139,24 @@ export default async function apiRoutes(server: FastifyInstance) {
 
     server.addHook('preHandler', async (req, reply) => {
         // Skip auth for public routes handled above
-        if (req.url === '/api/v1/onboard' || req.url === '/api/v1/book' || req.url === '/api/v1/clinics' || req.url.startsWith('/api/v1/slots/')) return;
+        const url = req.url;
+        // Strip query params if any
+        const path = url.split('?')[0];
+
+        if (
+            path === '/onboard' ||
+            path === '/book' ||
+            path === '/clinics' ||
+            path.startsWith('/slots/')
+        ) return;
+        // Note: Routes are registered without prefix in apiRoutes, but server registers apiRoutes with /api/v1 prefix?
+        // Wait, app.ts sets prefix: '/api/v1'. So req.url includes it.
+        if (
+            path === '/api/v1/onboard' ||
+            path === '/api/v1/book' ||
+            path === '/api/v1/clinics' ||
+            path.startsWith('/api/v1/slots/')
+        ) return;
 
         const apiKey = req.headers['x-api-key'] as string;
         const clinicId = req.headers['x-clinic-id'] as string;
@@ -161,7 +182,13 @@ export default async function apiRoutes(server: FastifyInstance) {
         db.prepare('UPDATE clinics SET last_seen = CURRENT_TIMESTAMP WHERE id = ?').run(clinicId);
 
         // Parse JSON payloads for clean response
-        return messages.map((m: any) => ({ ...m, payload: JSON.parse(m.payload) }));
+        return messages.map((m: any) => {
+            try {
+                return { ...m, payload: JSON.parse(m.payload) };
+            } catch (e) {
+                return { ...m, payload: null, parseError: true };
+            }
+        });
     });
 
     // 6. Ack (Delete)
@@ -179,13 +206,7 @@ export default async function apiRoutes(server: FastifyInstance) {
     });
 
     // 7. Publish Slots (Authenticated)
-    const PublishSlotsSchema = z.object({
-        dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1),
-        slots: z.array(z.object({
-            date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-            time: z.string().regex(/^\d{2}:\d{2}$/)
-        }))
-    });
+    // Redundant schema removed. Using top-level PublishSlotsSchema.
 
     // ... inside apiRoutes function ...
 
@@ -208,17 +229,17 @@ export default async function apiRoutes(server: FastifyInstance) {
             }
 
             // 2. Insert new slots
+            let count = 0;
             for (const slot of body.slots) {
-                // Double check that the slot date is in the allowed dates list?
-                // For now, trust the client logic, or just insert what is sent.
-                // It's safer to only insert slots that match the declared 'dates'.
                 if (dates.includes(slot.date)) {
                     stmt.run(generateId(), clinicId, slot.date, slot.time);
+                    count++;
                 }
             }
+            return { status: 'ok', count };
         });
 
-        txn();
-        return { status: 'ok', count: body.slots.length };
+        const txnResult = txn();
+        return txnResult;
     });
 }

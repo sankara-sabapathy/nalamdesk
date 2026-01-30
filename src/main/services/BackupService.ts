@@ -2,6 +2,7 @@ import { CronJob } from 'cron';
 import { DatabaseService } from './DatabaseService';
 import { GoogleDriveService } from './GoogleDriveService';
 import { SecurityService } from './SecurityService';
+import * as fs from 'fs';
 
 export class BackupService {
     private job: CronJob | null = null;
@@ -40,6 +41,11 @@ export class BackupService {
             const dbPath = this.securityService.getDbPath();
             if (!dbPath) {
                 console.error('[Backup] Skipped: Database path not found (is it open?).');
+                return;
+            }
+            // Check if file actually exists on disk
+            if (!fs.existsSync(dbPath)) {
+                console.error('[Backup] Skipped: Database file missing.');
                 return;
             }
 

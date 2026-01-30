@@ -1,12 +1,11 @@
-import { Component, EventEmitter, Input, Output, HostListener, ElementRef, ViewChild, AfterViewInit, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, EventEmitter, Input, Output, ElementRef, OnChanges, SimpleChanges, ContentChild, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { animate, state, style, transition, trigger } from '@angular/animations';
 
 @Component({
-    selector: 'app-universal-dialog',
-    standalone: true,
-    imports: [CommonModule],
-    template: `
+  selector: 'app-universal-dialog',
+  standalone: true,
+  imports: [CommonModule],
+  template: `
     <div *ngIf="isOpen" class="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overflow-x-hidden p-4 sm:p-6"
          role="dialog" aria-modal="true" aria-labelledby="modal-title">
       
@@ -60,8 +59,8 @@ import { animate, state, style, transition, trigger } from '@angular/animations'
         <!-- Actions -->
         <div class="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
            <ng-content select="[actions]"></ng-content>
-           <!-- Default Close Action if no actions provided -->
-           <button *ngIf="!hasActionsContent" type="button" 
+           <!-- Default Close Action if enabled -->
+           <button *ngIf="showDefaultActions && !hasActionsContent" type="button" 
                    class="btn btn-primary w-full sm:w-auto"
                    (click)="close()">
              OK
@@ -75,51 +74,77 @@ import { animate, state, style, transition, trigger } from '@angular/animations'
       </div>
     </div>
   `,
-    styles: [`
+  styles: [`
     :host { display: block; }
-    .font-display { font-family: 'Outfit', sans-serif; /* Example premium font if avail */ }
+    .font-display { font-family: 'Outfit', sans-serif; }
   `]
 })
-export class UniversalDialogComponent implements OnChanges {
-    @Input() title: string = 'Notification';
-    @Input() message: string = '';
-    @Input() isOpen: boolean = false;
-    @Input() icon: boolean = true;
+export class UniversalDialogComponent implements OnChanges, OnDestroy {
+  @Input() title: string = 'Notification';
+  @Input() message: string = '';
+  @Input() isOpen: boolean = false;
+  @Input() icon: boolean = true;
+  @Input() showDefaultActions = true;
 
-    @Output() isOpenChange = new EventEmitter<boolean>();
-    @Output() confirm = new EventEmitter<void>();
-    @Output() cancel = new EventEmitter<void>();
+  @Output() isOpenChange = new EventEmitter<boolean>();
+  @Output() confirm = new EventEmitter<void>();
+  @Output() cancel = new EventEmitter<void>();
 
-    animateIn = false;
-    hasIconContent = false; // logic to detect if icon projected could be added
-    hasActionsContent = false; // logic to detect if actions projected
+  animateIn = false;
 
-    ngOnChanges(changes: SimpleChanges): void {
-        if (changes['isOpen']) {
-            if (this.isOpen) {
-                // Slight delay to allow DOM render then animate opacity
-                setTimeout(() => this.animateIn = true, 10);
-            } else {
-                this.animateIn = false;
-            }
-        }
-    }
+  // Check for projected content presence using attribute selectors
+  @ContentChild('[icon]', { read: ElementRef }) iconContent: ElementRef | undefined;
+  @ContentChild('[actions]', { read: ElementRef }) actionsContent: ElementRef | undefined;
 
-    close() {
+  private animateInTimerId: ReturnType<typeof setTimeout> | null = null;
+
+  get hasIconContent(): boolean {
+    return !!this.iconContent;
+  }
+
+  get hasActionsContent(): boolean {
+    return !!this.actionsContent;
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['isOpen']) {
+      // Clear any pending timer
+      if (this.animateInTimerId) {
+        clearTimeout(this.animateInTimerId);
+        this.animateInTimerId = null;
+      }
+
+      if (this.isOpen) {
+        // Slight delay to allow DOM render then animate opacity
+        this.animateInTimerId = setTimeout(() => this.animateIn = true, 10);
+      } else {
         this.animateIn = false;
-        setTimeout(() => {
-            this.isOpen = false;
-            this.isOpenChange.emit(false);
-            this.cancel.emit();
-        }, 200); // Wait for transition
+      }
     }
+  }
 
-    onBackdropClick() {
-        this.close();
+  ngOnDestroy(): void {
+    if (this.animateInTimerId) {
+      clearTimeout(this.animateInTimerId);
+      this.animateInTimerId = null;
     }
+  }
 
-    onConfirm() {
-        this.confirm.emit();
-        this.close();
-    }
+  close() {
+    this.animateIn = false;
+    setTimeout(() => {
+      // Do NOT mutate @Input directly
+      this.isOpenChange.emit(false);
+      this.cancel.emit();
+    }, 200); // Wait for transition
+  }
+
+  onBackdropClick() {
+    this.close();
+  }
+
+  onConfirm() {
+    this.confirm.emit();
+    this.close();
+  }
 }
