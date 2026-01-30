@@ -442,13 +442,15 @@ export class DatabaseService {
         // Fetch ID first for audit
         const existing = this.db.prepare(`SELECT id FROM patient_queue WHERE patient_id = ? AND status != 'completed' ORDER BY check_in_time DESC LIMIT 1`).get(patientId);
 
+        if (!existing) return { changes: 0 };
+
         const result = this.db.prepare(`
             UPDATE patient_queue 
             SET status = ? 
-            WHERE patient_id = ? AND status != 'completed'
-        `).run(status, patientId);
+            WHERE id = ?
+        `).run(status, existing.id);
 
-        if (result.changes > 0 && existing) {
+        if (result.changes > 0) {
             this.logAudit('UPDATE', 'patient_queue', existing.id, actingUserId, `Updated status to ${status} for patient ${patientId}`);
         }
         return result;
