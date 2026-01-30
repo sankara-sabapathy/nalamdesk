@@ -64,12 +64,18 @@ async function createWindow() {
         mainWindow = new BrowserWindow({
             width: 1280,
             height: 800,
+            icon: isDev
+                ? path.join(__dirname, '../../build/icon.png')
+                : path.join(app.getAppPath(), 'build/icon.png'),
             webPreferences: {
                 nodeIntegration: true,
                 contextIsolation: true,
                 preload: path.join(__dirname, 'preload.js'),
             },
         });
+
+        // Remove default menu bar completely
+        mainWindow.setMenu(null);
         console.log('[Main] BrowserWindow created');
 
         if (isDev) {
@@ -141,7 +147,12 @@ ipcMain.handle('auth:login', async (event, credentials) => {
             }
         }
 
-        cloudSyncService.init();
+        // cloudSyncService.init();
+
+        // Debug data counts (Non-Prod only)
+        if (isDev) {
+            databaseService.logStats();
+        }
 
         console.log(`[Auth] Validating user: ${username}`);
         const user = await databaseService.validateUser(username, password);
@@ -160,6 +171,120 @@ ipcMain.handle('auth:login', async (event, credentials) => {
 });
 
 // ... (Database IPC Handlers)
+
+// Dashboard / Stats
+ipcMain.handle('db:getDashboardStats', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getDashboardStats();
+});
+
+// Patients
+ipcMain.handle('db:getPatients', (_, query) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getPatients(query);
+});
+ipcMain.handle('db:getPatientById', (_, id) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getPatientById(id);
+});
+ipcMain.handle('db:savePatient', (_, patient) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    // Basic RBAC check (doctors/receptionists) - simplified for now
+    if (!['doctor', 'receptionist', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.savePatient(patient);
+});
+ipcMain.handle('db:deletePatient', (_, id) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return databaseService.deletePatient(id);
+});
+
+// Visits
+ipcMain.handle('db:getVisits', (_, patientId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getVisits(patientId);
+});
+ipcMain.handle('db:getAllVisits', (_, limit) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getAllVisits(limit);
+});
+ipcMain.handle('db:saveVisit', (_, visit) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.saveVisit(visit);
+});
+ipcMain.handle('db:deleteVisit', (_, id) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return databaseService.deleteVisit(id);
+});
+ipcMain.handle('db:getVitals', (_, patientId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getVitals(patientId);
+});
+ipcMain.handle('db:saveVitals', (_, vitals) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.saveVitals(vitals);
+});
+
+// Users
+ipcMain.handle('db:getUsers', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return databaseService.getUsers();
+});
+ipcMain.handle('db:saveUser', (_, userData) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return databaseService.saveUser(userData);
+});
+ipcMain.handle('db:deleteUser', (_, id) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return databaseService.deleteUser(id);
+});
+ipcMain.handle('db:getDoctors', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getDoctors();
+});
+ipcMain.handle('db:getAllRoles', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getAllRoles();
+})
+
+// Settings
+ipcMain.handle('db:getSettings', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    // if (user.role !== 'admin') throw new Error('Forbidden'); // Allow reading settings?
+    return databaseService.getSettings();
+});
+ipcMain.handle('db:getPublicSettings', () => {
+    // Public endpoint - no auth required (used for Login screen)
+    return databaseService.getPublicSettings();
+});
+ipcMain.handle('db:saveSettings', (_, settings) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return databaseService.saveSettings(settings);
+});
 
 // Queue IPC Handlers
 ipcMain.handle('db:getQueue', () => {

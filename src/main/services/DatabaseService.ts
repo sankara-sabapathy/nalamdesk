@@ -14,10 +14,24 @@ export class DatabaseService {
         try {
             const dbName = this.db.name;
             if (dbName && dbName !== ':memory:') {
-                const backupName = `${dbName}.bak`;
-                console.log(`[DB] Backing up to ${backupName}...`);
-                await this.db.backup(backupName);
-                console.log('[DB] Backup complete.');
+                if (dbName && dbName !== ':memory:') {
+                    const backupName = `${dbName}.bak`;
+                    // Delete existing backup to prevent "incompatible source and target" errors 
+                    // if the schema/key changed since the last backup.
+                    try {
+                        const fs = require('fs');
+                        if (fs.existsSync(backupName)) {
+                            fs.unlinkSync(backupName);
+                            console.log(`[DB] Deleted old backup: ${backupName}`);
+                        }
+                    } catch (e) {
+                        console.warn('[DB] Failed to delete old backup:', e);
+                    }
+
+                    console.log(`[DB] Backing up to ${backupName}...`);
+                    await this.db.backup(backupName);
+                    console.log('[DB] Backup complete.');
+                }
             }
         } catch (e) {
             console.error('[DB] Backup failed! Proceeding with caution...', e);
@@ -482,6 +496,24 @@ export class DatabaseService {
                 INSERT INTO appointments (patient_id, date, time, reason, status)
                 VALUES (?, ?, ?, ?, 'CONFIRMED')
             `).run(appt.patient_id, appt.date, appt.time, appt.reason);
+        }
+    }
+
+    logStats() {
+        if (!this.db) return;
+        try {
+            const users = this.db.prepare('SELECT count(*) as c FROM users').get().c;
+            const patients = this.db.prepare('SELECT count(*) as c FROM patients').get().c;
+            const visits = this.db.prepare('SELECT count(*) as c FROM visits').get().c;
+            const queue = this.db.prepare('SELECT count(*) as c FROM patient_queue').get().c;
+            console.log('--- [DB STATS] ---');
+            console.log(`Users: ${users}`);
+            console.log(`Patients: ${patients}`);
+            console.log(`Visits: ${visits}`);
+            console.log(`Queue: ${queue}`);
+            console.log('------------------');
+        } catch (e) {
+            console.error('Failed to log stats:', e);
         }
     }
 }

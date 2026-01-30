@@ -103,7 +103,6 @@
     "@tailwindcss/typography": "^0.5.19",
     "@types/better-sqlite3": "^7.6.13",
     "@vitest/ui": "^4.0.17",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/jsonwebtoken": "^9.0.10",
     "autoprefixer": "^10.4.23",
     "concurrently": "^9.2.1",
