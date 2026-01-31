@@ -16,23 +16,10 @@ server.register(helmet, {
     contentSecurityPolicy: false // Allow inline scripts/styles for Angular
 });
 
-// Serve Static Web App
-import fastifyStatic from '@fastify/static';
+// Serve Static Web App - REMOVED (Decoupled Architecture)
+// The API only serves JSON. CloudFront handles the Frontend.
 
-server.register(fastifyStatic, {
-    root: path.join(__dirname, '../../web/dist/web/browser'),
-    prefix: '/', // Serve at root
-    wildcard: false // Handle 404 manually for SPA fallback
-});
-
-// SPA Fallback: Send index.html for any unknown route (except /api)
-server.setNotFoundHandler((req, reply) => {
-    if (req.raw.url?.startsWith('/api')) {
-        reply.code(404).send({ error: 'Endpoint not found' });
-    } else {
-        reply.sendFile('index.html');
-    }
-});
+// SPA Fallback - REMOVED
 
 import apiRoutes from './routes/api';
 server.register(apiRoutes, { prefix: '/api/v1' });

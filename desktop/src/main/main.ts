@@ -175,7 +175,7 @@ ipcMain.handle('auth:login', async (event, credentials) => {
                 const userDataPath = app.getPath('userData');
                 const dbPath = app.isPackaged
                     ? path.join(userDataPath, dbName)
-                    : path.join(__dirname, '../../../', dbName);
+                    : path.join(__dirname, '../../', dbName);
 
                 // Initialize Secure DB (handles salt migration/rekeying)
                 await securityService.initialize(password, dbPath, userDataPath);

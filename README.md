@@ -1,40 +1,27 @@
 # NalamDesk 🏥
 
-**NalamDesk** is a secure, offline-first Clinic Management System designed for doctors who prioritize data privacy. Built with a "Zero-Knowledge" architecture, it ensures that medical data is encrypted locally and accessible only to you.
+**NalamDesk** is a privacy-focused Medical Practice Management System that works offline-first (Desktop) with optional Cloud Sync.
 
-![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+## Architecture
+The project is split into two domains:
 
-## 📚 Documentation
+1.  **[Desktop App](./desktop/README.md)** (`/desktop`): The core Electron application running locally. Stores data in SQLite.
+2.  **[Cloud Platform](./cloud/README.md)** (`/cloud`): The remote infrastructure (API + Web) for syncing and patient access.
 
-*   **[User Guide](USER_GUIDE.md):** For Doctors & Clinic Staff. (Features, Settings, Online Booking)
-*   **[Developer Guide](DEVELOPER_GUIDE.md):** For Contributors. (Architecture, Setup, Sync Protocol)
+## Quick Start (Desktop)
+```bash
+cd desktop
+npm install
+npm start
+```
 
-## ✨ Key Highlights
+## Cloud Deployment
+Deployment is managed via Terraform in `cloud/infrastructure`.
+```bash
+cd cloud/infrastructure
+terraform init
+terraform apply
+```
 
-*   **🔒 Zero-Knowledge Security:** AES-256 Encryption with Argon2id. Your password is the key. (Implementation uses a random per-installation salt for robust security; older vaults will need migration).
-*   **⚡ Offline-First:** Works perfectly without internet.
-*   **☁️ Hybrid Cloud Sync:** Optional "Online Booking" module that securely syncs appointments to your offline desktop (Self-Hostable on AWS/Docker).
-*   **🛡️ Robust Security:** Advanced Role-Based Access Control (RBAC) and automated encrypted backups.
-*   **🚀 Modern Stack:** Electron, Angular v17+, SQLite, Node.js.
-
-## 🚀 Quick Start
-
-1.  **Install:**
-    ```bash
-    npm install
-    ```
-2.  **Run:**
-    ```bash
-    npm start
-    ```
-3.  **Build:**
-    ```bash
-    npm run pack
-    ```
-
-## ⚠️ Security Warning
-**Do not lose your Vault Password.** We cannot recover it for you.
-
-## 📄 License
-AGPLv3 License - see [LICENSE](LICENSE).
+## Documentation
+See `cloud/documentation` for full architectural details.

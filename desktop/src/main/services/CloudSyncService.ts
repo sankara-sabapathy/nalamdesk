@@ -164,6 +164,18 @@ export class CloudSyncService {
 
             if (!response.ok) {
                 log.error(`[Cloud] Sync Failed: ${response.status} ${response.statusText}`);
+
+                // Self-Healing: Reset on Auth Failure or Clinic Not Found
+                if (response.status === 401 || response.status === 404) {
+                    log.warn('[Cloud] Auth failed or clinic not found. Disabling cloud sync to prevent orphan state.');
+                    this.dbService.saveSettings({
+                        cloud_enabled: 0,
+                        cloud_clinic_id: null,
+                        cloud_api_key: null
+                    });
+                    this.stopPolling();
+                }
+
                 this.isPolling = false;
                 return;
             }
