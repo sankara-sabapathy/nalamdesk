@@ -1,0 +1,50 @@
+﻿ M .github/workflows/deploy-docs.yml
+ M .github/workflows/deploy.yml
+ M .github/workflows/provision.yml
+ M DEVELOPER_GUIDE.md
+ M Dockerfile
+ M README.md
+ M USER_GUIDE.md
+ M angular.json
+ M docs/research/data_sync_research.md
+ M documentation/blog/2019-05-28-first-blog-post.md
+ M documentation/docs/developer-guide/database-schema.md
+ M documentation/docs/developer-guide/local-setup.md
+ M documentation/docs/user-guide/clinic-operations.md
+ M documentation/src/pages/index.tsx
+ M e2e/availability.spec.ts
+ M e2e/cloud-sync.spec.ts
+ M e2e/visual.spec.ts
+ M infrastructure/main.tf
+ M package-lock.json
+ M package.json
+ M playwright.config.ts
+ M server/package.json
+ M server/src/app.ts
+ M server/src/auth.ts
+ M server/src/routes/api.ts
+ M src/main/main.ts
+ M src/main/services/BackupService.spec.ts
+ M src/main/services/BackupService.ts
+ M src/main/services/CloudSyncService.ts
+ M src/main/services/SecurityService.spec.ts
+ M src/main/services/SecurityService.ts
+ M src/main/services/SessionService.spec.ts
+ M src/main/services/SessionService.ts
+ M src/main/verify-security.ts
+ M src/renderer/app/login/login.component.ts
+ M src/renderer/app/shared/components/universal-dialog/universal-dialog.component.ts
+ M src/renderer/index.html
+ M src/server/app.ts
+ M src/server/index.ts
+ M src/test-setup.ts
+ M test_output.txt
+ M tsconfig.main.json
+ M tsconfig.spec.json
+ M vitest.config.js
+ M web/src/app/components/booking-modal.component.ts
+?? git-status.txt
+?? src/renderer/app/visits/prescription/prescription.component.spec.ts
+?? vitest.config.main.js
+?? vitest.config.renderer.js
+?? vitest.config.renderer.mjs

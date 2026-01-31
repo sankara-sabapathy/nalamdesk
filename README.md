@@ -1,88 +1,40 @@
 # NalamDesk 🏥
 
-**NalamDesk** is a secure, offline-first Clinic Management System designed for doctors who prioritize data privacy and ownership. Built with a "Zero-Knowledge" architecture, it ensures that sensitive patient data is encrypted at rest and accessible only to the holder of the vault password.
+**NalamDesk** is a secure, offline-first Clinic Management System designed for doctors who prioritize data privacy. Built with a "Zero-Knowledge" architecture, it ensures that medical data is encrypted locally and accessible only to you.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
 
-## 🌟 Key Features
+## 📚 Documentation
 
-### 🔒 Zero-Knowledge Security
-- **Local-Only Storage**: Data is stored in a `SQLite` database on your local machine. No remote servers, no cloud dependency by default.
-- **Strong Encryption**: The database is encrypted using **SQLCipher** (AES-256).
-- **Argon2id KDF**: Your vault password *is* the encryption key source. We do not store your password. If you lose it, the data is unrecoverable (by design).
+*   **[User Guide](USER_GUIDE.md):** For Doctors & Clinic Staff. (Features, Settings, Online Booking)
+*   **[Developer Guide](DEVELOPER_GUIDE.md):** For Contributors. (Architecture, Setup, Sync Protocol)
 
-### 🩺 Clinic Operations
-- **Patient Management**: Fast registration and search.
-- **Doctor's Workbench**:
-    - **Timeline View**: See patient visit history at a glance.
-    - **Prescription Pad**: Digital prescription writing (Diagnosis, Medicines, Dosage).
-    - **PDF Generation**: Print professional prescriptions instantly.
+## ✨ Key Highlights
 
-### ☁️ Cloud Resilience
-- **Google Drive Backup**: Optional integration to securely backup your *encrypted* database to your personal Google Drive.
-- **Restore**: Easily restore your data on a new device.
+*   **🔒 Zero-Knowledge Security:** AES-256 Encryption with Argon2id. Your password is the key. (Implementation uses a random per-installation salt for robust security; older vaults will need migration).
+*   **⚡ Offline-First:** Works perfectly without internet.
+*   **☁️ Hybrid Cloud Sync:** Optional "Online Booking" module that securely syncs appointments to your offline desktop (Self-Hostable on AWS/Docker).
+*   **🛡️ Robust Security:** Advanced Role-Based Access Control (RBAC) and automated encrypted backups.
+*   **🚀 Modern Stack:** Electron, Angular v17+, SQLite, Node.js.
 
-## 🛠️ Tech Stack
+## 🚀 Quick Start
 
-- **Framework**: [Electron](https://www.electronjs.org/) (Desktop Container)
-- **Frontend**: [Angular v17+](https://angular.io/) (Standalone Components, TailwindCSS)
-- **Database**: [better-sqlite3-multiple-ciphers](https://github.com/m4heshd/better-sqlite3-multiple-ciphers) (SQLCipher)
-- **Security**: [argon2](https://github.com/ranisalt/node-argon2) (Key Derivation)
-- **PDF**: [pdfmake](http://pdfmake.org/)
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js (v18+)
-- Python (required for building native modules like `better-sqlite3` and `argon2`)
-- Visual Studio Build Tools (Windows) or Xcode (macOS)
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/nalamdesk.git
-   cd nalamdesk
-   ```
-
-2. **Install Dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Google Drive Setup (Optional)**
-   To enable Cloud Backup, you need to create a project in [Google Cloud Console](https://console.cloud.google.com/), enable the **Google Drive API**, and create OAuth 2.0 Credentials.
-   
-   Update `src/main/services/GoogleDriveService.ts`:
-   ```typescript
-   const CLIENT_ID = 'YOUR_CLIENT_ID';
-   const CLIENT_SECRET = 'YOUR_CLIENT_SECRET';
-   ```
-
-### Development
-
-Run the Angular renderer and Electron main process concurrently:
-
-```bash
-npm start
-```
-
-### Build for Production
-
-This will produce an installer/executable in the `dist/` or `out/` directory.
-
-```bash
-npm run pack
-```
+1.  **Install:**
+    ```bash
+    npm install
+    ```
+2.  **Run:**
+    ```bash
+    npm start
+    ```
+3.  **Build:**
+    ```bash
+    npm run pack
+    ```
 
 ## ⚠️ Security Warning
-
-**NalamDesk does not know your password.**
-There is no "Forgot Password" feature. Your password is used to mathematically derive the encryption key that opens your database. 
-- **Do not lose your password.**
-- **Do not share your password.**
+**Do not lose your Vault Password.** We cannot recover it for you.
 
 ## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+AGPLv3 License - see [LICENSE](LICENSE).

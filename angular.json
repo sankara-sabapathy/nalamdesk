@@ -25,7 +25,7 @@
               "src/renderer/assets"
             ],
             "styles": [
-              "src/renderer/styles.css"
+              "src/styles.css"
             ],
             "scripts": []
           },
@@ -43,7 +43,15 @@
                   "maximumError": "4kb"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "optimization": {
+                "scripts": true,
+                "styles": {
+                  "minify": true,
+                  "inlineCritical": false
+                },
+                "fonts": true
+              }
             },
             "development": {
               "optimization": false,
@@ -84,7 +92,7 @@
               "src/renderer/assets"
             ],
             "styles": [
-              "src/renderer/styles.css"
+              "src/styles.css"
             ],
             "scripts": []
           }

@@ -1,0 +1,42 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'documentation/**'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    concurrency: 
+      group: "deploy-pages-${{ github.ref }}"
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          # Cache npm dependencies if package-lock exists
+          cache: 'npm'
+          cache-dependency-path: documentation/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: documentation
+        run: npm ci
+
+      - name: Build Website
+        working-directory: documentation
+        run: npm run build
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./documentation/build
