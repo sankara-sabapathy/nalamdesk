@@ -4,7 +4,7 @@ import { Observable } from 'rxjs';
 
 // In production, this Angular app is served by the same server hosting the API.
 // So relative path works perfectly.
-const API_BASE = '/api/v1';
+const API_BASE = 'http://localhost:3001/api/v1'; // Local Dev API
 
 export interface Clinic {
     id: string;

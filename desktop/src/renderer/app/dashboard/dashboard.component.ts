@@ -13,7 +13,8 @@ import { PatientService } from '../services/patient.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="container mx-auto max-w-7xl">
+    <div class="h-full w-full overflow-y-auto p-8">
+    <div class="w-full px-6">
         <!-- Welcome Section -->
         <div class="flex justify-between items-center mb-8 mt-2">
             <div>
@@ -168,6 +169,7 @@ import { PatientService } from '../services/patient.service';
             </div>
           </div>
         </div>
+    </div>
     </div>
   `,
   styles: []

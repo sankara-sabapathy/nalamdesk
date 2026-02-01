@@ -301,16 +301,43 @@ export class DatabaseService {
 
     // Visits
     getVisits(patientId: number) {
+        // Updated to include vitals using a simple strategy: Fetch visits, then for each, try to get vitals?
+        // OR better: LEFT JOIN vitals on visit_id.
+        // NOTE: if multiple vitals exist for a visit (unlikely in current app flow, but possible), this might duplicate rows.
+        // Current flow: 1 Visit = 1 Vital entry (usually).
+
         const visits = this.db.prepare(`
-            SELECT v.*, d.name as doctor_name 
+            SELECT 
+                v.*, 
+                d.name as doctor_name,
+                vit.id as vital_id,
+                vit.systolic_bp,
+                vit.diastolic_bp,
+                vit.pulse,
+                vit.temperature,
+                vit.weight,
+                vit.bmi,
+                vit.spo2
             FROM visits v 
             LEFT JOIN users d ON v.doctor_id = d.id 
+            LEFT JOIN vitals vit ON vit.visit_id = v.id
             WHERE v.patient_id = ?
             ORDER BY v.date DESC
         `).all(patientId);
+
         return visits.map((v: any) => ({
             ...v,
-            prescription: v.prescription_json ? JSON.parse(v.prescription_json) : []
+            prescription: v.prescription_json ? JSON.parse(v.prescription_json) : [],
+            // Group vitals into a nested object if they exist
+            vitals: v.vital_id ? {
+                systolic_bp: v.systolic_bp,
+                diastolic_bp: v.diastolic_bp,
+                pulse: v.pulse,
+                temperature: v.temperature,
+                weight: v.weight,
+                bmi: v.bmi,
+                spo2: v.spo2
+            } : null
         }));
     }
 

@@ -14,6 +14,7 @@ export const routes: Routes = [
         children: [
             { path: 'dashboard', component: DashboardComponent },
             { path: 'patients', loadComponent: () => import('./patients/patient-list/patient-list.component').then(m => m.PatientListComponent) },
+            { path: 'patients/:id', loadComponent: () => import('./patients/patient-details/patient-details.component').then(m => m.PatientDetailsComponent) },
             { path: 'visits', loadComponent: () => import('./visits/visit-list/visit-list.component').then(m => m.VisitListComponent) },
             { path: 'visit/:id', loadComponent: () => import('./visits/visit/visit.component').then(m => m.VisitComponent) },
             { path: 'online-booking', loadComponent: () => import('./online-booking/online-booking.component').then(m => m.OnlineBookingComponent) },

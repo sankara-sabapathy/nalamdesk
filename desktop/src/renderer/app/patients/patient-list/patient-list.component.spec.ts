@@ -130,4 +130,35 @@ describe('PatientListComponent', () => {
         ageControl?.setValue(111);
         expect(ageControl?.hasError('max')).toBe(true);
     });
+
+    // Delete Modal Tests
+    it('should open delete modal independent of edit modal', () => {
+        // Ensure edit modal is closed
+        component.showModal = false;
+
+        component.confirmDelete(1);
+
+        expect(component.showDeleteModal).toBe(true);
+        expect(component.patientToDeleteId).toBe(1);
+        // Verify independence
+        expect(component.showModal).toBe(false);
+    });
+
+    it('should cancel delete', () => {
+        component.confirmDelete(1);
+        component.cancelDelete();
+
+        expect(component.showDeleteModal).toBe(false);
+        expect(component.patientToDeleteId).toBeNull();
+    });
+
+    it('should execute delete', async () => {
+        component.confirmDelete(1);
+        await component.executeDelete();
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('deletePatient', 1);
+        expect(component.showDeleteModal).toBe(false);
+        expect(component.patientToDeleteId).toBeNull();
+        expect(mockPatientService.getPatients).toHaveBeenCalled(); // Reloads list
+    });
 });

@@ -84,7 +84,7 @@ export default async function apiRoutes(server: FastifyInstance) {
                 if (slot.status !== 'AVAILABLE') return { error: 'Slot already taken', code: 409 };
 
                 // 1. Mark as HELD with expiration
-                db.prepare("UPDATE slots SET status = 'HELD', held_until = datetime('now', '+15 minutes') WHERE id = ?").run(body.slotId);
+                db.prepare("UPDATE slots SET status = 'HELD', held_until = datetime('now', '+5 minutes') WHERE id = ?").run(body.slotId);
                 clinicId = slot.clinic_id;
                 date = slot.date;
                 time = slot.time;

@@ -10,8 +10,8 @@ import { AuthService } from '../services/auth.service';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="h-screen bg-gray-100 p-8 overflow-y-auto">
-      <div class="max-w-4xl mx-auto pb-16">
+    <div class="h-full bg-gray-100 p-8 overflow-y-auto w-full">
+      <div class="w-full pb-16">
         <h1 class="text-3xl font-bold text-gray-800 mb-6">Settings & Resilience</h1>
         
         <!-- Tabs -->

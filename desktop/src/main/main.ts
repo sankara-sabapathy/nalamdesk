@@ -21,6 +21,9 @@ import { session } from 'electron';
 // Initialize Crash Service immediately to catch early errors
 const crashService = new CrashService();
 
+// Disable Hardware Acceleration to prevent input freezing/rendering glitches
+app.disableHardwareAcceleration();
+
 let mainWindow: BrowserWindow | null = null;
 const securityService = new SecurityService();
 const databaseService = new DatabaseService();
@@ -30,7 +33,7 @@ const cloudSyncService = new CloudSyncService(databaseService);
 // Determine Static Path for ApiServer
 const isDev = !app.isPackaged;
 const staticPath = isDev
-    ? path.join(__dirname, '../../nalamdesk/browser')
+    ? path.join(__dirname, '../../dist/nalamdesk/browser')
     : path.join(app.getAppPath(), 'dist/nalamdesk/browser');
 
 // Ensure static path exists (crucial for Dev mode if not built)

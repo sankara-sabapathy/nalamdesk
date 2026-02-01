@@ -2,65 +2,79 @@
 sidebar_position: 4
 ---
 
-# Testing Strategy
+# Testing Strategy 🧪
 
-NalamDesk employs a "Battle-Tested" testing strategy aiming for **101% coverage** of critical business logic. We use a combination of Unit, Integration, and End-to-End (E2E) tests.
+NalamDesk employs a "Battle-Tested" testing strategy tailored to its hybrid architecture. We aim for **101% coverage** of critical business logic using a combination of specialized test runners for each domain.
 
-## 🧪 Unit & Integration Tests
+## 1. Desktop Application (`/desktop`)
 
-We use **Vitest** for unit and integration testing.
+The Desktop app runs on Electron and uses **Vitest** (powered by AnalogJS). To handle the complexity of testing Angular components within an Electron environment, we utilize a **Dual-Environment Architecture**.
 
-- **Backend Tests** (`src/main/**/*.spec.ts`): Run in a Node.js environment.
-- **Frontend Tests** (`src/renderer/**/*.spec.ts`): Run in a JSDOM environment.
+### A. Mixed Integration Tests (Legacy/DOM)
+Used for testing component templates, complex DOM interactions, and integration with Angular's `TestBed`.
 
-### Running Tests
+- **Configuration**: `vitest.config.renderer.mjs`
+- **Setup File**: `src/test-setup.ts`
+- **Environment**: Loads `zone.js` and `TestBed`.
+- **Use Case**: UI testing, Directive testing.
+- **Run Command**:
+  ```bash
+  npm run test:renderer
+  ```
 
+### B. Pure Unit Tests (Business Logic)
+Used for high-speed testing of component logic, services, and state management without the overhead of the DOM or Zone.js.
+
+- **Configuration**: `vitest.config.pure.mjs`
+- **Setup File**: `src/test-setup-pure.ts`
+- **Environment**: **NO Zone.js**. Fast JIT compilation only.
+- **Methodology**: Uses **Constructor Injection** and **Manual Instantiation** (e.g., `new Component(...)`).
+- **Use Case**: Queue algorithms, Patient Data helpers, Service logic.
+- **Run Command**:
+  ```bash
+  npx vitest run -c vitest.config.pure.mjs
+  ```
+
+> **Why two environments?**
+> Zone.js is required for Angular's reactivity but conflicts with Vitest's async/await handling in certain scenarios. By separating pure logic tests into a "Pure" environment, we achieve faster execution and eliminate "ProxyZone" errors.
+
+---
+
+## 2. Cloud Web Platform (`/cloud/web`)
+
+The Cloud Web application is a standard Angular PWA. It uses the traditional Angular CLI testing stack.
+
+- **Test Runner**: **Karma** & **Jasmine**
+- **Configuration**: `karma.conf.js`
+- **Methodology**: Standard Angular `TestBed` testing.
+- **Run Command**:
+  ```bash
+  ng test
+  ```
+
+---
+
+## 3. Cloud API (`/cloud/api`)
+
+The Cloud API is a Node.js Fastify server.
+
+*(Testing framework pending implementation - likely Node Tap or Vitest)*
+
+---
+
+## 4. End-to-End (E2E) Tests
+
+We use **Playwright** with Electron support for full-system verification.
+
+### Isolation
+E2E tests run against a **Transient Test Database** (`nalamdesk-test.db`) to ensure your production data is never touched.
+
+### Running E2E
 ```bash
-# Run all unit tests
-npm test
+# 1. Close all NalamDesk instances
+# 2. Build the main process
+npm run build:main
 
-# Run tests with UI
-npm run test -- --ui
+# 3. Run Playwright
+npm run e2e
 ```
-
-### Key Components Tested
-- **Services**: `DatabaseService`, `SecurityService`, `AuthService`, `DataService`
-- **Components**: Login, Dashboard, Patient List, Visits, Settings
-
----
-
-## 🎭 End-to-End (E2E) Tests
-
-We use **Playwright** with Electron support for E2E testing.
-
-### Test Database Isolation
-To ensure data safety, E2E tests run against a **transient test database** (`nalamdesk-test.db`) instead of your production data.
-- The app automatically detects `NODE_ENV='test'` and switches to the test database.
-- Internal API server runs on `localhost:3000` to bypass file protocol issues.
-
-### Running E2E Tests
-
-> **⚠️ Important**: You must close all running instances of NalamDesk before running E2E tests due to the Single-Instance Lock.
-
-1. **Build the Main Process**:
-   ```bash
-   npm run build:main
-   ```
-
-2. **Run Playwright**:
-   ```bash
-   npm run e2e
-   ```
-
-3. **View Report (on failure)**:
-   ```bash
-   npx playwright show-report
-   ```
-
----
-
-## 🔄 CI/CD Integration
-
-Tests are automatically executed via GitHub Actions on every push to feature branches.
-- **Workflow**: `feature-ci.yml`
-- **Gate**: All unit tests must pass for the build to succeed.

@@ -24,4 +24,6 @@ terraform apply
 ```
 
 ## Documentation
+## Documentation
 See `cloud/documentation` for full architectural details.
+See **[Testing Strategy](./cloud/documentation/docs/developer-guide/testing-strategy.md)** for detailed Testing Architecture.

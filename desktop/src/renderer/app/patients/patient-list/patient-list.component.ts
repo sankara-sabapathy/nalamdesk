@@ -5,17 +5,16 @@ import { Patient, PatientService } from '../../services/patient.service';
 import { DataService } from '../../services/api.service';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
-
+import { DialogService } from '../../shared/services/dialog.service';
 import { DatePickerComponent } from '../../shared/components/date-picker/date-picker.component';
 
 @Component({
-  // ... template omitted ...
   selector: 'app-patient-list',
   standalone: true,
   imports: [CommonModule, FormsModule, ReactiveFormsModule, DatePickerComponent],
   template: `
-    <div class="p-6 bg-gray-100 min-h-screen">
-      <div class="max-w-7xl mx-auto">
+    <div class="h-full bg-gray-100 p-6 flex flex-col overflow-hidden">
+      <div class="w-full">
         <div class="flex justify-between items-center mb-6">
           <h1 class="text-3xl font-bold text-gray-800">Patients</h1>
           <button (click)="openAddModal()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
@@ -35,10 +34,10 @@ import { DatePickerComponent } from '../../shared/components/date-picker/date-pi
           <span class="absolute left-3 top-2.5 text-gray-400">🔍</span>
         </div>
 
-        <!-- Data Table -->
-        <div class="bg-white rounded-lg shadow overflow-hidden">
+        <!-- Data Table (Scrollable Container) -->
+        <div class="bg-white rounded-lg shadow flex-1 overflow-auto relative">
           <table class="min-w-full">
-            <thead class="bg-gray-50 text-gray-700">
+            <thead class="bg-gray-50 text-gray-700 sticky top-0 z-10 shadow-sm">
               <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Name</th>
                 <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">Mobile</th>
@@ -61,8 +60,6 @@ import { DatePickerComponent } from '../../shared/components/date-picker/date-pi
                     {{ isEnqueued(patient) ? 'In Queue' : 'Add to Queue' }}
                   </button>
                   <button (click)="editPatient(patient); $event.stopPropagation()" class="text-indigo-600 hover:text-indigo-900 mr-4">Edit</button>
-                  <button *ngIf="currentUser?.role === 'admin'" (click)="confirmDelete(patient.id!); $event.stopPropagation()" class="text-red-600 hover:text-red-900 mr-4">Delete</button>
-                  <button (click)="goToVisit(patient); $event.stopPropagation()" class="text-blue-600 hover:text-blue-900">History</button>
                 </td>
               </tr>
               <tr *ngIf="patients.length === 0">
@@ -237,17 +234,9 @@ import { DatePickerComponent } from '../../shared/components/date-picker/date-pi
                 </div>
             </div>
         </div>
-      <!-- Delete Confirmation Modal -->
-      <div *ngIf="showDeleteModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-6 w-96 shadow-xl">
-            <h2 class="text-xl font-bold mb-4 text-red-600">Delete Patient?</h2>
-            <p class="text-gray-600 mb-6">Are you sure you want to delete this patient? All their visits and history will be permanently deleted.</p>
-            <div class="flex justify-end gap-2">
-                <button (click)="cancelDelete()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
-                <button (click)="executeDelete()" class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">Delete Permanently</button>
-            </div>
-        </div>
       </div>
+
+
     </div>
   `,
   styles: []
@@ -271,11 +260,10 @@ export class PatientListComponent implements OnInit {
     return !!this.patientForm.get('id')?.value;
   }
 
-  // Removed old newPatient object in favor of patientForm
-
   private dataService: DataService = inject(DataService);
   private authService: AuthService = inject(AuthService);
   currentUser: any = null;
+  private dialogService = inject(DialogService);
 
   constructor(
     private fb: FormBuilder,
@@ -297,16 +285,16 @@ export class PatientListComponent implements OnInit {
       name: ['', [Validators.required, Validators.minLength(3)]],
       mobile: ['', [Validators.required, Validators.pattern(/^[0-9]{10}$/)]],
       age: [null, [Validators.required, Validators.min(0), Validators.max(110)]],
-      dob: [null], // We will validate that DOB matches age approximately if provided
+      dob: [null],
       gender: ['Male', Validators.required],
       blood_group: [''],
-      email: ['', [Validators.email]], // Optional but strictly validated if present
+      email: ['', [Validators.email]],
 
       // Address
-      address: ['', Validators.required], // Full address or street
+      address: ['', Validators.required],
       street: [''],
       city: [''],
-      state: [''], // Could be dropdown
+      state: [''],
       zip_code: ['', [Validators.pattern(/^[0-9]{6}$/)]],
 
       // Emergency
@@ -318,7 +306,6 @@ export class PatientListComponent implements OnInit {
       policy_number: ['']
     });
 
-    // Auto-calculate Age from DOB
     this.patientForm.get('dob')?.valueChanges.subscribe(dob => {
       if (dob) {
         const age = this.calculateAge(new Date(dob));
@@ -338,28 +325,13 @@ export class PatientListComponent implements OnInit {
     this.loadPatients();
     this.loadQueueStatus();
 
-    // Auto-open modal if query param exists
     this.route.queryParams.subscribe(params => {
       if (params['editId']) {
         const id = Number(params['editId']);
-        // Wait for patients to load?? Or fetch specifically?
-        // Safer to fetch specifically or wait. 
-        // Since we call loadPatients, we can try to find from there, 
-        // but loadPatients is async.
-        // Let's fetch the single patient to be sure.
-        // Actually, getPatients returns array.
-        // Let's rely on loadPatients for now, or just wait a bit.
-        // Better: Load specific patient by ID if possible. 
-        // Current API: getPatients(query). Query can be name/mobile. 
-        // We don't have getPatientById.
-        // We'll wait for loadPatients to finish.
-        // NOTE: This race condition is a simplified handling. 
         setTimeout(() => {
           const p = this.patients.find(pt => pt.id === id);
           if (p) {
             this.editPatient(p);
-            // Clear param so refresh doesn't reopen? 
-            // this.router.navigate([], { queryParams: { editId: null }, queryParamsHandling: 'merge' });
           }
         }, 500);
       }
@@ -424,35 +396,7 @@ export class PatientListComponent implements OnInit {
   }
 
   goToVisit(patient: Patient) {
-    this.router.navigate(['/visit', patient.id]);
-  }
-
-  // Delete Modal State
-  showDeleteModal = false;
-  patientToDeleteId: number | null = null;
-
-  confirmDelete(id: number) {
-    this.patientToDeleteId = id;
-    this.showDeleteModal = true;
-  }
-
-  async executeDelete() {
-    if (this.patientToDeleteId) {
-      try {
-        await this.dataService.invoke<any>('deletePatient', this.patientToDeleteId);
-        this.loadPatients();
-        this.showDeleteModal = false;
-        this.patientToDeleteId = null;
-      } catch (e) {
-        console.error(e);
-        alert('Failed to delete patient');
-      }
-    }
-  }
-
-  cancelDelete() {
-    this.showDeleteModal = false;
-    this.patientToDeleteId = null;
+    this.router.navigate(['/patients', patient.id]);
   }
 
   enqueuedPatientIds = new Set<number>();
@@ -462,7 +406,12 @@ export class PatientListComponent implements OnInit {
 
     // Strict Validation
     if (!this.patientService.isPatientComplete(patient)) {
-      alert('Patient details incomplete (Age, Gender, Address etc. required). Please update details first.');
+      await this.dialogService.open({
+        title: 'Incomplete Details',
+        message: 'Patient details incomplete (Age, Gender, Address etc. required). Please update details first.',
+        type: 'warning',
+        confirmText: 'Edit Now'
+      });
       this.editPatient(patient);
       return;
     }
@@ -476,12 +425,16 @@ export class PatientListComponent implements OnInit {
     } catch (e: any) {
       console.error(e);
       // If error is "Patient already in queue", we should update our local state
-      this.ngZone.run(() => {
+      this.ngZone.run(async () => {
         if (e.message && e.message.includes('already in queue')) {
           this.enqueuedPatientIds.add(patient.id!);
           this.cdr.detectChanges();
         } else {
-          alert('Failed to add to queue: ' + e.message);
+          await this.dialogService.open({
+            title: 'Error',
+            message: 'Failed to add to queue: ' + e.message,
+            type: 'error'
+          });
         }
       });
     }

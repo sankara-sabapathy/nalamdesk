@@ -54,7 +54,8 @@ import { AuthService } from '../../services/auth.service';
         </div>
 
         <!-- Main Content -->
-        <main class="flex-1 p-6 overflow-y-auto">
+        <!-- Global Layout: Parent is overflow-hidden, Child views MUST handle scrolling -->
+        <main class="flex-1 h-full w-full overflow-hidden relative flex flex-col">
            <router-outlet></router-outlet>
         </main>
       </div> 
@@ -138,10 +139,10 @@ import { AuthService } from '../../services/auth.service';
       
       <div actions class="flex gap-2 w-full justify-end">
          <button *ngIf="dialogService.options().type === 'confirm'" 
-                 class="btn btn-ghost" (click)="dialogService.close()">
+                 class="px-4 py-2 rounded text-blue-600 border border-blue-200 hover:bg-blue-50 transition" (click)="dialogService.close()">
            {{ dialogService.options().cancelText }}
          </button>
-         <button class="btn btn-primary" (click)="dialogService.confirm()">
+         <button class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium transition shadow-sm" (click)="dialogService.confirm()">
            {{ dialogService.options().confirmText }}
          </button>
       </div>
@@ -165,12 +166,14 @@ import { AuthService } from '../../services/auth.service';
   `]
 })
 export class MainLayoutComponent {
-  dialogService = inject(DialogService);
-  private authService = inject(AuthService);
   queueCount = 0; // TODO: Connect to service
   currentUser: any = null;
 
-  constructor(private router: Router) {
+  constructor(
+    private router: Router,
+    public dialogService: DialogService,
+    private authService: AuthService
+  ) {
     this.currentUser = this.authService.getUser();
   }
 

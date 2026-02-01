@@ -214,44 +214,45 @@ export class BookingModalComponent implements OnInit {
     return slot ? slot.time : '';
   }
 
-  if(this.submitting) return;
+  submit() {
+    if (this.submitting) return;
 
-  if(!this.data.patientName || !this.data.phone) {
-  this.error = 'Name and Phone are required';
-  return;
-}
-
-const phoneRegex = /^[0-9]{10,15}$/;
-if (!phoneRegex.test(this.data.phone)) {
-  this.error = 'Phone number must be 10-15 digits';
-  return;
-}
-
-this.submitting = true;
-this.error = '';
-
-// If slotId is empty, we must ensure clinicId is sent.
-// It is set in ngOnInit.
-
-// Copy data to avoid sending empty slotId string if API expects optional/undefined?
-// API logic handles empty string check? No, Zod uuid validation will fail on empty string!
-// We need to send undefined if generic.
-const payload: any = { ...this.data };
-if (!payload.slotId) delete payload.slotId;
-
-this.api.bookAppointment(payload).subscribe({
-  next: () => {
-    this.submitting = false;
-    this.success = true;
-  },
-  error: (err) => {
-    this.submitting = false;
-    if (err.error?.error) {
-      this.error = err.error.error;
-    } else {
-      this.error = 'Failed to submit request.';
+    if (!this.data.patientName || !this.data.phone) {
+      this.error = 'Name and Phone are required';
+      return;
     }
-  }
-})
+
+    const phoneRegex = /^[0-9]{10,15}$/;
+    if (!phoneRegex.test(this.data.phone)) {
+      this.error = 'Phone number must be 10-15 digits';
+      return;
+    }
+
+    this.submitting = true;
+    this.error = '';
+
+    // If slotId is empty, we must ensure clinicId is sent.
+    // It is set in ngOnInit.
+
+    // Copy data to avoid sending empty slotId string if API expects optional/undefined?
+    // API logic handles empty string check? No, Zod uuid validation will fail on empty string!
+    // We need to send undefined if generic.
+    const payload: any = { ...this.data };
+    if (!payload.slotId) delete payload.slotId;
+
+    this.api.bookAppointment(payload).subscribe({
+      next: () => {
+        this.submitting = false;
+        this.success = true;
+      },
+      error: (err) => {
+        this.submitting = false;
+        if (err.error?.error) {
+          this.error = err.error.error;
+        } else {
+          this.error = 'Failed to submit request.';
+        }
+      }
+    });
   }
 }

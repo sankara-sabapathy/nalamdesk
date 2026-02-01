@@ -11,8 +11,8 @@ import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
   standalone: true,
   imports: [CommonModule, VitalsFormComponent],
   template: `
-    <div class="min-h-screen bg-gray-50 p-8 font-sans">
-      <div class="max-w-6xl mx-auto">
+    <div class="h-full bg-gray-50 p-8 font-sans flex flex-col overflow-hidden">
+      <div class="w-full">
         <!-- Header -->
         <div class="flex justify-between items-center mb-8">
            <div class="flex items-center gap-4">
@@ -33,12 +33,12 @@ import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
            </div>
         </div>
 
-        <!-- Main Card -->
-        <div class="card bg-white shadow-xl border border-gray-200">
-          <div class="card-body p-0">
+        <!-- Main Card (Flex child takes remaining height) -->
+        <div class="card bg-white shadow-xl border border-gray-200 flex-1 overflow-hidden flex flex-col">
+          <div class="card-body p-0 flex-1 overflow-y-auto relative">
             <div class="overflow-x-auto">
               <table class="table table-lg">
-                <thead class="bg-base-200/50 text-base-content/70">
+                <thead class="bg-base-200/50 text-base-content/70 sticky top-0 z-10 backdrop-blur-sm">
                   <tr>
                     <th>Priority</th>
                     <th>Patient Details</th>
@@ -145,9 +145,12 @@ import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
 })
 export class QueueComponent implements OnInit, OnDestroy {
   queue = signal<any[]>([]);
-  private router = inject(Router);
-  private dataService: DataService = inject(DataService);
-  private refreshIntervalId: any;
+  refreshIntervalId: any;
+
+  constructor(
+    private router: Router,
+    private dataService: DataService
+  ) { }
 
   ngOnInit() {
     this.refreshQueue();
@@ -179,7 +182,9 @@ export class QueueComponent implements OnInit, OnDestroy {
       this.refreshQueue();
 
       if (status === 'in-consult' && item) {
-        this.router.navigate(['/visit', item.patient_id]);
+        this.router.navigate(['/visit', item.patient_id], {
+          state: { isConsulting: true, patientName: item.patient_name }
+        });
       }
     } catch (e) {
       console.error('Update failed', e);

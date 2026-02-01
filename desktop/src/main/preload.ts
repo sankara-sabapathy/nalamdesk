@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electron', {
     login: (password: string) => ipcRenderer.invoke('auth:login', password),
     db: {
         getPatients: (query: string) => ipcRenderer.invoke('db:getPatients', query),
+        getPatientById: (id: number) => ipcRenderer.invoke('db:getPatientById', id),
         savePatient: (patient: any) => ipcRenderer.invoke('db:savePatient', patient),
         deletePatient: (id: number) => ipcRenderer.invoke('db:deletePatient', id),
         getVisits: (patientId: number) => ipcRenderer.invoke('db:getVisits', patientId),

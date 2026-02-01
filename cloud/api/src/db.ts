@@ -44,6 +44,7 @@ db.exec(`
     date TEXT NOT NULL, -- YYYY-MM-DD
     time TEXT NOT NULL, -- HH:mm
     status TEXT NOT NULL DEFAULT 'AVAILABLE', -- AVAILABLE, HELD, BOOKED
+    held_until TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
   );
@@ -54,6 +55,13 @@ db.exec(`
 // Migration: Add specialty if missing
 try {
   db.exec('ALTER TABLE clinics ADD COLUMN specialty TEXT');
+} catch (e) {
+  // Column likely exists
+}
+
+// Migration: Add held_until if missing
+try {
+  db.exec('ALTER TABLE slots ADD COLUMN held_until TEXT');
 } catch (e) {
   // Column likely exists
 }

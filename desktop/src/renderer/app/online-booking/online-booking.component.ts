@@ -9,7 +9,7 @@ import { PatientService } from '../services/patient.service';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="space-y-6">
+    <div class="h-full w-full overflow-y-auto p-6 space-y-6">
       <div class="flex justify-between items-center">
         <h1 class="text-2xl font-bold text-gray-800">Online Booking Management</h1>
       </div>
