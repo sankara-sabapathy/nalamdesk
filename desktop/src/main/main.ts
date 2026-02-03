@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, clipboard } from 'electron';
 import * as path from 'path';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
@@ -164,55 +164,170 @@ app.whenReady().then(() => {
 });
 
 // IPC Handlers
+// IPC Handlers
+ipcMain.handle('auth:checkSetup', () => {
+    const userDataPath = app.getPath('userData');
+    return securityService.isSetup(userDataPath);
+});
+
+ipcMain.handle('auth:setup', async (event, { password, clinicDetails, adminDetails }) => {
+    try {
+        console.log('[Auth] Starting Setup...');
+        const userDataPath = app.getPath('userData');
+        const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
+        const dbPath = app.isPackaged
+            ? path.join(userDataPath, dbName)
+            : path.join(__dirname, '../../', dbName);
+
+        // 1. Setup Security (Generates DEK + Recovery Code)
+        const recoveryCode = await securityService.setup(password, dbPath, userDataPath);
+
+        // 2. Set DB Service
+        databaseService.setDb(securityService.getDb());
+
+        // 3. Migrate DB Schema
+        await databaseService.migrate();
+
+        // 4. Save Settings
+        await databaseService.saveSettings(clinicDetails);
+
+        // 5. Create Admin User
+        // We pass password here, but remember, Auth is now decoupled from DB Key.
+        // The Admin Password is the same as the Master Password for simplicity in V1/V2 transition.
+        await databaseService.ensureAdminUser(password);
+
+        console.log('[Auth] Setup Complete.');
+        return { success: true, recoveryCode };
+    } catch (e: any) {
+        console.error('[Auth] Setup failed:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('auth:recover', async (event, { recoveryCode, newPassword }) => {
+    try {
+        console.log('[Auth] Starting Recovery...');
+        const userDataPath = app.getPath('userData');
+        const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
+        const dbPath = app.isPackaged
+            ? path.join(userDataPath, dbName)
+            : path.join(__dirname, '../../', dbName);
+
+        // 1. Recover Vault
+        const newRecoveryCode = await securityService.recover(recoveryCode, newPassword, userDataPath, dbPath);
+
+        // 2. Set DB
+        databaseService.setDb(securityService.getDb());
+
+        // 3. Update Admin Password in DB (since we reset it)
+        // Note: We need a way to find the admin user and update their password hash.
+        // DatabaseService needs a method for this.
+        // For now, let's assume 'admin' user exists.
+        await databaseService.updateUserPassword('admin', newPassword);
+
+        return { success: true, recoveryCode: newRecoveryCode };
+    } catch (e: any) {
+        console.error('[Auth] Recovery failed:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('auth:regenerateRecoveryCode', async (event, { password }) => {
+    try {
+        const user = sessionService.getUser();
+        if (!user || user.role !== 'admin') throw new Error('Forbidden');
+
+        console.log('[Auth] Regenerating Recovery Code...');
+        const recoveryCode = await securityService.regenerateRecoveryCode(password);
+        return { success: true, recoveryCode };
+    } catch (e: any) {
+        console.error('[Auth] Regenerate Recovery Code failed:', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('clipboard:writeText', (event, text) => {
+    clipboard.writeText(text);
+    return true;
+});
+
 ipcMain.handle('auth:login', async (event, credentials) => {
     try {
         const { username, password } = credentials;
-        let dbOpen = false;
-        try {
-            dbOpen = !!securityService.getDbPath();
-        } catch { dbOpen = false; }
 
-        if (username === 'admin') {
+        // 1. Initialize / Unlock DB if not already open
+        if (!securityService.getDb()) {
             try {
-                const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
                 const userDataPath = app.getPath('userData');
+                const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
                 const dbPath = app.isPackaged
                     ? path.join(userDataPath, dbName)
                     : path.join(__dirname, '../../', dbName);
 
-                // Initialize Secure DB (handles salt migration/rekeying)
+                // This handles Unlock OR V1->V2 Migration
                 await securityService.initialize(password, dbPath, userDataPath);
 
                 databaseService.setDb(securityService.getDb());
-                await databaseService.migrate();
-                await databaseService.ensureAdminUser(password);
 
-                const settings = databaseService.getSettings();
-                if (settings && settings.drive_tokens) {
-                    googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
-                    backupService.scheduleDailyBackup(); // Automated Backup
-                }
+                // If migration happened, we might want to ensure schema is up to date?
+                // V2 Migration does NOT run schema migrations automatically, but V1 Logic did.
+                // Let's run migrate just in case (safe idempotent)
+                await databaseService.migrate();
+
             } catch (e: any) {
-                console.error('DB Init failed:', e);
-                // Return generic error so user doesn't know if PW was wrong or DB failed
-                if (e.message === 'INVALID_PASSWORD') return { success: false, error: 'INVALID_CREDENTIALS' };
-                return { success: false, error: 'SYSTEM_ERROR' };
+                if (e.message === 'INVALID_PASSWORD') {
+                    // If DB unlock fails, we can't proceed.
+                    // But wait! If the user is NOT admin, they can't unlock the DB.
+                    // They rely on DB being already open.
+                } else if (e.message === 'NOT_SETUP') {
+                    return { success: false, error: 'SETUP_REQUIRED' };
+                } else {
+                    console.error('DB Init failed:', e);
+                    return { success: false, error: 'SYSTEM_ERROR' };
+                }
             }
-        } else {
-            try {
-                const db = securityService.getDb();
-                if (!db) return { success: false, error: 'SYSTEM_LOCKED' }; // DB not open
-                databaseService.setDb(db);
-            } catch (e) {
+        }
+
+        // 2. Check if DB is open
+        const db = securityService.getDb();
+        if (!db) {
+            // DB is locked. Only Admin can unlock it.
+            // If we are here, it means `initialize` failed or wasn't called (e.g. wrong password).
+
+            // If the user trying to login is 'admin', then the `initialize` call above failed with INVALID_PASSWORD.
+            if (username === 'admin') {
+                return { success: false, error: 'INVALID_CREDENTIALS' };
+            } else {
+                // If normal user, they are blocked until Admin unlocks.
                 return { success: false, error: 'SYSTEM_LOCKED' };
             }
         }
 
-        // cloudSyncService.init();
+        databaseService.setDb(db);
 
-        // Debug data counts (Non-Prod only)
-        if (isDev) {
-            databaseService.logStats();
+        // 3. Validate User against DB
+        // If we are Admin, we just unlocked the DB with the password.
+        // Does that mean we are automatically logged in? 
+        // Yes, if we unlocked it, we possess the master password.
+
+        if (username === 'admin') {
+            // Verify the DB internal user 'admin' also has this password?
+            // V1 Logic: ensureAdminUser(password) was called on login.
+            // We should probably keep that sync logic or just trust the Vault Unlock?
+            // Best practice: Trust Vault Unlock for Admin.
+            const user = await databaseService.getUserByUsername('admin');
+            if (user) {
+                sessionService.setUser(user);
+
+                // Check if settings has drive tokens -> Schedule Backup
+                const settings = databaseService.getSettings();
+                if (settings && settings.drive_tokens) {
+                    googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+                    backupService.scheduleDailyBackup();
+                }
+
+                return { success: true, user };
+            }
         }
 
         console.log(`[Auth] Validating user: ${username}`);

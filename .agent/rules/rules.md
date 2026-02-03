@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # NalamDesk Project Rules & Context 🧠
 
 ## 1. Architecture Overview (Hybrid)
@@ -57,3 +61,13 @@ NalamDesk is a **Hybrid Medical Practice Management System** that combines priva
 - **Start Desktop**: `cd desktop && npm start`
 - **Build Desktop**: `cd desktop && npm run dist:win`
 - **Deploy Cloud**: `cd cloud/infrastructure && terraform apply`
+- **Deploy Cloud**: `cd cloud/infrastructure && terraform apply`
+
+## 5. Architecture Clarification (Desktop vs Cloud) 🌐
+- **Distinct Applications**: The `desktop` application (Electron) and `cloud/web` application are **distinct entities**.
+    - **Desktop**: Local-first, runs on SQLite, uses IPC for communication.
+    - **Cloud Web**: Separate Angular app hosted on S3, communicates via API, has its own authentication and state.
+- **Authentication**:
+    - **Desktop Auth**: Unlocks local SQLite DB via Master Password / Key Wrapping.
+    - **Cloud Auth**: Uses stateless JWT/API tokens (Future Implementation).
+    - **Do NOT conflate them**: Changes to Desktop auth (local DB) do not automatically apply to Cloud Web auth (remote API).

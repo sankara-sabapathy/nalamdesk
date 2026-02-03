@@ -43,12 +43,43 @@ import { AuthService } from '../services/auth.service';
                         <p class="text-sm text-gray-500">Allow patients to find you on nalamdesk.com and book appointments.</p>
                         <p *ngIf="cloudClinicId" class="text-xs text-green-600 mt-1">Status: Active (ID: {{ cloudClinicId }})</p>
                     </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
+                     <label class="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" class="sr-only peer" [checked]="cloudEnabled" (change)="toggleCloud($event)">
                         <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
                     </label>
                 </div>
             </div>
+
+
+
+             <!-- Recovery Code Modal -->
+             <div *ngIf="showRecoveryModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                 <div class="bg-white rounded-lg p-6 w-full max-w-md">
+                     <h3 class="text-xl font-bold mb-4">Generate Recovery Code</h3>
+                     
+                     <div *ngIf="!newRecoveryCode">
+                        <p class="text-sm text-gray-600 mb-4">Please enter your Master Password to verify authorization.</p>
+                        <input type="password" [(ngModel)]="confirmPassword" class="input input-bordered w-full mb-4" placeholder="Master Password">
+                        <div class="flex justify-end gap-2">
+                            <button (click)="showRecoveryModal = false" class="btn btn-ghost">Cancel</button>
+                            <button (click)="generateRecoveryCode()" class="btn btn-error" [disabled]="!confirmPassword || isLoading">
+                                {{ isLoading ? 'Generating...' : 'Generate' }}
+                            </button>
+                        </div>
+                     </div>
+
+                     <div *ngIf="newRecoveryCode">
+                        <div class="bg-gray-100 p-4 rounded text-center mb-4 border border-gray-300">
+                             <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">New Recovery Code</p>
+                             <p class="text-xl font-mono font-bold select-all text-red-600">{{ newRecoveryCode }}</p>
+                        </div>
+                        <p class="text-sm text-gray-500 mb-6 text-center">Save this code securely. The old code is now invalid.</p>
+                        <div class="flex justify-center">
+                            <button (click)="closeRecoveryModal()" class="btn btn-primary">Done</button>
+                        </div>
+                     </div>
+                 </div>
+             </div>
 
             <!-- Cloud Onboard Modal -->
             <div *ngIf="showCloudModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -89,6 +120,53 @@ import { AuthService } from '../services/auth.service';
                 {{ message }}
             </p>
             </div>
+
+            <!-- Recovery Configuration -->
+            <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="isElectron">
+                <h2 class="text-xl font-semibold mb-4 text-red-600">Security & Recovery</h2>
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="font-medium text-gray-800">Administrator Recovery Code</p>
+                        <p class="text-sm text-gray-500">Generate a new Recovery Code if the old one is lost or compromised.</p>
+                        <p class="text-xs text-red-500 mt-1 font-bold">Warning: Generating a new code invalidates the previous one.</p>
+                    </div>
+                    <button (click)="openRecoveryModal()" class="btn btn-outline btn-error">
+                        Generate New Code
+                    </button>
+                </div>
+            </div>
+
+             <!-- Recovery Code Modal -->
+             <div *ngIf="showRecoveryModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+                 <div class="bg-white rounded-lg p-6 w-full max-w-md">
+                     <h3 class="text-xl font-bold mb-4">Generate Recovery Code</h3>
+                     
+                     <div *ngIf="!newRecoveryCode">
+                        <p class="text-sm text-gray-600 mb-4">Please enter your Master Password to verify authorization.</p>
+                        <input type="password" [(ngModel)]="confirmPassword" class="input input-bordered w-full mb-4" placeholder="Master Password">
+                        <div class="flex justify-end gap-2">
+                            <button (click)="showRecoveryModal = false" class="btn btn-ghost">Cancel</button>
+                            <button (click)="generateRecoveryCode()" class="btn btn-error" [disabled]="!confirmPassword || isLoading">
+                                {{ isLoading ? 'Generating...' : 'Generate' }}
+                            </button>
+                        </div>
+                     </div>
+
+                     <div *ngIf="newRecoveryCode">
+                        <div class="bg-gray-100 p-4 rounded text-center mb-4 border border-gray-300 relative group">
+                             <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">New Recovery Code</p>
+                             <p class="text-xl font-mono font-bold select-all text-red-600 mb-2">{{ newRecoveryCode }}</p>
+                             <button (click)="copyRecoveryCode()" class="btn btn-xs btn-outline">
+                                {{ isCopied ? 'Copied!' : 'Copy to Clipboard' }}
+                             </button>
+                        </div>
+                        <p class="text-sm text-gray-500 mb-6 text-center">Save this code securely. The old code is now invalid.</p>
+                        <div class="flex justify-center">
+                            <button (click)="closeRecoveryModal()" class="btn btn-primary">Done</button>
+                        </div>
+                     </div>
+                 </div>
+             </div>
             <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="!isElectron">
                  <h2 class="text-xl font-semibold mb-4 text-gray-400">Cloud Connection</h2>
                  <p class="text-sm text-gray-500">Backup configuration is only available on the Master System.</p>
@@ -251,7 +329,59 @@ export class SettingsComponent implements OnInit {
   cloudForm = { name: '', city: '' };
   cloudLoading = false;
 
+  // Recovery
+  showRecoveryModal = false;
+  confirmPassword = '';
+  newRecoveryCode: string | null = null;
+  isCopied = false;
+
   constructor(private ngZone: NgZone) { }
+
+  openRecoveryModal() {
+    this.confirmPassword = '';
+    this.newRecoveryCode = null;
+    this.isCopied = false;
+    this.showRecoveryModal = true;
+  }
+
+  closeRecoveryModal() {
+    this.showRecoveryModal = false;
+    this.newRecoveryCode = null;
+    this.isCopied = false;
+  }
+
+  async copyRecoveryCode() {
+    if (this.newRecoveryCode) {
+      if (window.electron) await window.electron.clipboard.writeText(this.newRecoveryCode);
+      else navigator.clipboard.writeText(this.newRecoveryCode);
+
+      this.ngZone.run(() => {
+        this.isCopied = true;
+        setTimeout(() => this.isCopied = false, 2000);
+      });
+    }
+  }
+
+  async generateRecoveryCode() {
+    if (!this.confirmPassword) return;
+    this.isLoading = true;
+    try {
+      const res = await this.authService.regenerateRecoveryCode(this.confirmPassword);
+      this.ngZone.run(() => {
+        this.isLoading = false;
+        if (res.success && res.recoveryCode) {
+          this.newRecoveryCode = res.recoveryCode;
+        } else {
+          alert('Refused: ' + (res.error || 'Invalid Password'));
+        }
+      });
+    } catch (e) {
+      this.ngZone.run(() => {
+        this.isLoading = false;
+        alert('Error generating code');
+      });
+    }
+  }
 
   ngOnInit() {
     this.currentUser = this.authService.getUser();

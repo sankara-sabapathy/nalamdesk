@@ -136,6 +136,12 @@ export class DatabaseService {
         return this.db.prepare('DELETE FROM users WHERE id = ?').run(id);
     }
 
+    async updateUserPassword(username: string, newPassword: string) {
+        const argon2 = await import('argon2');
+        const hash = await argon2.hash(newPassword);
+        return this.db.prepare('UPDATE users SET password = ? WHERE username = ?').run(hash, username);
+    }
+
     // ... existing methods ...
     getSettings() {
         return this.db.prepare('SELECT * FROM settings LIMIT 1').get();

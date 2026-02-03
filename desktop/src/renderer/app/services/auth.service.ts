@@ -10,26 +10,8 @@ export class AuthService {
     constructor() { }
 
     async login(username: string, password: string): Promise<{ success: boolean; error?: string }> {
-        // Check if in Electron (Local)
         if (window.electron) {
-            // Local Login: Traditionally just password, but we are moving to Username/Pass.
-            // IPC needs an update to accept username?
-            // Actually, for Master, we auto-login or use simple auth.
-            // BUT if we want unified RBAC, even Master should use the same auth flow?
-            // Let's assume Master uses the same flow: `ipcRenderer.invoke('auth:login', {username, password})`
-            // Wait, current IPC `auth:login` takes just password. I need to update IPC handler too!
-            // Or, for Master, we keep it simple (Password only -> Admin).
-            // Let's check main.ts IPC again. It takes password and uses it to key DB.
-
-            // CRITICAL DEVIATION: The existing system uses the password to DERIVE the DB KEY.
-            // If we change this, we break DB encryption/unlocking.
-            // So for MASTER (Electron), the "Login" is actually "Unlock DB".
-            // The Admin User is implicitly logged in when DB is unlocked.
-
-            // So:
-            // If Electron: Call existing `login(password)`. If success, set user as Admin.
             try {
-                // Pass full object
                 const result = await window.electron.login({ username, password });
                 if (result.success) {
                     this.setUser(result.user);
@@ -41,8 +23,6 @@ export class AuthService {
                 return { success: false, error: e.message };
             }
         } else {
-            // Remote Login (Browser)
-            // Hit API
             try {
                 const response = await fetch('/api/auth/login', {
                     method: 'POST',
@@ -63,10 +43,40 @@ export class AuthService {
         }
     }
 
+    async checkSetup(): Promise<{ isSetup: boolean, hasRecovery: boolean }> {
+        if (window.electron) {
+            return await window.electron.checkSetup();
+        } else {
+            // Web: Check API
+            // For now assume true or implement API endpoint
+            return { isSetup: true, hasRecovery: false };
+        }
+    }
+
+    async setup(data: any): Promise<{ success: boolean, recoveryCode?: string, error?: string }> {
+        if (window.electron) {
+            return await window.electron.setup(data);
+        }
+        return { success: false, error: 'Web setup not supported yet' };
+    }
+
+    async recover(data: any): Promise<{ success: boolean, recoveryCode?: string, error?: string }> {
+        if (window.electron) {
+            return await window.electron.recover(data);
+        }
+        return { success: false, error: 'Web recovery not supported yet' };
+    }
+
+    async regenerateRecoveryCode(password: string): Promise<{ success: boolean, recoveryCode?: string, error?: string }> {
+        if (window.electron) {
+            return await window.electron.regenerateRecoveryCode(password);
+        }
+        return { success: false, error: 'Not supported' };
+    }
+
     logout() {
         localStorage.removeItem(this.tokenKey);
         localStorage.removeItem(this.userKey);
-        // If Electron, maybe close DB? existing app doesn't seem to have explicit logout that closes DB.
         window.location.reload();
     }
 
@@ -88,6 +98,6 @@ export class AuthService {
     }
 
     isLoggedIn() {
-        return !!this.getUser(); // Simple check
+        return !!this.getUser();
     }
 }

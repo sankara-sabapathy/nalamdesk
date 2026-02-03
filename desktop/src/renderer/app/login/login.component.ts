@@ -1,5 +1,5 @@
 import { Component, NgZone } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../services/auth.service';
@@ -7,7 +7,7 @@ import { AuthService } from '../services/auth.service';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterModule],
   template: `
     <div class="min-h-screen flex items-center justify-center bg-gray-900 text-white">
       <div class="bg-gray-800 p-8 rounded-lg shadow-xl w-96 border border-gray-700">
@@ -49,7 +49,7 @@ import { AuthService } from '../services/auth.service';
             >
           </div>
           
-          <button
+      <button
             type="submit"
             [disabled]="isLoading || !password || !username"
             class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -58,9 +58,10 @@ import { AuthService } from '../services/auth.service';
           </button>
         </form>
         
-        <p class="mt-4 text-xs text-gray-500 text-center">
-          Secure Local-First Access.
-        </p>
+        <div class="mt-4 text-center flex justify-between text-xs text-gray-400">
+            <a routerLink="/recover" class="hover:text-blue-400">Forgot Password?</a>
+            <span>Secure Local-First Access</span>
+        </div>
       </div>
     </div>
   `,
@@ -77,6 +78,14 @@ export class LoginComponent {
     private ngZone: NgZone,
     private authService: AuthService
   ) { }
+
+  async ngOnInit() {
+    // Check if Setup is required
+    const status = await this.authService.checkSetup();
+    if (!status.isSetup) {
+      this.router.navigate(['/setup']);
+    }
+  }
 
   async onLogin() {
     if (!this.password || !this.username) return;
@@ -95,6 +104,10 @@ export class LoginComponent {
         } else {
           this.password = ''; // Clear sensitive data on failure too
           this.error = result.error || 'Login failed';
+
+          if (this.error === 'SYSTEM_LOCKED') {
+            this.error = 'System Locked. Please login as Administrator to unlock.';
+          }
         }
       });
     } catch (e) {

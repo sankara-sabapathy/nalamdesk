@@ -3,6 +3,10 @@ import { contextBridge, ipcRenderer } from 'electron';
 console.log('Preload script loaded!');
 contextBridge.exposeInMainWorld('electron', {
     login: (password: string) => ipcRenderer.invoke('auth:login', password),
+    checkSetup: () => ipcRenderer.invoke('auth:checkSetup'),
+    setup: (data: any) => ipcRenderer.invoke('auth:setup', data),
+    recover: (data: any) => ipcRenderer.invoke('auth:recover', data),
+    regenerateRecoveryCode: (password: string) => ipcRenderer.invoke('auth:regenerateRecoveryCode', { password }),
     db: {
         getPatients: (query: string) => ipcRenderer.invoke('db:getPatients', query),
         getPatientById: (id: number) => ipcRenderer.invoke('db:getPatientById', id),
@@ -64,8 +68,10 @@ contextBridge.exposeInMainWorld('electron', {
         getStatus: () => ipcRenderer.invoke('cloud:getStatus'),
         onboard: (data: { name: string, city: string }) => ipcRenderer.invoke('cloud:onboard', data),
         toggle: (enabled: boolean) => ipcRenderer.invoke('cloud:toggle', enabled),
-        publishSlots: (slots: any[], dates: string[]) => ipcRenderer.invoke('cloud:publishSlots', slots, dates),
         syncNow: () => ipcRenderer.invoke('cloud:syncNow'),
         getPublishedSlots: (date: string) => ipcRenderer.invoke('cloud:getPublishedSlots', date)
+    },
+    clipboard: {
+        writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text)
     }
 });

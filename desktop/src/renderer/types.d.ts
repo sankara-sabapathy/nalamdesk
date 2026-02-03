@@ -4,6 +4,10 @@ declare global {
     interface Window {
         electron: {
             login: (credentials: { username: string, password: string }) => Promise<{ success: boolean; user?: any; error?: string }>;
+            checkSetup: () => Promise<{ isSetup: boolean; hasRecovery: boolean }>;
+            setup: (data: any) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
+            recover: (data: any) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
+            regenerateRecoveryCode: (password: string) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
             db: {
                 getPatients: (query: string) => Promise<any[]>;
                 savePatient: (patient: any) => Promise<any>;
@@ -49,6 +53,9 @@ declare global {
                 getStatus: () => Promise<{ enabled: boolean; clinicId: string | null }>;
                 onboard: (data: { name: string; city: string }) => Promise<{ success: boolean; clinicId: string }>;
                 toggle: (enabled: boolean) => Promise<void>;
+            };
+            clipboard: {
+                writeText: (text: string) => Promise<boolean>;
             };
         };
     }

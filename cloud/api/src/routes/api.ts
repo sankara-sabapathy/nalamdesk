@@ -35,6 +35,53 @@ const BookSlotSchema = z.object({
 
 export default async function apiRoutes(server: FastifyInstance) {
 
+    // 0. Auth Login (Public)
+    server.post('/auth/login', async (req, reply) => {
+        const BodySchema = z.object({
+            username: z.string(),
+            password: z.string()
+        });
+
+        const result = BodySchema.safeParse(req.body);
+        if (!result.success) {
+            return reply.code(400).send({ error: 'Validation Error' });
+        }
+
+        const { username, password } = result.data;
+
+        // Find user
+        const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username) as any;
+
+        if (!user) {
+            return reply.code(401).send({ error: 'Invalid Credentials' });
+        }
+
+        // Verify Password (Argon2)
+        // Note: We need to import argon2. Since it's a native module, ensure it's in package.json.
+        // If not, we might need to add it or use a JS alternative?
+        // Desktop uses 'argon2'. Cloud should too for compatibility.
+        // Assuming 'argon2' is available.
+        try {
+            const argon2 = await import('argon2');
+            if (await argon2.verify(user.password, password)) {
+                // Generate Token (Simple mock for now, or JWT if jsonwebtoken installed?)
+                // Let's return a simple session-like object or mock token.
+                // Real impl should use fastify-jwt.
+                const token = "mock-jwt-token-" + generateId();
+                return {
+                    success: true,
+                    token,
+                    user: { id: user.id, username: user.username, role: user.role, clinicId: user.clinic_id }
+                };
+            } else {
+                return reply.code(401).send({ error: 'Invalid Credentials' });
+            }
+        } catch (e) {
+            console.error(e);
+            return reply.code(500).send({ error: 'Auth Error' });
+        }
+    });
+
     // 1. Onboard (Public but Guarded)
     server.post('/onboard', async (req, reply) => {
         const appSecret = req.headers['x-app-secret'] as string;

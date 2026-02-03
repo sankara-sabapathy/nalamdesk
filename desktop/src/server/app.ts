@@ -21,7 +21,14 @@ const ALLOWED_IPC_METHODS = [
     'getAuditLogs',
     'getAppointmentRequests', 'updateAppointmentRequestStatus',
     'getAppointments', 'saveAppointment',
-    'validateUser', 'getPermissions' // Auth/RBAC related if needed via IPC, though mostly handled via token
+    'validateUser', 'getPermissions',
+    'getDashboardStats',
+    'getPatients', 'getPatientById', 'savePatient', 'deletePatient',
+    'getVisits', 'getAllVisits', 'saveVisit', 'deleteVisit',
+    'getVitals', 'saveVitals',
+    'getSettings', 'getPublicSettings', 'saveSettings',
+    'getDoctors',
+    'getUsers', 'saveUser', 'deleteUser'
 ];
 
 export class ApiServer {

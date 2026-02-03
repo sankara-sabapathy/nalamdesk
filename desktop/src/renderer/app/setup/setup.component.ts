@@ -1,0 +1,230 @@
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { AuthService } from '../services/auth.service';
+import { jsPDF } from 'jspdf';
+
+@Component({
+    selector: 'app-setup',
+    standalone: true,
+    imports: [CommonModule, FormsModule],
+    template: `
+    <div class="min-h-screen flex items-center justify-center bg-gray-900 text-white p-6">
+      <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl border border-gray-700 overflow-hidden">
+        
+        <!-- Header -->
+        <div class="bg-gray-800 p-6 border-b border-gray-700">
+          <h2 class="text-2xl font-bold text-blue-400">NalamDesk Setup</h2>
+          <div class="flex mt-4 items-center gap-2 text-sm text-gray-400">
+            <div [class.text-blue-500]="step >= 1" [class.font-bold]="step === 1">1. Welcome</div>
+            <div>&rsaquo;</div>
+            <div [class.text-blue-500]="step >= 2" [class.font-bold]="step === 2">2. Secure Vault</div>
+            <div>&rsaquo;</div>
+            <div [class.text-blue-500]="step >= 3" [class.font-bold]="step === 3">3. Clinic Info</div>
+             <div>&rsaquo;</div>
+            <div [class.text-blue-500]="step >= 4" [class.font-bold]="step === 4">4. Recovery</div>
+          </div>
+        </div>
+
+        <!-- Body -->
+        <div class="p-8">
+          
+          <!-- Step 1: Welcome -->
+          <div *ngIf="step === 1">
+            <h3 class="text-xl font-semibold mb-4 text-white">Welcome to NalamDesk!</h3>
+            <p class="text-gray-300 mb-4">
+              Thank you for choosing NalamDesk for your practice.
+            </p>
+            <p class="text-gray-300 mb-6">
+              This setup wizard will help you:
+            </p>
+            <ul class="list-disc list-inside text-gray-400 mb-8 space-y-2">
+              <li>Secure your patient data with a Master Password.</li>
+              <li>Configure your Clinic details.</li>
+              <li>Generate a Recovery Code (Essential for password reset).</li>
+            </ul>
+            <button (click)="step = 2" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">
+              Get Started
+            </button>
+          </div>
+
+          <!-- Step 2: Master Password -->
+          <div *ngIf="step === 2">
+            <h3 class="text-xl font-semibold mb-4 text-white">Create Master Password</h3>
+            <div class="bg-yellow-900/30 border border-yellow-700 text-yellow-200 p-4 rounded mb-6 text-sm">
+              <span class="font-bold">IMPORTANT:</span> This password encrypts your database. 
+              If you lose it, you can ONLY restore access using the Recovery Code generated in Step 4.
+            </div>
+
+            <div class="space-y-4">
+              <div>
+                <label class="block text-gray-400 text-sm mb-1">Master Password</label>
+                <input type="password" [(ngModel)]="password" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+              </div>
+              <div>
+                <label class="block text-gray-400 text-sm mb-1">Confirm Password</label>
+                <input type="password" [(ngModel)]="confirmPassword" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+              </div>
+            </div>
+            
+            <div class="mt-8 flex justify-between">
+              <button (click)="step = 1" class="text-gray-400 hover:text-white">Back</button>
+              <button 
+                (click)="step = 3" 
+                [disabled]="!password || password !== confirmPassword || password.length < 6"
+                class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                Next
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3: Clinic Details -->
+          <div *ngIf="step === 3">
+            <h3 class="text-xl font-semibold mb-4 text-white">Clinic Details</h3>
+            
+            <div class="space-y-4">
+              <div>
+                <label class="block text-gray-400 text-sm mb-1">Clinic Name</label>
+                <input type="text" [(ngModel)]="clinicName" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+              </div>
+              <div>
+                <label class="block text-gray-400 text-sm mb-1">Doctor Name</label>
+                <input type="text" [(ngModel)]="doctorName" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+              </div>
+            </div>
+
+            <div class="mt-8 flex justify-between">
+              <button (click)="step = 2" class="text-gray-400 hover:text-white">Back</button>
+              <button 
+                (click)="finishSetup()" 
+                [disabled]="!clinicName || !doctorName || isSubmitting"
+                class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                {{ isSubmitting ? 'Securing Vault...' : 'Save & Secure' }}
+              </button>
+            </div>
+          </div>
+
+           <!-- Step 4: Recovery Code (Success) -->
+          <div *ngIf="step === 4">
+            <h3 class="text-xl font-semibold mb-4 text-green-400 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Setup Complete!
+            </h3>
+
+            <div class="bg-gray-700 p-6 rounded-lg text-center mb-6 border border-gray-600">
+               <p class="text-gray-400 text-sm mb-2">YOUR RECOVERY CODE</p>
+               <div class="text-2xl font-mono text-white tracking-widest font-bold select-all bg-gray-900 p-4 rounded border border-gray-500">
+                 {{ recoveryCode }}
+               </div>
+               <p class="text-red-400 text-xs mt-3">
+                 SAVE THIS CODE! It is the ONLY way to reset your password if lost.
+               </p>
+            </div>
+
+            <div class="flex gap-4 justify-center">
+                 <button (click)="downloadRecoveryPDF()" class="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download PDF
+                 </button>
+                 <button (click)="goToDashboard()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">
+                    Go to Dashboard
+                 </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  `
+})
+export class SetupComponent {
+    step = 1;
+
+    password = '';
+    confirmPassword = '';
+    clinicName = '';
+    doctorName = '';
+
+    isSubmitting = false;
+    recoveryCode = '';
+
+    constructor(private authService: AuthService, private router: Router) { }
+
+    async finishSetup() {
+        this.isSubmitting = true;
+        try {
+            const result = await this.authService.setup({
+                password: this.password,
+                clinicDetails: {
+                    clinic_name: this.clinicName,
+                    doctor_name: this.doctorName,
+                    cloud_enabled: 0
+                },
+                adminDetails: {}
+            });
+
+            if (result.success && result.recoveryCode) {
+                this.recoveryCode = result.recoveryCode;
+                this.step = 4;
+            } else {
+                console.error(result.error);
+                alert('Setup Failed: ' + result.error);
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Setup Failed');
+        } finally {
+            this.isSubmitting = false;
+        }
+    }
+
+    downloadRecoveryPDF() {
+        const doc = new jsPDF();
+
+        doc.setFontSize(22);
+        doc.setTextColor(41, 128, 185); // Blue
+        doc.text("NalamDesk Recovery Code", 20, 20);
+
+        doc.setFontSize(12);
+        doc.setTextColor(50, 50, 50);
+        doc.text("Keep this document safe. This code allows you to reset your Master Password.", 20, 40);
+
+        doc.setDrawColor(200, 200, 200);
+        doc.setFillColor(245, 245, 245);
+        doc.roundedRect(20, 50, 170, 30, 3, 3, 'FD'); // Box
+
+        doc.setFont("courier", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(0, 0, 0);
+        doc.text(this.recoveryCode, 105, 68, { align: "center" });
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(150, 150, 150);
+        doc.text("Generated on: " + new Date().toLocaleString(), 20, 90);
+
+        doc.save("nalamdesk-recovery-code.pdf");
+    }
+
+    goToDashboard() {
+        // Setup automatically calls ensureAdminUser which sets up DB.
+        // But we are not technically "logged in" via session service yet in the Renderer (AuthService).
+        // We should probably auto-login or redirect to login page (but nicely).
+        // Let's redirect to login for security, merging into the new flow.
+        // OR, since we just made the password, we can auto-login behind the scenes.
+
+        // Auto-login attempt
+        this.authService.login('admin', this.password).then(res => {
+            if (res.success) {
+                this.router.navigate(['/dashboard']);
+            } else {
+                this.router.navigate(['/login']);
+            }
+        });
+    }
+}
