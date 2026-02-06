@@ -10,7 +10,6 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
     <div class="relative w-full">
       
       <!-- Input Field -->
-      <!-- Input Field -->
       <div class="relative group">
         <input 
           type="text" 
@@ -28,8 +27,11 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
       <!-- Helper Text -->
       <p class="text-[10px] text-gray-500 mt-1" *ngIf="helperText">{{ helperText }}</p>
 
-      <!-- Picker Dropdown -->
-      <div *ngIf="isOpen" class="absolute z-50 mt-1 w-[320px] bg-white rounded-lg shadow-xl border border-gray-200 p-4">
+      <!-- Picker Dropdown (FIXED POSITION to avoid overflow clipping) -->
+      <div *ngIf="isOpen" 
+           class="fixed z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 p-4 w-[320px]"
+           [style.top.px]="top"
+           [style.left.px]="left">
         
         <!-- Header / Back Navigation -->
         <div class="flex justify-between items-center mb-4">
@@ -125,6 +127,10 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
     isOpen = false;
     view: 'YEAR' | 'MONTH' | 'DAY' = 'YEAR';
 
+    // Positioning
+    top = 0;
+    left = 0;
+
     // Selection State
     selectedYear: number | null = null;
     selectedMonth: number | null = null; // 0-11
@@ -150,14 +156,12 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
         const minYear = this.minDate ? new Date(this.minDate).getFullYear() : currentYear - 110;
         const maxYear = this.maxDate ? new Date(this.maxDate).getFullYear() : currentYear;
 
-        // Generate years in descending order (newest first)
         this.years = [];
         for (let y = maxYear; y >= minYear; y--) {
             this.years.push(y);
         }
     }
 
-    // Value Accessor
     writeValue(value: string): void {
         this.value = value;
         this.updateDisplay();
@@ -172,24 +176,34 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
 
     togglePicker() {
         if (!this.isOpen) {
+            // Calculate absolute position
+            const rect = this.el.nativeElement.getBoundingClientRect();
+
+            // Check if user is near bottom of screen
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const dropdownHeight = 350; // approx
+
+            if (spaceBelow < dropdownHeight && rect.top > dropdownHeight) {
+                // Show above if not enough space below
+                this.top = rect.top - dropdownHeight - 5;
+            } else {
+                this.top = rect.bottom + 5;
+            }
+
+            this.left = rect.left;
+
             this.isOpen = true;
-            this.view = 'YEAR'; // Always restart flow? Or keep state? "Guide user" implies restarting flow might be good, or at least ensuring they pick year.
-            // If value exists, maybe start at day view? 
-            // User request: "guide user to start with year month and date in order"
-            // So let's stick to YEAR view on open, unless they are just editing. 
-            // Actually, if they want to edit, they might want to just change day.
-            // Let's check if value is set.
+
             if (this.value) {
                 const d = new Date(this.value);
                 this.selectedYear = d.getFullYear();
                 this.selectedMonth = d.getMonth();
-                this.view = 'DAY'; // If exists, show day. logic: ease of edit.
+                this.view = 'DAY';
                 this.generateDays();
             } else {
-                this.view = 'YEAR'; // Start fresh
+                this.view = 'YEAR';
             }
         } else {
-            // close
             this.isOpen = false;
         }
         this.onTouched();
@@ -199,7 +213,6 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
         this.isOpen = false;
     }
 
-    // Flow Logic
     selectYear(year: number) {
         this.selectedYear = year;
         this.view = 'MONTH';
@@ -213,12 +226,7 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
 
     selectDay(day: number) {
         if (!this.selectedYear || this.selectedMonth === null) return;
-
-        // Construct Date String YYYY-MM-DD
-        // Note: Month is 0-indexed
         const date = new Date(this.selectedYear, this.selectedMonth, day);
-        // Adjust for timezone offset to get strictly the date selected
-        // Or just simple string formatting since we want YYYY-MM-DD local
         const y = date.getFullYear();
         const m = (date.getMonth() + 1).toString().padStart(2, '0');
         const d = day.toString().padStart(2, '0');
@@ -230,7 +238,6 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
         this.isOpen = false;
     }
 
-    // Helpers
     getTitle() {
         if (this.view === 'YEAR') return 'Select Year';
         if (this.view === 'MONTH') return `${this.selectedYear}`;
@@ -251,7 +258,7 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
     generateDays() {
         if (!this.selectedYear || this.selectedMonth === null) return;
         const daysInMonth = new Date(this.selectedYear, this.selectedMonth + 1, 0).getDate();
-        const firstDayIndex = new Date(this.selectedYear, this.selectedMonth, 1).getDay(); // 0 = Sun
+        const firstDayIndex = new Date(this.selectedYear, this.selectedMonth, 1).getDay();
 
         this.daysInMonth = Array.from({ length: daysInMonth }, (_, i) => i + 1);
         this.emptyDays = Array(firstDayIndex).fill(0);
@@ -263,7 +270,6 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
             return;
         }
         const [y, m, d] = this.value.split('-');
-        // Format: DD/MM/YYYY
         this.displayValue = `${d}/${m}/${y}`;
     }
 
@@ -276,7 +282,6 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
     isDateDisabled(day: number) {
         if (!this.selectedYear || this.selectedMonth === null) return false;
         const dateStr = `${this.selectedYear}-${(this.selectedMonth + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-
         if (this.minDate && dateStr < this.minDate) return true;
         if (this.maxDate && dateStr > this.maxDate) return true;
         return false;
@@ -294,17 +299,9 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
 
     onInput(event: Event) {
         const input = event.target as HTMLInputElement;
-        let val = input.value;
+        const val = input.value;
+        if (!this.isOpen) this.togglePicker();
 
-        // Auto-open if typing
-        if (!this.isOpen) this.isOpen = true;
-
-        // Simple Masking / Parsing logic could go here. 
-        // For now, let's just let them type and try to parse valid dates.
-        // Format expected: DD/MM/YYYY or YYYY-MM-DD
-
-        // flexible parser
-        // Try D/M/Y
         const dmy = val.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
         if (dmy) {
             const d = parseInt(dmy[1]);
@@ -313,8 +310,6 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
             this.setDateFromInput(y, m, d);
             return;
         }
-
-        // Try Y-M-D
         const ymd = val.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
         if (ymd) {
             const y = parseInt(ymd[1]);
@@ -323,8 +318,6 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
             this.setDateFromInput(y, m, d);
             return;
         }
-
-        // If simply numbers 01012000 (8 digits) -> DDMMYYYY
         if (val.match(/^\d{8}$/)) {
             const d = parseInt(val.substring(0, 2));
             const m = parseInt(val.substring(2, 4)) - 1;
@@ -338,48 +331,29 @@ export class DatePickerComponent implements ControlValueAccessor, OnInit {
         if (date.getFullYear() === y && date.getMonth() === m && date.getDate() === d) {
             this.selectedYear = y;
             this.selectedMonth = m;
-
-            // Check bounds
             if (this.isDateDisabled(d)) return;
-
             const iso = `${y}-${(m + 1).toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}`;
             this.value = iso;
             this.onChange(this.value);
-            // Don't close while typing, maybe? Or close if valid? 
-            // Let's keep open strictly, unless they blur.
         }
     }
 
-    @HostListener('document:click', ['$event'])
-    onClickOutside(event: Event) {
-        // If element is removed from DOM (like year button after click), container check fails.
-        // We need to check if the target is still in document usually, but simpler:
-        // Use a flag during generic interactions? 
-        // Or just realize that if we are clicking INSIDE, we explicitly handle it.
-        // The issue is the event bubbles to document. 
-        // We can stopPropagation on the component click?
-    }
-
-    // Better approach: Listen on window, but stop propagation on local clicks?
-    // Angular HostListener captures inside too.
-    // Let's use ElementRef check but verify target connectivity.
     @HostListener('document:mousedown', ['$event'])
     onGlobalClick(event: MouseEvent) {
         if (!this.isOpen) return;
         const target = event.target as HTMLElement;
-
-        // If click is inside our component
-        if (this.el.nativeElement.contains(target)) {
-            return;
-        }
-
-        // If target was removed from DOM (e.g. *ngIf switch), we might be closing incorrectly.
-        // Standard fix: check if target is connected.
-        if (!target.isConnected) {
-            return;
-        }
-
+        if (this.el.nativeElement.contains(target)) return;
+        if (!target.isConnected) return;
         this.isOpen = false;
-        // On close, validate text?
+    }
+
+    @HostListener('window:scroll', ['$event'])
+    onWindowScroll() {
+        if (this.isOpen) this.close();
+    }
+
+    @HostListener('window:resize')
+    onWindowResize() {
+        if (this.isOpen) this.close();
     }
 }

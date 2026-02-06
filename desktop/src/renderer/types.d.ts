@@ -26,6 +26,7 @@ declare global {
                 getUsers: () => Promise<any[]>;
                 saveUser: (user: any) => Promise<any>;
                 deleteUser: (id: number) => Promise<any>;
+                updateUserPassword: (data: any) => Promise<any>;
                 // Queue
                 getQueue: () => Promise<any[]>;
                 addToQueue: (data: { patientId: number, priority: number }) => Promise<any>;

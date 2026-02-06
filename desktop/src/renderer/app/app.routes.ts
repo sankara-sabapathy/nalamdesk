@@ -9,6 +9,7 @@ export const routes: Routes = [
     { path: 'login', component: LoginComponent },
     { path: 'setup', loadComponent: () => import('./setup/setup.component').then(m => m.SetupComponent) },
     { path: 'recover', loadComponent: () => import('./login/recovery/recovery.component').then(m => m.RecoveryComponent) },
+    { path: 'change-password', loadComponent: () => import('./login/change-password/change-password.component').then(m => m.ChangePasswordComponent) },
     {
         path: '',
         canActivate: [authGuard],

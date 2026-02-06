@@ -1,3 +1,4 @@
+/* AG Grid v35+ uses the Theming API - no CSS imports needed */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -71,4 +72,52 @@ h6 {
         opacity: 1;
         transform: translate3d(0, 0, 0);
     }
+}
+
+/* AG Grid Custom Theme - Nalam Style */
+:root {
+    --ag-header-background-color: #ffffff;
+    /* pure white header */
+    --ag-row-hover-color: #f8fafc;
+    /* slate-50 - very subtle */
+    --ag-selected-row-background-color: #eff6ff;
+    /* blue-50 */
+    --ag-odd-row-background-color: #ffffff;
+    --ag-background-color: #ffffff;
+    --ag-font-family: 'Inter', sans-serif;
+    --ag-font-size: 14px;
+    /* Increased from 13px */
+    --ag-header-foreground-color: #374151;
+    /* gray-700 - darker for contrast */
+    --ag-secondary-foreground-color: #6b7280;
+    /* gray-500 */
+    --ag-row-border-color: #e2e8f0;
+    /* slate-200 */
+    --ag-cell-horizontal-padding: 24px;
+    /* More spacious */
+    --ag-header-column-separator-display: none;
+    --ag-input-focus-border-color: #3b82f6;
+    /* blue-500 */
+    --ag-borders: solid 1px;
+    --ag-border-color: #e2e8f0;
+}
+
+/* Hide the watermark for Community version */
+.ag-watermark {
+    display: none !important;
+}
+
+.ag-header-cell-text {
+    font-weight: 600;
+    text-transform: none;
+    /* Removed Uppercase for modern feel */
+    letter-spacing: normal;
+    font-size: 13px;
+    color: #111827;
+    /* gray-900 */
+}
+
+/* Add bottom border to header to separate from content */
+.ag-header {
+    border-bottom: 1px solid #e2e8f0 !important;
 }

@@ -99,8 +99,15 @@ export class LoginComponent {
       this.ngZone.run(() => {
         this.isLoading = false;
         if (result.success) {
+
+          const user = this.authService.getUser();
           this.password = ''; // Clear sensitive data
-          this.router.navigate(['/dashboard']);
+
+          if (user && user.password_reset_required) {
+            this.router.navigate(['/change-password']);
+          } else {
+            this.router.navigate(['/dashboard']);
+          }
         } else {
           this.password = ''; // Clear sensitive data on failure too
           this.error = result.error || 'Login failed';

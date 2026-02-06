@@ -83,7 +83,7 @@ export class DatabaseService {
 
     // Users
     getUsers() {
-        return this.db.prepare('SELECT id, username, role, name, active, created_at FROM users ORDER BY created_at DESC').all();
+        return this.db.prepare('SELECT id, username, role, name, active, created_at, designation, mobile, email, joining_date FROM users ORDER BY created_at DESC').all();
     }
 
     getUserByUsername(username: string) {
@@ -92,54 +92,166 @@ export class DatabaseService {
 
     async validateUser(username: string, passwordTry: string) {
         const user = this.getUserByUsername(username);
-        if (!user) { console.log('[DB] User not found:', username); return null; }
-        if (user.active !== 1) { console.log('[DB] User inactive:', username, user.active); return null; }
+        if (!user) { console.log('[DB] User not found:', username); return { success: false, error: 'INVALID_CREDENTIALS' }; }
+        if (user.active !== 1) { console.log('[DB] User inactive:', username, user.active); return { success: false, error: 'ACCESS_DENIED' }; }
 
         const argon2 = await import('argon2');
         try {
             if (await argon2.verify(user.password, passwordTry)) {
-                return { id: user.id, username: user.username, role: user.role, name: user.name };
+                return {
+                    success: true,
+                    user: {
+                        id: user.id,
+                        username: user.username,
+                        role: user.role,
+                        name: user.name,
+                        password_reset_required: user.password_reset_required
+                    }
+                };
             }
         } catch (e) {
             console.error('Password verify failed', e);
         }
-        return null;
+        return { success: false, error: 'INVALID_CREDENTIALS' };
     }
 
-    async saveUser(user: any) {
+    async saveUser(user: any, actingUserId?: number) {
         const argon2 = await import('argon2');
+        let result;
+
+        // Prepare optional fields to ensure they aren't undefined
+        const safeUser = {
+            specialty: null, license_number: null,
+            mobile: null, email: null, designation: null, joining_date: null,
+            address: null, emergency_contact_name: null, emergency_contact_phone: null,
+            password_reset_required: 0,
+            active: 1,
+            ...user
+        };
+
         if (user.id) {
             // Update
-            // Update
-            let query = `UPDATE users SET role = @role, name = @name, active = @active, specialty = @specialty, license_number = @license_number WHERE id = @id`;
+            const existing = this.db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+            if (!existing) throw new Error('User not found');
+
+            let query = `
+                UPDATE users SET 
+                    role = @role, 
+                    name = @name, 
+                    active = @active, 
+                    specialty = @specialty, 
+                    license_number = @license_number,
+                    mobile = @mobile,
+                    email = @email,
+                    designation = @designation,
+                    joining_date = @joining_date,
+                    address = @address,
+                    emergency_contact_name = @emergency_contact_name,
+                    emergency_contact_phone = @emergency_contact_phone
+                WHERE id = @id
+            `;
+
             if (user.password) {
-                user.password = await argon2.hash(user.password);
-                query = `UPDATE users SET role = @role, name = @name, active = @active, specialty = @specialty, license_number = @license_number, password = @password WHERE id = @id`;
+                safeUser.password = await argon2.hash(user.password);
+                // IF admin is setting password for another user (not themselves), force reset
+                // Logic: If actingUser != user.id, then force reset. 
+                // However, we often just pass 'user' object. Ideally we pass actingUserId.
+                // For now, if password is provided in saveUser, we assume it's an Admin reset or New User setup.
+                if (actingUserId && actingUserId !== user.id) {
+                    safeUser.password_reset_required = 1;
+                    query = `
+                        UPDATE users SET 
+                            role = @role, name = @name, active = @active, specialty = @specialty, license_number = @license_number,
+                            mobile = @mobile, email = @email, designation = @designation, joining_date = @joining_date,
+                            address = @address, emergency_contact_name = @emergency_contact_name, emergency_contact_phone = @emergency_contact_phone,
+                            password = @password, password_reset_required = 1
+                        WHERE id = @id
+                    `;
+                } else {
+                    // Self-update or initial creation where logic handled elsewhere?
+                    // Actually, usually saveUser is Admin only. 
+                    // We will assume any password change via saveUser implies a reset if we want to be strict.
+                    // But let's stick to: If password field is present, update it.
+                    // The Frontend 'Reset Password' flow specifically should trigger the reset_required flag.
+                    // Let's rely on the explicit 'password_reset_required' prop in 'safeUser' if passed, or default logic.
+                    if (user.force_reset) {
+                        query = `
+                            UPDATE users SET 
+                                role = @role, name = @name, active = @active, specialty = @specialty, license_number = @license_number,
+                                mobile = @mobile, email = @email, designation = @designation, joining_date = @joining_date,
+                                address = @address, emergency_contact_name = @emergency_contact_name, emergency_contact_phone = @emergency_contact_phone,
+                                password = @password, password_reset_required = 1
+                            WHERE id = @id
+                        `;
+                    } else {
+                        query = `
+                            UPDATE users SET 
+                                role = @role, name = @name, active = @active, specialty = @specialty, license_number = @license_number,
+                                mobile = @mobile, email = @email, designation = @designation, joining_date = @joining_date,
+                                address = @address, emergency_contact_name = @emergency_contact_name, emergency_contact_phone = @emergency_contact_phone,
+                                password = @password
+                            WHERE id = @id
+                        `;
+                    }
+                }
             }
-            return this.db.prepare(query).run(user);
+
+            result = this.db.prepare(query).run(safeUser);
+            if (actingUserId) {
+                this.logAudit('USER_UPDATE', 'users', user.id, actingUserId, `Updated user ${user.username}`);
+            }
         } else {
             // Insert
             if (!user.password) throw new Error('Password required for new user');
 
             console.log(`[DB] Creating user ${user.username}`);
-            user.password = await argon2.hash(user.password);
+            safeUser.password = await argon2.hash(user.password);
+            if (safeUser.role) safeUser.role = safeUser.role.toLowerCase();
 
-            user.active = user.active !== undefined ? user.active : 1; // Default to active
-            return this.db.prepare(`
-                INSERT INTO users(username, password, role, name, active, specialty, license_number)
-                VALUES(@username, @password, @role, @name, @active, @specialty, @license_number)
-            `).run(user);
+            // New users always require password reset if created by Admin
+            safeUser.password_reset_required = 1;
+
+            result = this.db.prepare(`
+                INSERT INTO users(
+                    username, password, role, name, active, specialty, license_number,
+                    mobile, email, designation, joining_date, address, emergency_contact_name, emergency_contact_phone,
+                    password_reset_required
+                )
+                VALUES(
+                    @username, @password, @role, @name, @active, @specialty, @license_number,
+                    @mobile, @email, @designation, @joining_date, @address, @emergency_contact_name, @emergency_contact_phone,
+                    @password_reset_required
+                )
+            `).run(safeUser);
+
+            if (actingUserId) {
+                this.logAudit('USER_CREATE', 'users', result.lastInsertRowid, actingUserId, `Created user ${user.username}`);
+            }
         }
+        return result;
     }
 
-    deleteUser(id: number) {
-        return this.db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    deleteUser(id: number, actingUserId?: number) {
+        // Soft delete preferred? For now we hard delete as per interface, 
+        // but normally we should set active=0. 
+        // However, 'active' flag usage in getDoctors/validateUser suggests soft delete support.
+        // Let's switch to proper soft delete or keep hard delete but audit it.
+        // User request implied "Deactivating".
+        // Let's do Soft Delete if possible or stick to hard delete for now but log it.
+        // Actually, let's allow 'deactivation' via saveUser (active=0).
+        // This deleteUser method is likely the "Permanent Delete" button.
+        const result = this.db.prepare('DELETE FROM users WHERE id = ?').run(id);
+        if (actingUserId) {
+            this.logAudit('USER_DELETE', 'users', id, actingUserId, `Deleted user ${id}`);
+        }
+        return result;
     }
 
     async updateUserPassword(username: string, newPassword: string) {
         const argon2 = await import('argon2');
         const hash = await argon2.hash(newPassword);
-        return this.db.prepare('UPDATE users SET password = ? WHERE username = ?').run(hash, username);
+        // This is self-service password change, so we clear the reset_required flag
+        return this.db.prepare('UPDATE users SET password = ?, password_reset_required = 0 WHERE username = ?').run(hash, username);
     }
 
     // ... existing methods ...
@@ -508,7 +620,12 @@ export class DatabaseService {
     }
 
     getAuditLogs(limit: number = 100) {
-        return this.db.prepare('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ?').all(limit);
+        return this.db.prepare(`
+            SELECT al.*, u.name as actor_name 
+            FROM audit_logs al 
+            LEFT JOIN users u ON al.user_id = u.id 
+            ORDER BY al.timestamp DESC LIMIT ?
+        `).all(limit);
     }
 
     // Appointment Requests

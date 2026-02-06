@@ -78,6 +78,8 @@
     "@fastify/cors": "^11.2.0",
     "@fastify/static": "^9.0.0",
     "@types/pdfmake": "^0.2.12",
+    "ag-grid-angular": "^35.0.1",
+    "ag-grid-community": "^35.0.1",
     "argon2": "^0.44.0",
     "better-sqlite3-multiple-ciphers": "^12.6.2",
     "cron": "^4.4.0",

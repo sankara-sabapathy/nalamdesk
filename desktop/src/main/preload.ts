@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electron', {
         getUsers: () => ipcRenderer.invoke('db:getUsers'),
         saveUser: (user: any) => ipcRenderer.invoke('db:saveUser', user),
         deleteUser: (id: number) => ipcRenderer.invoke('db:deleteUser', id),
+        updateUserPassword: (data: any) => ipcRenderer.invoke('db:updateUserPassword', data),
         // Queue
         getQueue: () => ipcRenderer.invoke('db:getQueue'),
         addToQueue: (data: { patientId: number, priority: number }) => ipcRenderer.invoke('db:addToQueue', data),

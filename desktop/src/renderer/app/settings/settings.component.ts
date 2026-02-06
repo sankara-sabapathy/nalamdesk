@@ -1,611 +1,415 @@
-import { Component, NgZone, OnInit, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { Component, inject, NgZone, OnInit } from '@angular/core';
+import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
 import { DataService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
+import { Router } from '@angular/router';
+import { SharedTableComponent } from '../shared/components/table/table.component';
+import { ActionRendererComponent } from '../shared/components/table/renderers/action-renderer.component';
+import { ColDef, ValueGetterParams } from 'ag-grid-community';
+import { DatePickerComponent } from '../shared/components/date-picker/date-picker.component';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule],
-  template: `
-    <div class="h-full bg-gray-100 p-8 overflow-y-auto w-full">
-      <div class="w-full pb-16">
-        <h1 class="text-3xl font-bold text-gray-800 mb-6">Settings & Resilience</h1>
-        
-        <!-- Tabs -->
-        <div class="flex space-x-4 mb-6 border-b">
-            <button class="pb-2 px-4 font-medium" [class.border-b-2]="activeTab === 'general'" [class.border-primary]="activeTab === 'general'" [class.text-primary]="activeTab === 'general'" (click)="activeTab = 'general'">General</button>
-            <button *ngIf="currentUser?.role === 'admin'" class="pb-2 px-4 font-medium" [class.border-b-2]="activeTab === 'users'" [class.border-primary]="activeTab === 'users'" [class.text-primary]="activeTab === 'users'" (click)="activeTab = 'users'">Users</button>
-        </div>
-
-        <div *ngIf="activeTab === 'general'">
-            <!-- Clinic Details -->
-            <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-                <h2 class="text-xl font-semibold mb-4 text-gray-700">Clinic Details</h2>
-                <form (ngSubmit)="saveSettings()">
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Clinic Name</label>
-                        <input [(ngModel)]="settings.clinic_name" name="clinic_name" class="w-full border p-2 rounded">
-                    </div>
-                    <button type="submit" class="btn btn-primary">Save Details</button>
-                    <span *ngIf="settingsSaved" class="text-green-600 ml-4 text-sm">Saved successfully!</span>
-                </form>
-            </div>
-
-            <!-- Online Booking / Cloud Integration -->
-            <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="isElectron">
-                <h2 class="text-xl font-semibold mb-4 text-purple-600">Online Booking</h2>
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="font-medium text-gray-800">Enable Public Online Booking</p>
-                        <p class="text-sm text-gray-500">Allow patients to find you on nalamdesk.com and book appointments.</p>
-                        <p *ngIf="cloudClinicId" class="text-xs text-green-600 mt-1">Status: Active (ID: {{ cloudClinicId }})</p>
-                    </div>
-                     <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" class="sr-only peer" [checked]="cloudEnabled" (change)="toggleCloud($event)">
-                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                    </label>
-                </div>
-            </div>
-
-
-
-             <!-- Recovery Code Modal -->
-             <div *ngIf="showRecoveryModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                 <div class="bg-white rounded-lg p-6 w-full max-w-md">
-                     <h3 class="text-xl font-bold mb-4">Generate Recovery Code</h3>
-                     
-                     <div *ngIf="!newRecoveryCode">
-                        <p class="text-sm text-gray-600 mb-4">Please enter your Master Password to verify authorization.</p>
-                        <input type="password" [(ngModel)]="confirmPassword" class="input input-bordered w-full mb-4" placeholder="Master Password">
-                        <div class="flex justify-end gap-2">
-                            <button (click)="showRecoveryModal = false" class="btn btn-ghost">Cancel</button>
-                            <button (click)="generateRecoveryCode()" class="btn btn-error" [disabled]="!confirmPassword || isLoading">
-                                {{ isLoading ? 'Generating...' : 'Generate' }}
-                            </button>
-                        </div>
-                     </div>
-
-                     <div *ngIf="newRecoveryCode">
-                        <div class="bg-gray-100 p-4 rounded text-center mb-4 border border-gray-300">
-                             <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">New Recovery Code</p>
-                             <p class="text-xl font-mono font-bold select-all text-red-600">{{ newRecoveryCode }}</p>
-                        </div>
-                        <p class="text-sm text-gray-500 mb-6 text-center">Save this code securely. The old code is now invalid.</p>
-                        <div class="flex justify-center">
-                            <button (click)="closeRecoveryModal()" class="btn btn-primary">Done</button>
-                        </div>
-                     </div>
-                 </div>
-             </div>
-
-            <!-- Cloud Onboard Modal -->
-            <div *ngIf="showCloudModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div class="bg-white rounded-lg p-6 w-full max-w-sm">
-                    <h3 class="text-xl font-bold mb-2">Setup Online Booking</h3>
-                    <p class="text-sm text-gray-500 mb-4">Register your clinic on our public directory.</p>
-                    
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">Clinic Name (Public)</label>
-                            <input [(ngModel)]="cloudForm.name" class="input input-bordered w-full" placeholder="e.g. City Health">
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700">City</label>
-                            <input [(ngModel)]="cloudForm.city" class="input input-bordered w-full" placeholder="e.g. Chennai">
-                        </div>
-                    </div>
-
-                    <div class="mt-6 flex justify-end gap-2">
-                        <button (click)="showCloudModal = false" class="btn btn-ghost" [disabled]="cloudLoading">Cancel</button>
-                        <button (click)="submitCloudOnboard()" class="btn btn-primary" [disabled]="cloudLoading">
-                            {{ cloudLoading ? 'Registering...' : 'Enable' }}
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-             <!-- Google Drive Connection -->
-             <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="isElectron">
-             <h2 class="text-xl font-semibold mb-4 text-blue-600">Backup (Google Drive)</h2>
-             <div class="flex items-center justify-between">
-                <p class="text-gray-600">Link your Google Drive to enable secure off-site backups.</p>
-                <button (click)="connectDrive()" [disabled]="isLoading" class="btn btn-primary">
-                {{ isLoading ? 'Connecting...' : 'Connect Google Drive' }}
-                </button>
-            </div>
-            <p *ngIf="message" class="mt-2 text-sm" [ngClass]="{'text-green-600': success, 'text-red-500': !success}">
-                {{ message }}
-            </p>
-            </div>
-
-            <!-- Recovery Configuration -->
-            <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="isElectron">
-                <h2 class="text-xl font-semibold mb-4 text-red-600">Security & Recovery</h2>
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="font-medium text-gray-800">Administrator Recovery Code</p>
-                        <p class="text-sm text-gray-500">Generate a new Recovery Code if the old one is lost or compromised.</p>
-                        <p class="text-xs text-red-500 mt-1 font-bold">Warning: Generating a new code invalidates the previous one.</p>
-                    </div>
-                    <button (click)="openRecoveryModal()" class="btn btn-outline btn-error">
-                        Generate New Code
-                    </button>
-                </div>
-            </div>
-
-             <!-- Recovery Code Modal -->
-             <div *ngIf="showRecoveryModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                 <div class="bg-white rounded-lg p-6 w-full max-w-md">
-                     <h3 class="text-xl font-bold mb-4">Generate Recovery Code</h3>
-                     
-                     <div *ngIf="!newRecoveryCode">
-                        <p class="text-sm text-gray-600 mb-4">Please enter your Master Password to verify authorization.</p>
-                        <input type="password" [(ngModel)]="confirmPassword" class="input input-bordered w-full mb-4" placeholder="Master Password">
-                        <div class="flex justify-end gap-2">
-                            <button (click)="showRecoveryModal = false" class="btn btn-ghost">Cancel</button>
-                            <button (click)="generateRecoveryCode()" class="btn btn-error" [disabled]="!confirmPassword || isLoading">
-                                {{ isLoading ? 'Generating...' : 'Generate' }}
-                            </button>
-                        </div>
-                     </div>
-
-                     <div *ngIf="newRecoveryCode">
-                        <div class="bg-gray-100 p-4 rounded text-center mb-4 border border-gray-300 relative group">
-                             <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">New Recovery Code</p>
-                             <p class="text-xl font-mono font-bold select-all text-red-600 mb-2">{{ newRecoveryCode }}</p>
-                             <button (click)="copyRecoveryCode()" class="btn btn-xs btn-outline">
-                                {{ isCopied ? 'Copied!' : 'Copy to Clipboard' }}
-                             </button>
-                        </div>
-                        <p class="text-sm text-gray-500 mb-6 text-center">Save this code securely. The old code is now invalid.</p>
-                        <div class="flex justify-center">
-                            <button (click)="closeRecoveryModal()" class="btn btn-primary">Done</button>
-                        </div>
-                     </div>
-                 </div>
-             </div>
-            <div class="bg-white p-6 rounded-lg shadow-md mb-6" *ngIf="!isElectron">
-                 <h2 class="text-xl font-semibold mb-4 text-gray-400">Cloud Connection</h2>
-                 <p class="text-sm text-gray-500">Backup configuration is only available on the Master System.</p>
-            </div>
-
-            <!-- Backup & Restore -->
-            <div class="bg-white p-6 rounded-lg shadow-md" *ngIf="isElectron">
-            <h2 class="text-xl font-semibold mb-4 text-green-600">Backup & Restore</h2>
-            
-            <div class="mb-6 pb-6 border-b">
-                <h3 class="font-bold text-gray-700 mb-2">Immediate Backup</h3>
-                <p class="text-sm text-gray-500 mb-3">Upload a snapshot of your current database to Google Drive.</p>
-                <button (click)="backupNow()" [disabled]="isBackupLoading" class="btn btn-success text-white">
-                {{ isBackupLoading ? 'Uploading...' : 'Backup Now' }}
-                </button>
-            </div>
-
-            <div>
-                <h3 class="font-bold text-gray-700 mb-4">Restore from Cloud</h3>
-                <button (click)="listBackups()" class="text-blue-600 hover:underline mb-4 text-sm">Refresh List</button>
-                
-                <div *ngIf="backups.length > 0; else noBackups" class="space-y-2">
-                <div *ngFor="let file of backups" class="flex items-center justify-between p-3 bg-gray-50 rounded border">
-                    <div>
-                    <p class="font-medium text-gray-800">{{ file.name }}</p>
-                    <p class="text-xs text-gray-500">{{ file.createdTime | date:'medium' }}</p>
-                    </div>
-                    <button (click)="restore(file.id)" class="text-red-600 border border-red-200 px-3 py-1 rounded hover:bg-red-50 text-sm">
-                    Restore
-                    </button>
-                </div>
-                </div>
-                <ng-template #noBackups>
-                <p class="text-gray-500 italic text-sm">No backups found. Connect Drive and create a backup.</p>
-                </ng-template>
-            </div>
-            </div>
-        </div>
-
-
-        <div *ngIf="activeTab === 'users' && currentUser?.role === 'admin'">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-gray-800">User Management</h2>
-                <button (click)="editUser({})" class="btn btn-primary">+ Add User</button>
-            </div>
-
-            <div class="overflow-x-auto bg-white rounded-lg shadow">
-                <table class="table table-zebra">
-                    <thead>
-                        <tr>
-                            <th>Username</th>
-                            <th>Name</th>
-                            <th>Role</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr *ngFor="let u of users">
-                            <td class="font-bold">{{ u.username }}</td>
-                            <td>{{ u.name }}</td>
-                            <td>
-                                <span class="badge" [ngClass]="{
-                                    'badge-primary': u.role === 'admin',
-                                    'badge-secondary': u.role === 'doctor',
-                                    'badge-accent': u.role === 'receptionist'
-                                }">{{ u.role | titlecase }}</span>
-                            </td>
-                            <td>
-                                <button *ngIf="u.username !== 'admin'" (click)="editUser(u)" class="btn btn-xs btn-ghost text-blue-600">Edit</button>
-                                <button *ngIf="u.username !== 'admin' && u.id !== currentUser?.id" (click)="deleteUser(u.id)" class="btn btn-xs btn-ghost text-red-600">Delete</button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Edit User Modal -->
-            <div *ngIf="editingUser" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div class="bg-white rounded-lg p-6 w-full max-w-md">
-                    <h3 class="text-xl font-bold mb-4">{{ editingUser.id ? 'Edit User' : 'Add User' }}</h3>
-                    <div class="space-y-4">
-                        <div class="form-control">
-                            <label class="label">Username</label>
-                            <input [(ngModel)]="editingUser.username" [disabled]="editingUser.id" class="input input-bordered w-full">
-                        </div>
-                        <div class="form-control">
-                             <label class="label">Name</label>
-                             <input [(ngModel)]="editingUser.name" class="input input-bordered w-full">
-                        </div>
-                         <div class="form-control">
-                             <label class="label">Role</label>
-                             <select [(ngModel)]="editingUser.role" class="select select-bordered w-full">
-                                 <option value="admin">Admin</option>
-                                 <option value="doctor">Doctor</option>
-                                 <option value="receptionist">Receptionist</option>
-                                 <option value="nurse">Nurse</option>
-                             </select>
-                        </div>
-                        <div *ngIf="editingUser.role === 'doctor'" class="space-y-4">
-                            <div class="form-control">
-                                <label class="label">Specialty</label>
-                                <input [(ngModel)]="editingUser.specialty" class="input input-bordered w-full" placeholder="e.g. General Physician">
-                            </div>
-                            <div class="form-control">
-                                <label class="label">License Number</label>
-                                <input [(ngModel)]="editingUser.license_number" class="input input-bordered w-full">
-                            </div>
-                        </div>
-                        <div class="form-control">
-                            <label class="label">{{ editingUser.id ? 'New Password (Optional)' : 'Password' }}</label>
-                            <input [(ngModel)]="editingUser.password" type="password" class="input input-bordered w-full" placeholder="********">
-                        </div>
-                    </div>
-                    <div class="mt-6 flex justify-end gap-2">
-                        <button (click)="editingUser = null" class="btn btn-ghost">Cancel</button>
-                        <button (click)="saveUser()" class="btn btn-primary">Save</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-      </div>
-    </div>
-  `,
-  styles: []
+  imports: [CommonModule, FormsModule, SharedTableComponent, ActionRendererComponent, DatePickerComponent],
+  templateUrl: './settings.component.html',
+  styles: [`
+    :host { display: block; height: 100%; }
+    .ng-dirty.ng-invalid { border-color: #ef4444; }
+  `]
 })
 export class SettingsComponent implements OnInit {
-  activeTab: 'general' | 'users' = 'general';
-
-  // General
-  isLoading = false;
-  isBackupLoading = false;
-  message = '';
-  success = false;
-  backups: any[] = [];
-  settings = { clinic_name: '' };
-  settingsSaved = false;
-  isElectron = !!window.electron;
-
-  // Users
-  users: any[] = [];
-  editingUser: any = null;
-
+  activeTab = 'users'; // users | audit
   currentUser: any = null;
+  users: any[] = [];
+  auditLogs: any[] = [];
 
-  private dataService: DataService = inject(DataService);
-  private authService: AuthService = inject(AuthService);
-  private router: Router = inject(Router);
+  // Validation State
+  formSubmitted = false;
 
-  // Updater
-  updateStatus: 'idle' | 'checking' | 'available' | 'downloaded' | 'uptodate' | 'error' = 'idle';
-  downloadProgress = 0;
-  errorMessage = '';
+  // Filter State
+  staffFilter = 'all';
+
   appVersion = '0.0.0';
 
-  // Cloud Integration
+  // General Settings
+  settings = { clinic_name: '' };
+  settingsSaved = false;
+  isElectron = !!(window as any).electron;
+
+  // Cloud
   cloudEnabled = false;
   cloudClinicId: string | null = null;
   showCloudModal = false;
   cloudForm = { name: '', city: '' };
   cloudLoading = false;
 
-  // Recovery
+  // Editing
+  editingUser: any = null;
+
+  // Security / Backup
   showRecoveryModal = false;
   confirmPassword = '';
   newRecoveryCode: string | null = null;
   isCopied = false;
+  isLoading = false;
+  isBackupLoading = false;
+  message = '';
+  success = false;
+  backups: any[] = [];
 
+
+  // Audit Log Column Definitions
+  auditColumnDefs: ColDef[] = [
+    {
+      headerName: 'Time',
+      field: 'timestamp',
+      flex: 1,
+      valueFormatter: (params: any) => {
+        if (!params.value) return '-';
+        return new DatePipe('en-US').transform(params.value, 'short') || '-';
+      }
+    },
+    {
+      headerName: 'Action By',
+      field: 'actor_name', // Joined from users table
+      flex: 1,
+      cellRenderer: (params: any) => {
+        return params.value ? `<span class="font-medium text-gray-700">${params.value}</span>` : '<span class="text-gray-400 italic">Unknown</span>';
+      }
+    },
+    {
+      headerName: 'Action',
+      field: 'action',
+      flex: 1,
+      cellRenderer: (params: any) => {
+        const action = params.value || '';
+        let colorClass = 'text-gray-600';
+        if (action.includes('UPDATE')) colorClass = 'text-blue-600';
+        if (action.includes('INSERT') || action.includes('CREATE')) colorClass = 'text-green-600';
+        if (action.includes('DELETE')) colorClass = 'text-red-600';
+        return `<span class="font-medium ${colorClass}">${action}</span>`;
+      }
+    },
+    { headerName: 'Table', field: 'table_name', flex: 1 },
+    { headerName: 'Record ID', field: 'record_id', flex: 1, cellClass: 'font-mono text-xs text-gray-500' },
+    { headerName: 'Details', field: 'details', flex: 2 }
+  ];
+
+  // User Column Definitions
+  userColumnDefs: ColDef[] = [
+    {
+      headerName: 'Employee',
+      field: 'name',
+      flex: 1.5,
+      cellRenderer: (params: any) => {
+        const u = params.data;
+        if (!u) return '';
+        const initial = u.name ? u.name.charAt(0).toUpperCase() : '?';
+        const colorClass = u.role === 'admin' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600';
+        const isMe = params.data.id === this.currentUser?.id ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-green-100 text-green-700 font-medium ml-1">YOU</span>' : '';
+
+        return `
+          <div class="flex items-center gap-3">
+             <div class="w-8 h-8 rounded-full ${colorClass} flex items-center justify-center font-bold text-xs ring-2 ring-white shadow-sm">
+                ${initial}
+             </div>
+             <div class="flex flex-col">
+                 <span class="font-semibold text-gray-900 leading-tight">${u.name}</span>
+                 <div class="text-[10px] text-gray-400 leading-tight">@${u.username} ${isMe}</div>
+             </div>
+          </div>
+        `;
+      }
+    },
+    {
+      headerName: 'Role',
+      field: 'role',
+      flex: 1,
+      cellClass: 'flex items-center',
+      cellRenderer: (params: any) => {
+        if (!params.value) return '-';
+        const role = params.value.toUpperCase();
+        let badgeClass = 'bg-gray-100 text-gray-800';
+        if (role === 'ADMIN') badgeClass = 'bg-purple-100 text-purple-800';
+        if (role === 'DOCTOR') badgeClass = 'bg-green-100 text-green-800';
+        if (role === 'NURSE') badgeClass = 'bg-yellow-100 text-yellow-800';
+        if (role === 'RECEPTIONIST') badgeClass = 'bg-blue-100 text-blue-800';
+
+        const designation = params.data.designation ? `<span class="text-[10px] text-gray-400 ml-2">${params.data.designation}</span>` : '';
+
+        return `
+            <div class="flex items-center">
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${badgeClass}">
+                  ${role}
+                </span>
+                ${designation}
+            </div>
+          `;
+      }
+    },
+    {
+      headerName: 'Contact',
+      field: 'contact',
+      flex: 1.5,
+      valueGetter: (params: ValueGetterParams) => {
+        const u = params.data;
+        if (!u) return '';
+        return u.mobile || u.email || 'No contact info';
+      },
+      cellRenderer: (params: any) => {
+        const u = params.data;
+        if (!u) return '';
+        let html = '<div class="flex flex-col justify-center h-full text-xs text-gray-600">';
+        if (u.mobile) html += `<div>📱 ${u.mobile}</div>`;
+        if (u.email) html += `<div>✉️ ${u.email}</div>`;
+        if (!u.mobile && !u.email) html += `<div class="text-gray-400 italic">No contact info</div>`;
+        html += '</div>';
+        return html;
+      }
+    },
+    {
+      headerName: 'DOB',
+      field: 'dob',
+      flex: 1,
+      valueFormatter: (params: any) => {
+        if (!params.value) return '-';
+        return new DatePipe('en-US').transform(params.value, 'mediumDate') || '-';
+      }
+    },
+    {
+      headerName: 'Joined',
+      field: 'joining_date',
+      flex: 1,
+      valueFormatter: (params: any) => {
+        if (!params.value) return '-';
+        return new DatePipe('en-US').transform(params.value, 'mediumDate') || '-';
+      }
+    },
+    {
+      headerName: 'Actions',
+      flex: 1,
+      cellRenderer: ActionRendererComponent,
+      cellRendererParams: {
+        onEdit: (data: any) => this.editUser(data),
+        onDelete: (data: any) => this.deleteUser(data.id)
+      }
+    }
+  ];
+
+  // Table State
+  searchTerm = '';
+  pageSize = 20; // Default page size passed to grid
+
+  get filteredUsersForGrid() {
+    // Only filter by role - AG Grid Quick Filter handles text search
+    if (this.staffFilter !== 'all') {
+      return this.users.filter(u => u.role?.toLowerCase() === this.staffFilter.toLowerCase());
+    }
+    return this.users;
+  }
+
+  private dataService = inject(DataService);
+  private authService = inject(AuthService);
+  private router = inject(Router);
   constructor(private ngZone: NgZone) { }
-
-  openRecoveryModal() {
-    this.confirmPassword = '';
-    this.newRecoveryCode = null;
-    this.isCopied = false;
-    this.showRecoveryModal = true;
-  }
-
-  closeRecoveryModal() {
-    this.showRecoveryModal = false;
-    this.newRecoveryCode = null;
-    this.isCopied = false;
-  }
-
-  async copyRecoveryCode() {
-    if (this.newRecoveryCode) {
-      if (window.electron) await window.electron.clipboard.writeText(this.newRecoveryCode);
-      else navigator.clipboard.writeText(this.newRecoveryCode);
-
-      this.ngZone.run(() => {
-        this.isCopied = true;
-        setTimeout(() => this.isCopied = false, 2000);
-      });
-    }
-  }
-
-  async generateRecoveryCode() {
-    if (!this.confirmPassword) return;
-    this.isLoading = true;
-    try {
-      const res = await this.authService.regenerateRecoveryCode(this.confirmPassword);
-      this.ngZone.run(() => {
-        this.isLoading = false;
-        if (res.success && res.recoveryCode) {
-          this.newRecoveryCode = res.recoveryCode;
-        } else {
-          alert('Refused: ' + (res.error || 'Invalid Password'));
-        }
-      });
-    } catch (e) {
-      this.ngZone.run(() => {
-        this.isLoading = false;
-        alert('Error generating code');
-      });
-    }
-  }
 
   ngOnInit() {
     this.currentUser = this.authService.getUser();
-    if (this.currentUser?.role !== 'admin') {
-      this.router.navigate(['/dashboard']);
-      return;
-    }
     this.loadSettings();
-
     if (this.isElectron) {
       this.listBackups();
       this.loadCloudStatus();
     }
-    this.loadUsers();
-
-    // Listen for updates
-    if (window.electron && window.electron.updater) {
-      // ... existing updater listeners ...
-      window.electron.updater.onUpdateAvailable(() => {
-        this.ngZone.run(() => this.updateStatus = 'available');
-      });
-      window.electron.updater.onUpdateDownloaded(() => {
-        this.ngZone.run(() => this.updateStatus = 'downloaded');
-      });
-      window.electron.updater.onDownloadProgress((progress: any) => {
-        this.ngZone.run(() => this.downloadProgress = Math.round(progress.percent));
-      });
-      window.electron.updater.onUpdateError((err: any) => {
-        this.ngZone.run(() => {
-          this.updateStatus = 'error';
-          this.errorMessage = err.message || 'Unknown error';
-        });
-      });
+    if (this.currentUser?.role === 'admin') {
+      this.loadUsers();
     }
   }
-
-  async loadCloudStatus() {
-    if (!this.isElectron) return;
-    try {
-      const status = await window.electron.cloud.getStatus();
-      this.ngZone.run(() => {
-        this.cloudEnabled = status.enabled;
-        this.cloudClinicId = status.clinicId;
-      });
-    } catch (e) {
-      console.error('Failed to load cloud status', e);
-    }
-  }
-
-  async toggleCloud(event: any) {
-    if (!this.isElectron) return;
-    const enabled = event.target.checked;
-
-    if (enabled && !this.cloudClinicId) {
-      // First time - show modal
-      this.ngZone.run(() => {
-        this.showCloudModal = true;
-        // Revert toggle visually until authed
-        event.target.checked = false;
-      });
-    } else {
-      // Just toggle
-      await window.electron.cloud.toggle(enabled);
-      this.loadCloudStatus();
-    }
-  }
-
-  async submitCloudOnboard() {
-    if (!this.cloudForm.name || !this.cloudForm.city) {
-      alert('Name and City required');
-      return;
-    }
-    this.cloudLoading = true;
-    try {
-      const res = await window.electron.cloud.onboard(this.cloudForm);
-      this.ngZone.run(() => {
-        this.cloudLoading = false;
-        this.showCloudModal = false;
-        if (res.success) {
-          this.cloudEnabled = true;
-          this.cloudClinicId = res.clinicId;
-          alert('Online Booking Enabled!');
-        }
-      });
-    } catch (e) {
-      this.ngZone.run(() => {
-        this.cloudLoading = false;
-        alert('Failed to register. Check internet connection.');
-      });
-    }
-  }
-
-  // ... existing methods (loadSettings, saveSettings, drive...)
 
   async loadSettings() {
     try {
       const s = await this.dataService.invoke<any>('getSettings');
-      this.ngZone.run(() => {
-        if (s) {
-          this.settings.clinic_name = s.clinic_name || '';
-        }
-      });
+      this.ngZone.run(() => { if (s) this.settings.clinic_name = s.clinic_name || ''; });
     } catch (e) { console.error(e); }
   }
 
   async saveSettings() {
     try {
       await this.dataService.invoke('saveSettings', this.settings);
-      this.ngZone.run(() => {
-        this.settingsSaved = true;
-        setTimeout(() => this.settingsSaved = false, 3000);
-      });
+      this.ngZone.run(() => { this.settingsSaved = true; setTimeout(() => this.settingsSaved = false, 3000); });
     } catch (e) { console.error(e); }
   }
 
-  // Drive methods
-  async connectDrive() {
-    if (!this.isElectron) return;
-    this.isLoading = true;
-    try {
-      const result = await window.electron.drive.authenticate();
-      this.ngZone.run(() => {
-        this.isLoading = false;
-        if (result) {
-          this.success = true;
-          this.message = 'Connected';
-          this.listBackups();
-        } else {
-          this.success = false;
-          this.message = 'Failed';
-        }
-      });
-    } catch (e) {
-      this.ngZone.run(() => { this.isLoading = false; this.message = 'Error'; });
-    }
-  }
-
-  async backupNow() {
-    if (!this.isElectron) return;
-    this.isBackupLoading = true;
-    try {
-      const result = await window.electron.drive.backup();
-      this.ngZone.run(() => {
-        this.isBackupLoading = false;
-        if (result.success) { alert('Backup Successful!'); this.listBackups(); }
-        else { alert('Backup Failed: ' + result.error); }
-      });
-    } catch (e) {
-      this.ngZone.run(() => { this.isBackupLoading = false; alert('Error'); });
-    }
-  }
-
-  async listBackups() {
-    if (!this.isElectron) return;
-    try {
-      const files = await window.electron.drive.listBackups();
-      this.ngZone.run(() => { this.backups = files; });
-    } catch (e) { console.error(e); }
-  }
-
-  async restore(fileId: string) {
-    if (!this.isElectron) return;
-    if (!confirm('Warning: Overwrite data?')) return;
-    try {
-      const result = await window.electron.drive.restore(fileId);
-      if (result.success) alert('Restore Complete. Restart App.');
-    } catch (e) { alert('Error'); }
-  }
-
-
-  checkForUpdates() {
-    this.updateStatus = 'checking';
-    this.errorMessage = '';
-    window.electron.updater.checkForUpdates().then((update: any) => {
-      this.ngZone.run(() => {
-        if (!update) {
-          this.updateStatus = 'uptodate';
-        }
-      });
-    }).catch((err: any) => {
-      this.ngZone.run(() => {
-        this.updateStatus = 'error';
-        this.errorMessage = err.message;
-      });
-    });
-  }
-
-  quitAndInstall() {
-    window.electron.updater.quitAndInstall();
-  }
-
-  // User Methods
   async loadUsers() {
     try {
-      const users = await this.dataService.invoke<any>('getUsers');
-      this.ngZone.run(() => { this.users = users; });
+      const u = await this.dataService.invoke<any>('getUsers');
+      this.ngZone.run(() => { this.users = u; });
     } catch (e) { console.error(e); }
   }
 
   editUser(user: any) {
-    this.editingUser = { ...user };
+    this.editingUser = {
+      active: 1,
+      role: 'nurse',
+      password_reset_required: 1,
+      ...user
+    };
+    this.formSubmitted = false;
+  }
+
+  validateUser(user: any): string[] {
+    const errors = [];
+    if (!user.username || user.username.length < 3) errors.push('Username must be at least 3 characters.');
+    if (!user.name || user.name.length < 2) errors.push('Full Name is required.');
+    if (!user.role) errors.push('Role is required.');
+
+    if (user.mobile && !/^\d{10}$/.test(user.mobile)) {
+      errors.push('Mobile number must be exactly 10 digits.');
+    }
+
+    if (user.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
+      errors.push('Invalid email format.');
+    }
+
+    if (!user.id && (!user.password || user.password.length < 4)) {
+      errors.push('Password must be at least 4 characters.');
+    }
+
+    return errors;
   }
 
   async saveUser() {
-    if (!this.editingUser.username || (!this.editingUser.id && !this.editingUser.password)) return;
-    const allowedRoles = ['admin', 'doctor', 'receptionist', 'nurse'];
-    if (!this.editingUser.role || !allowedRoles.includes(this.editingUser.role)) {
-      alert('Invalid Role');
+    this.formSubmitted = true;
+
+    const errors = this.validateUser(this.editingUser);
+    if (errors.length > 0) {
+      alert(errors.join('\\n'));
       return;
     }
+
     try {
-      await this.dataService.invoke<any>('saveUser', this.editingUser);
+      await this.dataService.invoke('saveUser', this.editingUser);
       this.ngZone.run(() => {
         this.editingUser = null;
         this.loadUsers();
+        alert('Profile Saved');
       });
+    } catch (e: any) {
+      console.error(e);
+      const msg = e.toString();
+      if (msg.includes('UNIQUE constraint failed: users.username')) {
+        alert('Username already exists. Please choose another.');
+      } else {
+        alert('Error saving user: ' + msg);
+      }
+    }
+  }
+
+  async deleteUser(id: number) {
+    if (!confirm('Are you sure? This will remove access for this user.')) return;
+    try {
+      await this.dataService.invoke('deleteUser', id);
+      this.ngZone.run(() => this.loadUsers());
     } catch (e) { console.error(e); }
   }
 
-  async deleteUser(id: any) {
-    if (!confirm('Delete this user?')) return;
+  async loadAuditLogs() {
     try {
-      await this.dataService.invoke<any>('deleteUser', id);
-      this.ngZone.run(() => { this.loadUsers(); });
+      const logs = await this.dataService.invoke<any>('getAuditLogs', 100);
+      this.ngZone.run(() => this.auditLogs = logs);
     } catch (e) { console.error(e); }
+  }
+
+  openRecoveryModal() {
+    this.confirmPassword = '';
+    this.newRecoveryCode = null;
+    this.showRecoveryModal = true;
+  }
+  closeRecoveryModal() {
+    this.showRecoveryModal = false;
+  }
+  async generateRecoveryCode() {
+    if (!this.confirmPassword) return;
+    this.isLoading = true;
+    try {
+      const res = await this.authService.regenerateRecoveryCode(this.confirmPassword) as any;
+      this.ngZone.run(() => {
+        this.isLoading = false;
+        if (res.success && res.recoveryCode) this.newRecoveryCode = res.recoveryCode;
+        else alert(res.error || 'Failed');
+      });
+    } catch { this.isLoading = false; }
+  }
+  async copyRecoveryCode() {
+    if (this.newRecoveryCode) {
+      if (window.electron) await window.electron.clipboard.writeText(this.newRecoveryCode);
+      else navigator.clipboard.writeText(this.newRecoveryCode);
+      this.ngZone.run(() => { this.isCopied = true; setTimeout(() => this.isCopied = false, 2000); });
+    }
+  }
+
+  async connectDrive() {
+    if (!this.isElectron) return;
+    this.isLoading = true;
+    try {
+      const res = await window.electron.drive.authenticate() as any;
+      this.ngZone.run(() => {
+        this.isLoading = false;
+        this.success = !!res;
+        this.message = res ? 'Connected' : 'Failed';
+        if (res) this.listBackups();
+      });
+    } catch { this.isLoading = false; }
+  }
+  async listBackups() {
+    if (!this.isElectron) return;
+    const files = await window.electron.drive.listBackups();
+    this.ngZone.run(() => this.backups = files || []);
+  }
+  async backupNow() {
+    if (!this.isElectron) return;
+    this.isBackupLoading = true;
+    try {
+      const res = await window.electron.drive.backup() as any;
+      this.ngZone.run(() => {
+        this.isBackupLoading = false;
+        if (res.success) { alert('Backup Complete'); this.listBackups(); }
+        else alert('Failed: ' + res.error);
+      });
+    } catch { this.isBackupLoading = false; }
+  }
+  async restore(id: string) {
+    if (!confirm('Overwrite local database? This is irreversible.')) return;
+    await window.electron.drive.restore(id);
+    alert('Restore initiated. App will restart.');
+  }
+
+  async loadCloudStatus() {
+    if (!this.isElectron) return;
+    const s = await window.electron.cloud.getStatus();
+    this.ngZone.run(() => { this.cloudEnabled = s.enabled; this.cloudClinicId = s.clinicId; });
+  }
+  async toggleCloud(e: any) {
+    if (!this.isElectron) return;
+    const enabled = e.target.checked;
+    if (enabled && !this.cloudClinicId) {
+      this.showCloudModal = true;
+      e.target.checked = false;
+    } else {
+      await window.electron.cloud.toggle(enabled);
+      this.loadCloudStatus();
+    }
+  }
+  async submitCloudOnboard() {
+    this.cloudLoading = true;
+    try {
+      const res = await window.electron.cloud.onboard(this.cloudForm) as any;
+      this.ngZone.run(() => {
+        this.cloudLoading = false;
+        this.showCloudModal = false;
+        if (res.success) { this.cloudEnabled = true; this.cloudClinicId = res.clinicId; }
+      });
+    } catch { this.cloudLoading = false; }
   }
 }

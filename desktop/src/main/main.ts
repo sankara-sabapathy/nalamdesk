@@ -86,6 +86,7 @@ async function createWindow() {
         if (isDev) {
             console.log('[Main] Loading URL: http://localhost:4200');
             await mainWindow.loadURL('http://localhost:4200');
+            mainWindow.webContents.openDevTools();
             console.log('[Main] URL loaded');
         } else {
             console.log(`[Main] Loading File: ${path.join(staticPath, 'index.html')}`);
@@ -331,12 +332,16 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         }
 
         console.log(`[Auth] Validating user: ${username}`);
-        const user = await databaseService.validateUser(username, password);
-        console.log(`[Auth] Validation result:`, user ? 'Success' : 'Failed');
-        if (user) {
-            sessionService.setUser(user); // Use SessionService
-            return { success: true, user };
+        const result = await databaseService.validateUser(username, password);
+        console.log(`[Auth] Validation result:`, result.success ? 'Success' : 'Failed');
+
+        if (result.success && result.user) {
+            sessionService.setUser(result.user); // Use SessionService
+            return { success: true, user: result.user };
         } else {
+            if (result.error === 'ACCESS_DENIED') {
+                return { success: false, error: 'Access Denied: Account is disabled.' };
+            }
             return { success: false, error: 'INVALID_CREDENTIALS' };
         }
 

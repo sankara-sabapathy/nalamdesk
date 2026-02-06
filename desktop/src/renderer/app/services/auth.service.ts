@@ -74,6 +74,15 @@ export class AuthService {
         return { success: false, error: 'Not supported' };
     }
 
+    async updatePassword(username: string, newPassword: string): Promise<boolean> {
+        if (window.electron && window.electron.db) {
+            const result = await window.electron.db.updateUserPassword({ username, password: newPassword });
+            return result && result.changes > 0;
+        }
+        // TODO: Web implementation
+        return false;
+    }
+
     logout() {
         localStorage.removeItem(this.tokenKey);
         localStorage.removeItem(this.userKey);

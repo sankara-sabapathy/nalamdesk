@@ -223,5 +223,25 @@ export const MIGRATIONS = [
             const insert = db.prepare('INSERT OR IGNORE INTO roles (name, permissions) VALUES (@name, @permissions)');
             roles.forEach(role => insert.run(role));
         }
+    },
+    {
+        version: 3,
+        up: (db: any) => {
+            console.log('Running Migration v3 (Staff Fields)...');
+            const cols = [
+                'mobile TEXT',
+                'email TEXT',
+                'designation TEXT',
+                'joining_date TEXT',
+                'address TEXT',
+                'emergency_contact_name TEXT',
+                'emergency_contact_phone TEXT',
+                'password_reset_required INTEGER DEFAULT 0',
+                'dob TEXT'
+            ];
+            cols.forEach(col => {
+                try { db.exec(`ALTER TABLE users ADD COLUMN ${col}`); } catch (e) { }
+            });
+        }
     }
 ];
