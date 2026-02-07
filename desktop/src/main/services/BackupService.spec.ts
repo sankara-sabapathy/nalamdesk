@@ -46,7 +46,7 @@ describe('BackupService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        service = new BackupService(mockDbService, mockDriveService, mockSecurityService);
+        service = new BackupService(mockDbService, mockDriveService, mockSecurityService, '/mock/user/data');
     });
 
     it('should schedule a daily backup', () => {

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, clipboard } from 'electron';
+import { app, BrowserWindow, ipcMain, clipboard, shell, dialog } from 'electron';
 import * as path from 'path';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
@@ -25,6 +25,14 @@ const crashService = new CrashService();
 app.disableHardwareAcceleration();
 
 let mainWindow: BrowserWindow | null = null;
+
+// IPC Handlers for utilities
+ipcMain.handle('utils:openExternal', async (_, url) => {
+    await shell.openExternal(url);
+});
+
+// Services
+const userDataPath = app.getPath('userData');
 const securityService = new SecurityService();
 const databaseService = new DatabaseService();
 const googleDriveService = new GoogleDriveService();
@@ -45,7 +53,7 @@ if (!fs.existsSync(staticPath)) {
 
 const apiServer = new ApiServer(databaseService, staticPath);
 const sessionService = new SessionService();
-const backupService = new BackupService(databaseService, googleDriveService, securityService);
+const backupService = new BackupService(databaseService, googleDriveService, securityService, userDataPath);
 
 // ... (cloud sync init logic)
 // DB init happens via IPC. ApiServer will report 503 if DB not ready (guarded in handler).
@@ -337,6 +345,37 @@ ipcMain.handle('auth:login', async (event, credentials) => {
 
         if (result.success && result.user) {
             sessionService.setUser(result.user); // Use SessionService
+
+            // Initialize Backup & Drive Services
+            try {
+                const settings = databaseService.getSettings();
+                if (settings) {
+                    // 1. Configure Drive Keys
+                    if (settings.drive_client_id && settings.drive_client_secret) {
+                        googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
+                    }
+
+                    // 2. Hydrate Tokens
+                    if (settings.drive_tokens) {
+                        try {
+                            googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+                        } catch (e) {
+                            console.error('Failed to parse drive tokens', e);
+                        }
+                    }
+
+                    // 3. Configure Local Backup
+                    if (settings.local_backup_path) {
+                        backupService.setLocalBackupPath(settings.local_backup_path);
+                    }
+
+                    // 4. Start Scheduler (Mandatory)
+                    backupService.initAutomatedBackup();
+                }
+            } catch (e) {
+                console.error('[Main] Failed to init settings/backup services:', e);
+            }
+
             return { success: true, user: result.user };
         } else {
             if (result.error === 'ACCESS_DENIED') {
@@ -606,6 +645,77 @@ ipcMain.handle('drive:listBackups', async () => {
         return await googleDriveService.listBackups();
     } catch (e) {
         return [];
+    }
+});
+
+// Backup IPC
+// Backup IPC
+ipcMain.handle('backup:selectPath', async () => {
+    if (!mainWindow) return null;
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory', 'createDirectory'],
+        title: 'Select Backup Location',
+        buttonLabel: 'Select Folder'
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+});
+
+ipcMain.handle('backup:useDefaultPath', async () => {
+    const defaultPath = path.join(app.getPath('userData'), 'backups');
+    // Ensure it exists?
+    // backupService sets this in constructor, so we just return the path string
+    // logic in frontend will save it to settings.
+    return defaultPath;
+});
+
+ipcMain.handle('backup:runNow', async () => {
+    // Manual trigger for testing
+    console.log('[Main] Manual backup triggered via IPC');
+    await backupService.performBackup();
+    return { success: true };
+});
+
+ipcMain.handle('backup:listSystemBackups', async () => {
+    return backupService.listSystemBackups();
+});
+
+ipcMain.handle('auth:getRecoveryStatus', async () => {
+    const userDataPath = app.getPath('userData');
+    const { isSetup, hasRecovery } = securityService.isSetup(userDataPath);
+
+    // If not setup, check for backups
+    let hasBackups = false;
+    let backups: any[] = [];
+
+    if (!isSetup) {
+        backups = await backupService.listSystemBackups();
+        hasBackups = backups.length > 0;
+    }
+
+    return {
+        isSetup,
+        hasRecovery,
+        hasBackups,
+        backups
+    };
+});
+
+ipcMain.handle('auth:restoreSystemBackup', async (_, backupPath) => {
+    try {
+        console.log('[Main] System Restore Triggered for:', backupPath);
+        await backupService.restoreLocalBackup(backupPath);
+
+        // After restore, we should probably restart the app to ensure clean state?
+        // Or just return success and let the frontend reload?
+        // Ideally, relaunch to reload DB connection fresh.
+        app.relaunch();
+        app.exit(0);
+
+        return { success: true };
+    } catch (e: any) {
+        console.error('[Main] System Restore Failed:', e);
+        return { success: false, error: e.message };
     }
 });
 

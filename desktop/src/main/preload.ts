@@ -4,9 +4,18 @@ console.log('Preload script loaded!');
 contextBridge.exposeInMainWorld('electron', {
     login: (password: string) => ipcRenderer.invoke('auth:login', password),
     checkSetup: () => ipcRenderer.invoke('auth:checkSetup'),
+    getRecoveryStatus: () => ipcRenderer.invoke('auth:getRecoveryStatus'),
+    restoreSystemBackup: (path: string) => ipcRenderer.invoke('auth:restoreSystemBackup', path),
     setup: (data: any) => ipcRenderer.invoke('auth:setup', data),
     recover: (data: any) => ipcRenderer.invoke('auth:recover', data),
     regenerateRecoveryCode: (password: string) => ipcRenderer.invoke('auth:regenerateRecoveryCode', { password }),
+    // ...
+    backup: {
+        selectPath: () => ipcRenderer.invoke('backup:selectPath'),
+        useDefaultPath: () => ipcRenderer.invoke('backup:useDefaultPath'),
+        runNow: () => ipcRenderer.invoke('backup:runNow'),
+        listSystemBackups: () => ipcRenderer.invoke('backup:listSystemBackups')
+    },
     db: {
         getPatients: (query: string) => ipcRenderer.invoke('db:getPatients', query),
         getPatientById: (id: number) => ipcRenderer.invoke('db:getPatientById', id),
@@ -74,5 +83,9 @@ contextBridge.exposeInMainWorld('electron', {
     },
     clipboard: {
         writeText: (text: string) => ipcRenderer.invoke('clipboard:writeText', text)
+    },
+
+    utils: {
+        openExternal: (url: string) => ipcRenderer.invoke('utils:openExternal', url)
     }
 });

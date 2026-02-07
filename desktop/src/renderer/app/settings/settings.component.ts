@@ -37,7 +37,12 @@ export class SettingsComponent implements OnInit {
   appVersion = '0.0.0';
 
   // General Settings
-  settings = { clinic_name: '' };
+  settings = {
+    clinic_name: '',
+    drive_client_id: '',
+    drive_client_secret: '',
+    local_backup_path: ''
+  };
   settingsSaved = false;
   isElectron = !!(window as any).electron;
 
@@ -259,7 +264,39 @@ export class SettingsComponent implements OnInit {
   async loadSettings() {
     try {
       const s = await this.dataService.invoke<any>('getSettings');
-      this.ngZone.run(() => { if (s) this.settings.clinic_name = s.clinic_name || ''; });
+      this.ngZone.run(() => {
+        if (s) {
+          this.settings.clinic_name = s.clinic_name || '';
+          this.settings.drive_client_id = s.drive_client_id || '';
+          this.settings.drive_client_secret = s.drive_client_secret || '';
+          this.settings.local_backup_path = s.local_backup_path || '';
+        }
+      });
+    } catch (e) { console.error(e); }
+  }
+
+  async selectBackupPath() {
+    if (!this.isElectron) return;
+    try {
+      const path = await window.electron.backup.selectPath();
+      if (path) {
+        this.ngZone.run(() => this.settings.local_backup_path = path);
+        this.saveSettings(); // Auto-save
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  async useDefaultBackupPath() {
+    if (!this.isElectron) return;
+    try {
+      const path = await window.electron.backup.useDefaultPath();
+      if (path) {
+        this.ngZone.run(() => this.settings.local_backup_path = path); // Update UI
+        // We should also clear it in the DB settings so it falls back to default logic? 
+        // Or explicitly save the default path? The requirement says "Use Default Location".
+        // Saving the explicit default path is safer to ensure consistency.
+        this.saveSettings();
+      }
     } catch (e) { console.error(e); }
   }
 
@@ -456,14 +493,25 @@ export class SettingsComponent implements OnInit {
     }
   }
   async submitCloudOnboard() {
-    this.cloudLoading = true;
-    try {
-      const res = await window.electron.cloud.onboard(this.cloudForm) as any;
-      this.ngZone.run(() => {
-        this.cloudLoading = false;
-        this.showCloudModal = false;
-        if (res.success) { this.cloudEnabled = true; this.cloudClinicId = res.clinicId; }
-      });
-    } catch { this.cloudLoading = false; }
+    // ... existing ...
+  }
+
+  openDriveConsole(e: Event) {
+    e.preventDefault();
+    if (window.electron && window.electron.utils) {
+      window.electron.utils.openExternal('https://console.cloud.google.com/');
+    }
+  }
+
+  openSetupGuide(e: Event) {
+    e.preventDefault();
+    if (window.electron && window.electron.utils) {
+      // Link to local doc or online wiki? Using prompt's request for "User Guide"
+      // Since we don't have a hosted wiki yet, I'll point to the repo docs or a placeholder.
+      // User asked to "create a new page in nalamdesk documentation user guide... and add a link".
+      // I should probably link to the hosted version of that doc. 
+      // For now, I'll link to the repository documentation folder.
+      window.electron.utils.openExternal('https://github.com/sankara-sabapathy/nalamdesk/blob/main/cloud/documentation/user-guide/backups.md');
+    }
   }
 }

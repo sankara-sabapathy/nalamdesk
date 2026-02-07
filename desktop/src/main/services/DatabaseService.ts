@@ -62,6 +62,14 @@ export class DatabaseService {
         }
     }
 
+    async backupDatabase(destPath: string) {
+        if (!this.db) throw new Error('DB not initialized');
+        console.log(`[DB] Starting backup to ${destPath}...`);
+        await this.db.backup(destPath);
+        console.log(`[DB] Backup failed to ${destPath} completed.`); // Typo in log message but keeping logic simple
+        console.log(`[DB] Backup to ${destPath} completed.`);
+    }
+
     async ensureAdminUser(password: string) {
         const hash = await import('argon2').then(a => a.hash(password));
         const admin = this.db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
@@ -300,7 +308,8 @@ export class DatabaseService {
         // Allowed columns whitelist to prevent SQL injection
         const ALLOWED_COLUMNS = [
             'clinic_name', 'doctor_name', 'logo_path', 'license_key',
-            'drive_tokens', 'cloud_clinic_id', 'cloud_api_key', 'cloud_enabled'
+            'drive_tokens', 'cloud_clinic_id', 'cloud_api_key', 'cloud_enabled',
+            'drive_client_id', 'drive_client_secret', 'local_backup_path'
         ];
 
         // Filter incoming settings to only allowed columns

@@ -2758,6 +2758,10 @@ details.collapse summary::-webkit-details-marker {
           mask-image: url("data:image/svg+xml,%3Csvg width='24' height='24' stroke='black' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cg transform-origin='center'%3E%3Ccircle cx='12' cy='12' r='9.5' fill='none' stroke-width='3' stroke-linecap='round'%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 12 12' to='360 12 12' dur='2s' repeatCount='indefinite'/%3E%3Canimate attributeName='stroke-dasharray' values='0,150;42,150;42,150' keyTimes='0;0.475;1' dur='1.5s' repeatCount='indefinite'/%3E%3Canimate attributeName='stroke-dashoffset' values='0;-16;-59' keyTimes='0;0.475;1' dur='1.5s' repeatCount='indefinite'/%3E%3C/circle%3E%3C/g%3E%3C/svg%3E");
 }
 
+.loading-xs {
+  width: 1rem;
+}
+
 .loading-md {
   width: 1.5rem;
 }
@@ -4020,10 +4024,6 @@ html:has(.drawer-toggle:checked) {
   top: 1rem;
 }
 
-.top-8 {
-  top: 2rem;
-}
-
 .z-10 {
   z-index: 10;
 }
@@ -4136,6 +4136,10 @@ html:has(.drawer-toggle:checked) {
 
 .mr-3 {
   margin-right: 0.75rem;
+}
+
+.mt-0\.5 {
+  margin-top: 0.125rem;
 }
 
 .mt-1 {
@@ -4834,6 +4838,11 @@ html:has(.drawer-toggle:checked) {
   border-color: var(--fallback-b2,oklch(var(--b2)/var(--tw-border-opacity, 1)));
 }
 
+.border-blue-100 {
+  --tw-border-opacity: 1;
+  border-color: rgb(219 234 254 / var(--tw-border-opacity, 1));
+}
+
 .border-blue-200 {
   --tw-border-opacity: 1;
   border-color: rgb(191 219 254 / var(--tw-border-opacity, 1));
@@ -4928,6 +4937,11 @@ html:has(.drawer-toggle:checked) {
   border-color: rgb(161 98 7 / var(--tw-border-opacity, 1));
 }
 
+.border-blue-700 {
+  --tw-border-opacity: 1;
+  border-color: rgb(29 78 216 / var(--tw-border-opacity, 1));
+}
+
 .border-l-purple-500 {
   --tw-border-opacity: 1;
   border-left-color: rgb(168 85 247 / var(--tw-border-opacity, 1));
@@ -4968,6 +4982,10 @@ html:has(.drawer-toggle:checked) {
 
 .bg-black\/60 {
   background-color: rgb(0 0 0 / 0.6);
+}
+
+.bg-black\/80 {
+  background-color: rgb(0 0 0 / 0.8);
 }
 
 .bg-blue-100 {
@@ -5175,6 +5193,10 @@ html:has(.drawer-toggle:checked) {
   background-color: rgb(113 63 18 / 0.3);
 }
 
+.bg-blue-900\/30 {
+  background-color: rgb(30 58 138 / 0.3);
+}
+
 .bg-opacity-75 {
   --tw-bg-opacity: 0.75;
 }
@@ -5357,6 +5379,10 @@ html:has(.drawer-toggle:checked) {
 
 .pt-8 {
   padding-top: 2rem;
+}
+
+.pr-2 {
+  padding-right: 0.5rem;
 }
 
 .text-left {
@@ -5635,6 +5661,11 @@ html:has(.drawer-toggle:checked) {
   color: rgb(107 33 168 / var(--tw-text-opacity, 1));
 }
 
+.text-purple-900 {
+  --tw-text-opacity: 1;
+  color: rgb(88 28 135 / var(--tw-text-opacity, 1));
+}
+
 .text-red-200 {
   --tw-text-opacity: 1;
   color: rgb(254 202 202 / var(--tw-text-opacity, 1));
@@ -5698,6 +5729,10 @@ html:has(.drawer-toggle:checked) {
 .text-yellow-800 {
   --tw-text-opacity: 1;
   color: rgb(133 77 14 / var(--tw-text-opacity, 1));
+}
+
+.underline {
+  text-decoration-line: underline;
 }
 
 .placeholder-gray-400::-moz-placeholder {
@@ -6014,6 +6049,22 @@ h6 {
   border-bottom: 1px solid #e2e8f0 !important;
 }
 
+/* AG Grid Global Overrides - Force Vertical Centering (Moved from styles.css) */
+
+.ag-cell,
+.ag-cell-value {
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Ensure React containers (if any, though we use Angular) or custom templates also align */
+
+.ag-react-container {
+  display: flex !important;
+  align-items: center !important;
+  height: 100%;
+}
+
 @media (hover:hover) {
   .table .active\:hover:activetr:hover,
   .table .active\:hover:activetr:nth-child(even):hover {
@@ -6248,6 +6299,11 @@ h6 {
 .hover\:text-blue-400:hover {
   --tw-text-opacity: 1;
   color: rgb(96 165 250 / var(--tw-text-opacity, 1));
+}
+
+.hover\:text-blue-500:hover {
+  --tw-text-opacity: 1;
+  color: rgb(59 130 246 / var(--tw-text-opacity, 1));
 }
 
 .hover\:text-blue-600:hover {
@@ -6503,6 +6559,11 @@ h6 {
   .sm\:text-left {
     text-align: left;
   }
+
+  .sm\:text-sm {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
 }
 
 @media (min-width: 768px) {
@@ -6572,6 +6633,10 @@ h6 {
 
   .md\:w-auto {
     width: auto;
+  }
+
+  .md\:min-w-\[200px\] {
+    min-width: 200px;
   }
 
   .md\:flex-none {
@@ -6646,10 +6711,6 @@ h6 {
   .md\:px-8 {
     padding-left: 2rem;
     padding-right: 2rem;
-  }
-
-  .md\:pb-0 {
-    padding-bottom: 0px;
   }
 
   .md\:pb-8 {

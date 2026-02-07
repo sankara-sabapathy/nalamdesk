@@ -57,6 +57,13 @@ declare global {
             };
             clipboard: {
                 writeText: (text: string) => Promise<boolean>;
+            },
+            backup: {
+                selectPath: () => Promise<string | null>;
+                runNow: () => Promise<{ success: boolean; error?: string }>;
+            };
+            utils: {
+                openExternal: (url: string) => Promise<void>;
             };
         };
     }

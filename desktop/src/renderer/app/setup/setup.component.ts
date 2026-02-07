@@ -6,10 +6,10 @@ import { AuthService } from '../services/auth.service';
 import { jsPDF } from 'jspdf';
 
 @Component({
-    selector: 'app-setup',
-    standalone: true,
-    imports: [CommonModule, FormsModule],
-    template: `
+  selector: 'app-setup',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
     <div class="min-h-screen flex items-center justify-center bg-gray-900 text-white p-6">
       <div class="bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl border border-gray-700 overflow-hidden">
         
@@ -30,23 +30,62 @@ import { jsPDF } from 'jspdf';
         <!-- Body -->
         <div class="p-8">
           
-          <!-- Step 1: Welcome -->
+          <!-- Step 1: Welcome / Recvoery -->
           <div *ngIf="step === 1">
-            <h3 class="text-xl font-semibold mb-4 text-white">Welcome to NalamDesk!</h3>
-            <p class="text-gray-300 mb-4">
-              Thank you for choosing NalamDesk for your practice.
-            </p>
-            <p class="text-gray-300 mb-6">
-              This setup wizard will help you:
-            </p>
-            <ul class="list-disc list-inside text-gray-400 mb-8 space-y-2">
-              <li>Secure your patient data with a Master Password.</li>
-              <li>Configure your Clinic details.</li>
-              <li>Generate a Recovery Code (Essential for password reset).</li>
-            </ul>
-            <button (click)="step = 2" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">
-              Get Started
-            </button>
+            <div *ngIf="hasBackups && !showCloudRestore; else freshSetup">
+                <div class="bg-blue-900/30 border border-blue-700 p-4 rounded mb-6">
+                    <h3 class="text-xl font-bold text-blue-400 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Recovery Available
+                    </h3>
+                    <p class="text-gray-300 mt-2 text-sm">
+                        We detected existing backups on this computer. You can restore your data or start fresh.
+                    </p>
+                </div>
+
+                <div class="space-y-3 mb-8 max-h-60 overflow-y-auto pr-2">
+                    <div *ngFor="let b of localBackups" class="flex items-center justify-between p-3 bg-gray-700 rounded border border-gray-600 hover:bg-gray-650 transition-colors">
+                        <div>
+                            <div class="font-medium text-white text-sm">{{b.name}}</div>
+                            <div class="text-xs text-gray-400">{{b.createdTime | date:'medium'}} &bull; {{ (b.size / 1024 / 1024) | number:'1.1-2' }} MB</div>
+                        </div>
+                        <button (click)="restoreLocal(b.path)" 
+                            [disabled]="isRestoring"
+                            class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded font-medium disabled:opacity-50">
+                            {{ isRestoring ? 'Restoring...' : 'Restore' }}
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between items-center border-t border-gray-700 pt-4">
+                    <button (click)="hasBackups = false" class="text-gray-400 hover:text-white text-sm">
+                        Ignore & Start Fresh
+                    </button>
+                    <!-- <button (click)="showCloudRestore = true" class="text-blue-400 hover:text-blue-300 text-sm">
+                        Recover from Cloud?
+                    </button> -->
+                </div>
+            </div>
+
+            <ng-template #freshSetup>
+                <h3 class="text-xl font-semibold mb-4 text-white">Welcome to NalamDesk!</h3>
+                <p class="text-gray-300 mb-4">
+                Thank you for choosing NalamDesk for your practice.
+                </p>
+                <p class="text-gray-300 mb-6">
+                This setup wizard will help you:
+                </p>
+                <ul class="list-disc list-inside text-gray-400 mb-8 space-y-2">
+                <li>Secure your patient data with a Master Password.</li>
+                <li>Configure your Clinic details.</li>
+                <li>Generate a Recovery Code (Essential for password reset).</li>
+                </ul>
+                <button (click)="step = 2" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">
+                Get Started
+                </button>
+            </ng-template>
           </div>
 
           <!-- Step 2: Master Password -->
@@ -143,88 +182,88 @@ import { jsPDF } from 'jspdf';
   `
 })
 export class SetupComponent {
-    step = 1;
+  step = 1;
 
-    password = '';
-    confirmPassword = '';
-    clinicName = '';
-    doctorName = '';
+  password = '';
+  confirmPassword = '';
+  clinicName = '';
+  doctorName = '';
 
-    isSubmitting = false;
-    recoveryCode = '';
+  isSubmitting = false;
+  recoveryCode = '';
 
-    constructor(private authService: AuthService, private router: Router) { }
+  constructor(private authService: AuthService, private router: Router) { }
 
-    async finishSetup() {
-        this.isSubmitting = true;
-        try {
-            const result = await this.authService.setup({
-                password: this.password,
-                clinicDetails: {
-                    clinic_name: this.clinicName,
-                    doctor_name: this.doctorName,
-                    cloud_enabled: 0
-                },
-                adminDetails: {}
-            });
+  async finishSetup() {
+    this.isSubmitting = true;
+    try {
+      const result = await this.authService.setup({
+        password: this.password,
+        clinicDetails: {
+          clinic_name: this.clinicName,
+          doctor_name: this.doctorName,
+          cloud_enabled: 0
+        },
+        adminDetails: {}
+      });
 
-            if (result.success && result.recoveryCode) {
-                this.recoveryCode = result.recoveryCode;
-                this.step = 4;
-            } else {
-                console.error(result.error);
-                alert('Setup Failed: ' + result.error);
-            }
-        } catch (e) {
-            console.error(e);
-            alert('Setup Failed');
-        } finally {
-            this.isSubmitting = false;
-        }
+      if (result.success && result.recoveryCode) {
+        this.recoveryCode = result.recoveryCode;
+        this.step = 4;
+      } else {
+        console.error(result.error);
+        alert('Setup Failed: ' + result.error);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Setup Failed');
+    } finally {
+      this.isSubmitting = false;
     }
+  }
 
-    downloadRecoveryPDF() {
-        const doc = new jsPDF();
+  downloadRecoveryPDF() {
+    const doc = new jsPDF();
 
-        doc.setFontSize(22);
-        doc.setTextColor(41, 128, 185); // Blue
-        doc.text("NalamDesk Recovery Code", 20, 20);
+    doc.setFontSize(22);
+    doc.setTextColor(41, 128, 185); // Blue
+    doc.text("NalamDesk Recovery Code", 20, 20);
 
-        doc.setFontSize(12);
-        doc.setTextColor(50, 50, 50);
-        doc.text("Keep this document safe. This code allows you to reset your Master Password.", 20, 40);
+    doc.setFontSize(12);
+    doc.setTextColor(50, 50, 50);
+    doc.text("Keep this document safe. This code allows you to reset your Master Password.", 20, 40);
 
-        doc.setDrawColor(200, 200, 200);
-        doc.setFillColor(245, 245, 245);
-        doc.roundedRect(20, 50, 170, 30, 3, 3, 'FD'); // Box
+    doc.setDrawColor(200, 200, 200);
+    doc.setFillColor(245, 245, 245);
+    doc.roundedRect(20, 50, 170, 30, 3, 3, 'FD'); // Box
 
-        doc.setFont("courier", "bold");
-        doc.setFontSize(16);
-        doc.setTextColor(0, 0, 0);
-        doc.text(this.recoveryCode, 105, 68, { align: "center" });
+    doc.setFont("courier", "bold");
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text(this.recoveryCode, 105, 68, { align: "center" });
 
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(150, 150, 150);
-        doc.text("Generated on: " + new Date().toLocaleString(), 20, 90);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    doc.text("Generated on: " + new Date().toLocaleString(), 20, 90);
 
-        doc.save("nalamdesk-recovery-code.pdf");
-    }
+    doc.save("nalamdesk-recovery-code.pdf");
+  }
 
-    goToDashboard() {
-        // Setup automatically calls ensureAdminUser which sets up DB.
-        // But we are not technically "logged in" via session service yet in the Renderer (AuthService).
-        // We should probably auto-login or redirect to login page (but nicely).
-        // Let's redirect to login for security, merging into the new flow.
-        // OR, since we just made the password, we can auto-login behind the scenes.
+  goToDashboard() {
+    // Setup automatically calls ensureAdminUser which sets up DB.
+    // But we are not technically "logged in" via session service yet in the Renderer (AuthService).
+    // We should probably auto-login or redirect to login page (but nicely).
+    // Let's redirect to login for security, merging into the new flow.
+    // OR, since we just made the password, we can auto-login behind the scenes.
 
-        // Auto-login attempt
-        this.authService.login('admin', this.password).then(res => {
-            if (res.success) {
-                this.router.navigate(['/dashboard']);
-            } else {
-                this.router.navigate(['/login']);
-            }
-        });
-    }
+    // Auto-login attempt
+    this.authService.login('admin', this.password).then(res => {
+      if (res.success) {
+        this.router.navigate(['/dashboard']);
+      } else {
+        this.router.navigate(['/login']);
+      }
+    });
+  }
 }

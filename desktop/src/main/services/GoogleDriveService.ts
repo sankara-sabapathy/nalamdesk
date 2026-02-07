@@ -4,29 +4,37 @@ import * as url from 'url';
 import { BrowserWindow } from 'electron';
 import * as fs from 'fs';
 
-// Placeholder credentials - User should replace these or inject via env
-const CLIENT_ID = 'YOUR_CLIENT_ID';
-const CLIENT_SECRET = 'YOUR_CLIENT_SECRET';
+// Dynamic credentials configured via Settings
 const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
 
 export class GoogleDriveService {
-    private oauth2Client;
-    private drive;
+    private oauth2Client: any = null;
+    private drive: any = null;
     private tokens: any = null;
+    private clientId: string = '';
+    private clientSecret: string = '';
 
-    constructor() {
-        this.oauth2Client = new google.auth.OAuth2(
-            CLIENT_ID,
-            CLIENT_SECRET,
-            REDIRECT_URI
-        );
+    constructor() { }
 
-        this.drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+    configureCredentials(clientId: string, clientSecret: string) {
+        this.clientId = clientId;
+        this.clientSecret = clientSecret;
+
+        if (this.clientId && this.clientSecret) {
+            this.oauth2Client = new google.auth.OAuth2(
+                this.clientId,
+                this.clientSecret,
+                REDIRECT_URI
+            );
+            this.drive = google.drive({ version: 'v3', auth: this.oauth2Client });
+        }
     }
 
     setCredentials(tokens: any) {
         this.tokens = tokens;
-        this.oauth2Client.setCredentials(tokens);
+        if (this.oauth2Client) {
+            this.oauth2Client.setCredentials(tokens);
+        }
     }
 
     getCredentials() {
@@ -34,10 +42,14 @@ export class GoogleDriveService {
     }
 
     isAuthenticated(): boolean {
-        return !!this.tokens;
+        return !!this.tokens && !!this.oauth2Client;
     }
 
     async authenticate(mainWindow: BrowserWindow): Promise<boolean> {
+        if (!this.oauth2Client) {
+            throw new Error('Google Drive Client ID and Secret not configured.');
+        }
+
         return new Promise((resolve, reject) => {
             const authUrl = this.oauth2Client.generateAuthUrl({
                 access_type: 'offline',
@@ -121,7 +133,7 @@ export class GoogleDriveService {
                 .on('end', () => {
                     resolve(true);
                 })
-                .on('error', (err) => {
+                .on('error', (err: any) => {
                     reject(err);
                 })
                 .pipe(dest);

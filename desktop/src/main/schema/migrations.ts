@@ -243,5 +243,19 @@ export const MIGRATIONS = [
                 try { db.exec(`ALTER TABLE users ADD COLUMN ${col}`); } catch (e) { }
             });
         }
+    },
+    {
+        version: 4,
+        up: (db: any) => {
+            console.log('Running Migration v4 (Drive & Backup Settings)...');
+            const cols = [
+                'drive_client_id TEXT',
+                'drive_client_secret TEXT',
+                'local_backup_path TEXT'
+            ];
+            cols.forEach(col => {
+                try { db.exec(`ALTER TABLE settings ADD COLUMN ${col}`); } catch (e) { }
+            });
+        }
     }
 ];

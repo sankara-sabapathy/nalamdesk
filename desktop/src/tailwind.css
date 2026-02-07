@@ -121,3 +121,17 @@ h6 {
 .ag-header {
     border-bottom: 1px solid #e2e8f0 !important;
 }
+
+/* AG Grid Global Overrides - Force Vertical Centering (Moved from styles.css) */
+.ag-cell,
+.ag-cell-value {
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* Ensure React containers (if any, though we use Angular) or custom templates also align */
+.ag-react-container {
+    display: flex !important;
+    align-items: center !important;
+    height: 100%;
+}
