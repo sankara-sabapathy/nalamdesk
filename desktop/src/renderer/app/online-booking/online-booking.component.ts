@@ -9,7 +9,7 @@ import { PatientService } from '../services/patient.service';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="h-full w-full overflow-y-auto p-6 space-y-6">
+    <div class="h-full w-full overflow-y-auto p-4 md:p-6 space-y-6">
       <div class="flex justify-between items-center">
         <h1 class="text-2xl font-bold text-gray-800">Online Booking Management</h1>
       </div>
@@ -30,19 +30,19 @@ import { PatientService } from '../services/patient.service';
               <label class="label">Step 2: Toggle Slots</label>
               
               <!-- Legend -->
-              <div class="flex gap-4 mb-2 text-xs">
+              <div class="flex flex-wrap gap-2 md:gap-4 mb-2 text-xs">
                   <div class="flex items-center gap-1"><div class="w-3 h-3 bg-success rounded"></div> Published</div>
                   <div class="flex items-center gap-1"><div class="w-3 h-3 bg-info rounded"></div> New</div>
                   <div class="flex items-center gap-1"><div class="w-3 h-3 bg-error opacity-50 rounded"></div> Removing</div>
                   <div class="flex items-center gap-1"><div class="w-3 h-3 bg-base-200 border border-gray-300 rounded"></div> Available</div>
               </div>
 
-              <div class="grid grid-cols-4 gap-2 max-h-60 overflow-y-auto p-1">
+              <div class="flex flex-wrap gap-2 max-h-60 overflow-y-auto p-1">
                  <button *ngFor="let time of timeSlots" 
                     (click)="toggleTime(time)"
                     [disabled]="isTimePast(time)"
                     [ngClass]="getSlotClass(time)"
-                    class="btn btn-sm disabled:bg-base-200 disabled:text-gray-300 disabled:border-gray-200">
+                    class="btn btn-sm disabled:bg-base-200 disabled:text-gray-300 disabled:border-gray-200 min-w-[70px]">
                     {{ time }}
                  </button>
               </div>

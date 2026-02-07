@@ -12,21 +12,21 @@ import { ColDef, GridOptions, themeQuartz } from 'ag-grid-community';
     <div class="h-full flex flex-col relative w-full bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
       
       <!-- Table Toolbar -->
-      <div *ngIf="enableTools" class="flex-none px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-white">
+      <div *ngIf="enableTools" class="flex-none px-4 py-3 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-white">
           <!-- Left: Title or Search (Slot?) -->
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
              <ng-content select="[toolbar-left]"></ng-content>
           </div>
 
           <!-- Right: Controls -->
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 self-end md:self-auto">
               
               <!-- Reset Filters -->
               <button (click)="resetState()" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors border border-transparent hover:border-gray-200">
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-gray-500">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
                   </svg>
-                  Reset View
+                  Reset
               </button>
 
               <!-- Column Selector -->
@@ -36,7 +36,7 @@ import { ColDef, GridOptions, themeQuartz } from 'ag-grid-community';
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-gray-500">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125Z" />
                       </svg>
-                      Columns
+                      Cols
                       <span class="text-xs text-gray-400">▼</span>
                   </button>
 
@@ -76,6 +76,7 @@ import { ColDef, GridOptions, themeQuartz } from 'ag-grid-community';
             [overlayNoRowsTemplate]="noRowsTemplate"
             [animateRows]="true"
             (gridReady)="onGridReady($event)"
+            (selectionChanged)="onSelectionChanged($event)"
             (rowClicked)="onRowClicked($event)">
         </ag-grid-angular>
 
@@ -103,17 +104,25 @@ export class SharedTableComponent implements OnDestroy, OnChanges {
   @Input() loading = false;
   @Input() enableTools = true;
   @Input() quickFilterText = '';
+  @Input() multiSelect = false;
 
   @Output() rowClick = new EventEmitter<any>();
   @Output() gridReady = new EventEmitter<any>();
+  @Output() selectionChanged = new EventEmitter<any[]>();
 
   private gridApi: any;
 
   // AG Grid v35 Theming API
   theme = themeQuartz;
 
-  // AG Grid v32+ Row Selection (object format)
-  rowSelectionConfig = { mode: 'singleRow' as const };
+  // AG Grid v32+ Row Selection
+  get rowSelectionConfig() {
+    return {
+      mode: this.multiSelect ? 'multiRow' as const : 'singleRow' as const,
+      checkboxes: this.multiSelect,
+      headerCheckbox: this.multiSelect,
+    };
+  }
 
   toolsState = { showCols: false };
   toggleableColumns: { colId: string, headerName: string, visible: boolean }[] = [];
@@ -129,12 +138,16 @@ export class SharedTableComponent implements OnDestroy, OnChanges {
 
   defaultColDef: ColDef = {
     sortable: true,
-    unSortIcon: true, // Show sort icon hint
+    unSortIcon: true,
     filter: true,
     resizable: true,
     flex: 1,
-    minWidth: 100,
-    suppressHeaderMenuButton: true // Cleaner headers
+    minWidth: 150,
+    suppressHeaderMenuButton: true,
+    wrapText: true,     // Keep data wrapping
+    autoHeight: true,   // Keep data auto-height
+    wrapHeaderText: false, // FORCE single line headers
+    autoHeaderHeight: false // Disable auto header height
   };
 
   private resizeObserver: ResizeObserver | undefined;
@@ -168,6 +181,11 @@ export class SharedTableComponent implements OnDestroy, OnChanges {
 
   onRowClicked(event: any) {
     this.rowClick.emit(event.data);
+  }
+
+  onSelectionChanged(event: any) {
+    const selectedRows = this.gridApi.getSelectedRows();
+    this.selectionChanged.emit(selectedRows);
   }
 
   toggleColumn(colId: string, visible: boolean) {

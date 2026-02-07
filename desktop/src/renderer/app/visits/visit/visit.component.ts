@@ -33,18 +33,31 @@ interface Visit {
   standalone: true,
   imports: [CommonModule, FormsModule, ReactiveFormsModule, PrescriptionComponent],
   template: `
-    <div class="flex h-full bg-gray-50 font-sans">
-      <!-- Left Panel: History & Context -->
-      <div class="w-80 bg-white border-r border-gray-200 flex flex-col h-full shadow-sm z-10">
+    <div class="flex h-full bg-gray-50 font-sans overflow-hidden relative">
+      
+      <!-- Mobile Backdrop -->
+      <div *ngIf="showMobileHistory" (click)="showMobileHistory = false" class="fixed inset-0 bg-black/50 z-40 md:hidden glass"></div>
+
+      <!-- Left Panel: History & Context (Responsive Drawer) -->
+      <div class="fixed inset-y-0 left-0 z-50 w-80 bg-white border-r border-gray-200 flex flex-col h-full shadow-2xl transition-transform duration-300 md:relative md:translate-x-0 md:shadow-none"
+           [class.translate-x-0]="showMobileHistory"
+           [class.-translate-x-full]="!showMobileHistory">
+        
         <!-- Back & Header -->
-        <div class="p-4 border-b bg-gray-50">
-          <button (click)="goBack()" class="text-xs text-gray-500 hover:text-blue-600 mb-2 flex items-center gap-1 font-medium">
-            <span class="text-lg">‹</span> Back to Queue
-          </button>
-          <div *ngIf="patient">
-            <h2 class="font-bold text-lg text-gray-800 leading-tight">{{ patient.name }}</h2>
-            <p class="text-xs text-gray-500 font-medium mt-1">{{ patient.age }} / {{ patient.gender }} • {{ patient.mobile }}</p>
+        <div class="p-4 border-b bg-gray-50 flex justify-between items-start">
+          <div>
+            <button (click)="goBack()" class="text-xs text-gray-500 hover:text-blue-600 mb-2 flex items-center gap-1 font-medium">
+                <span class="text-lg">‹</span> Back to Queue
+            </button>
+            <div *ngIf="patient">
+                <h2 class="font-bold text-lg text-gray-800 leading-tight">{{ patient.name }}</h2>
+                <p class="text-xs text-gray-500 font-medium mt-1">{{ patient.age }} / {{ patient.gender }} • {{ patient.mobile }}</p>
+            </div>
           </div>
+          <!-- Close Drawer Button (Mobile Only) -->
+           <button (click)="showMobileHistory = false" class="md:hidden text-gray-500 p-1">
+             ✕
+           </button>
         </div>
 
         <!-- Scrollable History List -->
@@ -91,18 +104,28 @@ interface Visit {
       </div>
 
       <!-- Main Panel: The "Chart" (Vertical Document) -->
-      <div class="flex-1 flex flex-col h-full bg-white relative">
+      <div class="flex-1 flex flex-col h-full bg-white relative overflow-hidden">
         
         <!-- Header / Toolbar -->
-        <div class="h-16 border-b flex items-center justify-between px-8 bg-white z-20 sticky top-0">
-           <h1 class="text-xl font-bold text-gray-800">
-             {{ editingVisitId ? 'Editing Past Visit' : 'Current Consultation' }}
-           </h1>
-           <div class="flex gap-3 items-center">
-              <button *ngIf="editingVisitId" (click)="deleteVisit()" class="border border-red-200 text-red-600 bg-white hover:bg-red-50 px-3 py-1 rounded text-sm font-medium transition">Delete Record</button>
-              <button *ngIf="editingVisitId" (click)="resetForm()" class="border border-blue-200 text-blue-600 bg-white hover:bg-blue-50 px-3 py-1 rounded text-sm font-medium transition">Start New Visit</button>
+        <div class="min-h-16 py-2 border-b flex flex-col md:flex-row md:items-center justify-between px-4 md:px-8 bg-white z-20 sticky top-0 gap-2">
+           <div class="flex items-center gap-3">
+               <!-- Mobile Toggle -->
+               <button (click)="showMobileHistory = !showMobileHistory" class="md:hidden btn btn-circle btn-sm btn-ghost">
+                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                     <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+                   </svg>
+               </button>
+
+               <h1 class="text-lg md:text-xl font-bold text-gray-800 truncate">
+                 {{ editingVisitId ? 'Editing Past Visit' : 'Current Consultation' }}
+               </h1>
+           </div>
+
+           <div class="flex flex-wrap gap-2 items-center justify-end">
+              <button *ngIf="editingVisitId" (click)="deleteVisit()" class="border border-red-200 text-red-600 bg-white hover:bg-red-50 px-3 py-1 rounded text-sm font-medium transition">Delete</button>
+              <button *ngIf="editingVisitId" (click)="resetForm()" class="border border-blue-200 text-blue-600 bg-white hover:bg-blue-50 px-3 py-1 rounded text-sm font-medium transition">New Visit</button>
               <div class="text-right flex items-center gap-2" *ngIf="!editingVisitId">
-                  <div class="text-xs text-gray-500 uppercase tracking-wider font-bold">Status</div>
+                  <div class="hidden md:block text-xs text-gray-500 uppercase tracking-wider font-bold">Status</div>
                   <div class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-bold gap-1 flex items-center">
                     <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> LIVE
                   </div>
@@ -112,11 +135,11 @@ interface Visit {
 
         <!-- SCROLLABLE DOCUMENT BODY -->
         <div class="flex-1 overflow-y-auto bg-gray-50/50">
-           <div class="w-full px-8 py-8">
+           <div class="w-full px-4 md:px-8 py-8">
               <form [formGroup]="visitForm" class="space-y-6">
                  
                  <!-- SECTION 1: SUBJECTIVE -->
-                 <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 mb-4 text-gray-800">
                         <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">S</div>
                         <h3 class="text-lg font-bold">Subjective</h3>
@@ -126,14 +149,14 @@ interface Visit {
                  </div>
 
                  <!-- SECTION 2: OBJECTIVE -->
-                 <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                    <div class="flex justify-between items-start mb-4">
+                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
                         <div class="flex items-center gap-3 text-gray-800">
                             <div class="w-8 h-8 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center font-bold text-sm">O</div>
                             <h3 class="text-lg font-bold">Objective</h3>
                         </div>
                         <!-- Vitals Pill -->
-                        <div *ngIf="patientVitals" class="bg-teal-50 text-teal-800 text-xs px-3 py-1.5 rounded-full font-medium border border-teal-100 flex gap-3">
+                        <div *ngIf="patientVitals" class="bg-teal-50 text-teal-800 text-xs px-3 py-1.5 rounded-full font-medium border border-teal-100 flex flex-wrap gap-3">
                             <span>BP: <b>{{ patientVitals.systolic_bp }}/{{ patientVitals.diastolic_bp }}</b></span>
                             <span>Pulse: <b>{{ patientVitals.pulse }}</b></span>
                             <span>Temp: <b>{{ patientVitals.temperature }}</b></span>
@@ -144,20 +167,20 @@ interface Visit {
                  </div>
 
                  <!-- SECTION 3: ASSESSMENT -->
-                 <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-purple-500">
+                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-purple-500">
                     <div class="flex items-center gap-3 mb-4 text-gray-800">
                         <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm">A</div>
                         <h3 class="text-lg font-bold">Assessment</h3>
                     </div>
-                    <div class="grid grid-cols-4 gap-4">
-                        <div class="col-span-3">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="md:col-span-3">
                              <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Diagnosis <span class="text-red-500">*</span></label>
                              <input formControlName="diagnosis" type="text" placeholder="Primary Diagnosis" 
                                 class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 outline-none font-medium text-lg"
                                 [class.border-red-500]="visitForm.get('diagnosis')?.invalid && (visitForm.get('diagnosis')?.dirty || visitForm.get('diagnosis')?.touched)">
                              <p *ngIf="visitForm.get('diagnosis')?.invalid && (visitForm.get('diagnosis')?.dirty)" class="text-xs text-red-500 mt-1">Diagnosis is required</p>
                         </div>
-                        <div class="col-span-1">
+                        <div class="md:col-span-1">
                              <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Type</label>
                              <select formControlName="diagnosis_type" class="w-full p-2.5 border border-gray-300 rounded bg-white">
                                 <option value="">Select</option>
@@ -169,7 +192,7 @@ interface Visit {
                  </div>
 
                  <!-- SECTION 4: PLAN (Rx) -->
-                 <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 mb-4 text-gray-800">
                         <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">P</div>
                         <h3 class="text-lg font-bold">Plan & Rx</h3>
@@ -180,7 +203,7 @@ interface Visit {
                         (changed)="updatePrescription($event)">
                     </app-prescription>
 
-                    <div class="mt-6 pt-4 border-t w-1/3">
+                    <div class="mt-6 pt-4 border-t w-full md:w-1/3">
                          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Total Fee (₹)</label>
                          <input type="number" formControlName="amount_paid" class="w-full p-2 border border-gray-300 rounded font-mono font-bold text-gray-700">
                     </div>
@@ -193,34 +216,34 @@ interface Visit {
         </div>
 
         <!-- STICKY FOOTER ACTION BAR -->
-        <div class="h-20 bg-white border-t px-8 flex items-center justify-between z-30">
-            <div class="flex gap-3">
-               <button type="button" (click)="printPrescription()" class="px-4 py-2 rounded text-gray-600 hover:bg-gray-100 font-medium transition">
+        <div class="min-h-20 bg-white border-t px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-30 py-3 gap-3">
+            <div class="flex gap-3 w-full md:w-auto justify-center md:justify-start">
+               <button type="button" (click)="printPrescription()" class="px-4 py-2 rounded text-gray-600 hover:bg-gray-100 font-medium transition flex-1 md:flex-none justify-center">
                  Print
                </button>
-               <button *ngIf="isConsulting" type="button" (click)="postponeConsult()" class="px-4 py-2 rounded text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50 font-medium transition">
+               <button *ngIf="isConsulting" type="button" (click)="postponeConsult()" class="px-4 py-2 rounded text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50 font-medium transition flex-1 md:flex-none justify-center">
                  ⏸ Postpone
                </button>
             </div>
 
-            <div class="flex gap-3 items-center">
+            <div class="flex flex-col md:flex-row gap-3 items-center w-full md:w-auto">
                <ng-container *ngIf="isConsulting || editingVisitId; else noConsult">
                   <!-- Classic Save -->
-                   <button type="submit" (click)="saveVisit()" [disabled]="!visitForm.valid" class="px-4 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition disabled:opacity-50 font-medium">
+                   <button type="submit" (click)="saveVisit()" [disabled]="!visitForm.valid" class="hidden md:block px-4 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition disabled:opacity-50 font-medium">
                      Save Progress
                    </button>
                    
                    <!-- Finish & Exit -->
-                   <button *ngIf="isConsulting" type="button" (click)="endConsult()" [disabled]="!visitForm.valid" class="px-4 py-2 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 transition disabled:opacity-50 font-medium">
+                   <button *ngIf="isConsulting" type="button" (click)="endConsult()" [disabled]="!visitForm.valid" class="hidden md:block px-4 py-2 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 transition disabled:opacity-50 font-medium">
                      Finish & Exit
                    </button>
 
                    <!-- HERO ACTION: FINISH & NEXT -->
-                   <button *ngIf="isConsulting" type="button" (click)="finishAndNext()" [disabled]="!visitForm.valid" class="px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm transition disabled:opacity-50 flex items-center gap-2">
-                     <span>✓ Finish & Next Patient</span> 
+                   <button *ngIf="isConsulting" type="button" (click)="finishAndNext()" [disabled]="!visitForm.valid" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2">
+                     <span>✓ Finish & Next</span> 
                    </button>
                    
-                   <button *ngIf="editingVisitId" (click)="saveVisit()" [disabled]="!visitForm.valid" class="px-6 py-2 rounded bg-blue-600 text-white font-bold hover:bg-blue-700 transition disabled:opacity-50 shadow-sm">
+                   <button *ngIf="editingVisitId" (click)="saveVisit()" [disabled]="!visitForm.valid" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 text-white font-bold hover:bg-blue-700 transition disabled:opacity-50 shadow-sm">
                       Update Record
                    </button>
                </ng-container>
@@ -239,12 +262,13 @@ interface Visit {
 export class VisitComponent implements OnInit {
   patientId!: number;
   patient: any;
-  history: Visit[] = []; // Typed
+  history: Visit[] = [];
   visitForm: FormGroup;
   editingVisitId: number | null = null;
   isConsulting = false;
   currentUser: any;
   patientVitals: any;
+  showMobileHistory = false;
 
   currentPrescription: any[] = [];
   // ...
@@ -258,7 +282,6 @@ export class VisitComponent implements OnInit {
     private dataService: DataService,
     private authService: AuthService
   ) {
-    // 1. Smart Handoff: Check Router State immediately
     const nav = this.router.getCurrentNavigation();
     if (nav?.extras?.state?.['isConsulting']) {
       this.isConsulting = true;
@@ -282,8 +305,6 @@ export class VisitComponent implements OnInit {
     });
   }
 
-  // ... (editVisit, resetForm remain same)
-
   editVisit(visit: any) {
     this.editingVisitId = visit.id;
     this.visitForm.patchValue({
@@ -301,8 +322,10 @@ export class VisitComponent implements OnInit {
       this.currentPrescription = [];
       this.visitForm.patchValue({ prescription: [] });
     }
-    // Enable form if editing
     this.visitForm.enable();
+
+    // On mobile, close drawer after selection
+    this.showMobileHistory = false;
   }
 
   resetForm() {
@@ -331,7 +354,6 @@ export class VisitComponent implements OnInit {
           if (this.patientVitals && !this.visitForm.get('examination_notes')?.value) {
             const v = this.patientVitals;
             const text = `BP: ${v.systolic_bp}/${v.diastolic_bp}\nPulse: ${v.pulse}\nTemp: ${v.temperature}`;
-            // Optional: Prefill or just show in UI
           }
         }
       });
@@ -382,7 +404,8 @@ export class VisitComponent implements OnInit {
       await this.dataService.invoke('saveVisit', visitData);
       this.ngZone.run(() => {
         if (this.editingVisitId) {
-          this.resetForm(); // Only reset if regular edit, keeping consult open? 
+          this.resetForm();
+          // Only reset if regular edit, keeping consult open? 
           // Actually for classic flow, saving progress shouldn't clear form until Done.
         }
         // Reload history

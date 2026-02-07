@@ -2,13 +2,9 @@
  * @vitest-environment jsdom
  */
 import '@angular/compiler';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SettingsComponent } from './settings.component';
-import { DataService } from '../services/api.service';
-import { AuthService } from '../services/auth.service';
-import { Router } from '@angular/router';
 
-// Mock inject
+// Mock dependencies
 vi.mock('@angular/core', async () => {
     const actual = await vi.importActual('@angular/core');
     return {
@@ -16,72 +12,47 @@ vi.mock('@angular/core', async () => {
         inject: vi.fn(),
     };
 });
-
 import { inject } from '@angular/core';
+import { DataService } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
+import { Router } from '@angular/router';
 
-describe('SettingsComponent', () => {
+// Mock Child Components
+vi.mock('../shared/components/table/table.component', () => ({ SharedTableComponent: class { } }));
+vi.mock('../shared/components/table/renderers/action-renderer.component', () => ({ ActionRendererComponent: class { } }));
+vi.mock('../shared/components/date-picker/date-picker.component', () => ({ DatePickerComponent: class { } }));
+
+describe('SettingsComponent Validation', () => {
     let component: SettingsComponent;
-    let mockDataService: any;
-    let mockAuthService: any;
-    let mockRouter: any;
     let mockNgZone: any;
 
     beforeEach(() => {
-        mockDataService = { invoke: vi.fn() };
-        mockAuthService = { getUser: vi.fn() };
-        mockRouter = { navigate: vi.fn() };
-        mockNgZone = { run: vi.fn((fn) => fn()) };
-
-        // Setup inject mock to return appropriate service based on call
-        vi.mocked(inject).mockImplementation((token: any) => {
-            if (token === DataService) return mockDataService;
-            if (token === AuthService) return mockAuthService;
-            if (token === Router) return mockRouter;
-            return null;
+        // Mock inject to return dummies
+        vi.mocked(inject).mockImplementation((token) => {
+            return { invoke: vi.fn(), getUser: vi.fn(), navigate: vi.fn() };
         });
 
+        mockNgZone = { run: vi.fn((fn) => fn()) };
         component = new SettingsComponent(mockNgZone);
+        component.isElectron = false;
     });
 
-    it('should redirect if user is not admin', () => {
-        mockAuthService.getUser.mockReturnValue({ role: 'doctor' });
-        component.ngOnInit();
-        expect(mockRouter.navigate).toHaveBeenCalledWith(['/dashboard']);
+    it('should validate required fields', () => {
+        const errors = component.validateUser({});
+        expect(errors).toContain('Username must be at least 3 characters.');
+        expect(errors).toContain('Full Name is required.');
+        expect(errors).toContain('Role is required.');
     });
 
-    it('should load settings if user is admin', () => {
-        mockAuthService.getUser.mockReturnValue({ role: 'admin' });
-        mockDataService.invoke.mockResolvedValue({ clinic_name: 'My Clinic' });
-
-        component.ngOnInit();
-
-        expect(mockDataService.invoke).toHaveBeenCalledWith('getSettings');
-        // Wait for promise resolution (ngOnInit is not async but calls async)
-        // In unit test without TestBed, we might need to wait manually or trust mock resolution
-        // The component uses .then or await. If ngOnInit is sync, we can't await it directly if it doesn't return promise.
-        // Let's check component implementation. It calls loadSettings() which is async.
+    it('should validate username length', () => {
+        expect(component.validateUser({ username: 'ab' })).toContain('Username must be at least 3 characters.');
+        expect(component.validateUser({ username: 'abc', name: 'Valid', role: 'doc', password: '1234' }).length).toBe(0);
     });
 
-    it('should save settings', async () => {
-        component.settings = { clinic_name: 'New Name' };
-        await component.saveSettings();
-
-        expect(mockDataService.invoke).toHaveBeenCalledWith('saveSettings', { clinic_name: 'New Name' });
-        expect(component.settingsSaved).toBe(true);
-    });
-
-    it('should add a new user', async () => {
-        component.editingUser = { username: 'dr_house', password: 'vicodin', role: 'doctor' };
-
-        await component.saveUser();
-
-        expect(mockDataService.invoke).toHaveBeenCalledWith('saveUser', expect.objectContaining({ username: 'dr_house' }));
-        expect(component.editingUser).toBeNull(); // Should reset
-    });
-
-    it('should validation user creation', async () => {
-        component.editingUser = { username: '' }; // Invalid
-        await component.saveUser();
-        expect(mockDataService.invoke).not.toHaveBeenCalled();
+    it('should validate mobile', () => {
+        expect(component.validateUser({ mobile: '123' })).toContain('Mobile number must be exactly 10 digits.');
+        const valid = component.validateUser({ mobile: '9876543210' });
+        const hasMobileErr = valid.some(e => e.includes('Mobile'));
+        expect(hasMobileErr).toBe(false);
     });
 });

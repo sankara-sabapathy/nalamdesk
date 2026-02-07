@@ -36,6 +36,18 @@ describe('MainLayoutComponent', () => {
         expect(component.currentUser.name).toBe('Dr. Test');
     });
 
+    it('should close drawer if open', () => {
+        // Mock ElementRef for drawerCheckbox
+        const mockCheckbox = {
+            nativeElement: { checked: true }
+        };
+        component.drawerCheckbox = mockCheckbox as any;
+
+        component.closeDrawer();
+
+        expect(mockCheckbox.nativeElement.checked).toBe(false);
+    });
+
     it('should logout', () => {
         component.logout();
         expect(mockAuthService.logout).toHaveBeenCalled();

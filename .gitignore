@@ -45,3 +45,14 @@ blob-report/
 
 # Angular
 .angular/
+
+# Temporary/Debug Files
+test_output.txt
+final_test_output.txt
+test_log.txt
+git-status.txt
+*_output.txt
+*_log.txt
+nalamdesk/
+desktop/nalamdesk/
+desktop/html/

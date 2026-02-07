@@ -25,6 +25,9 @@ export class SettingsComponent implements OnInit {
   users: any[] = [];
   auditLogs: any[] = [];
 
+  // UI State for Mobile Drawer
+  isMobileMenuOpen = false;
+
   // Validation State
   formSubmitted = false;
 
@@ -66,6 +69,7 @@ export class SettingsComponent implements OnInit {
       headerName: 'Time',
       field: 'timestamp',
       flex: 1,
+      minWidth: 160,
       valueFormatter: (params: any) => {
         if (!params.value) return '-';
         return new DatePipe('en-US').transform(params.value, 'short') || '-';
@@ -75,6 +79,7 @@ export class SettingsComponent implements OnInit {
       headerName: 'Action By',
       field: 'actor_name', // Joined from users table
       flex: 1,
+      minWidth: 150,
       cellRenderer: (params: any) => {
         return params.value ? `<span class="font-medium text-gray-700">${params.value}</span>` : '<span class="text-gray-400 italic">Unknown</span>';
       }
@@ -83,6 +88,7 @@ export class SettingsComponent implements OnInit {
       headerName: 'Action',
       field: 'action',
       flex: 1,
+      minWidth: 150,
       cellRenderer: (params: any) => {
         const action = params.value || '';
         let colorClass = 'text-gray-600';
@@ -92,9 +98,9 @@ export class SettingsComponent implements OnInit {
         return `<span class="font-medium ${colorClass}">${action}</span>`;
       }
     },
-    { headerName: 'Table', field: 'table_name', flex: 1 },
-    { headerName: 'Record ID', field: 'record_id', flex: 1, cellClass: 'font-mono text-xs text-gray-500' },
-    { headerName: 'Details', field: 'details', flex: 2 }
+    { headerName: 'Table', field: 'table_name', flex: 1, minWidth: 160 },
+    { headerName: 'Record ID', field: 'record_id', flex: 1, minWidth: 150, cellClass: 'font-mono text-xs text-gray-500' },
+    { headerName: 'Details', field: 'details', flex: 2, minWidth: 250, wrapText: true, autoHeight: true }
   ];
 
   // User Column Definitions
@@ -103,6 +109,7 @@ export class SettingsComponent implements OnInit {
       headerName: 'Employee',
       field: 'name',
       flex: 1.5,
+      minWidth: 220,
       cellRenderer: (params: any) => {
         const u = params.data;
         if (!u) return '';
@@ -127,6 +134,7 @@ export class SettingsComponent implements OnInit {
       headerName: 'Role',
       field: 'role',
       flex: 1,
+      minWidth: 150,
       cellClass: 'flex items-center',
       cellRenderer: (params: any) => {
         if (!params.value) return '-';
@@ -153,6 +161,7 @@ export class SettingsComponent implements OnInit {
       headerName: 'Contact',
       field: 'contact',
       flex: 1.5,
+      minWidth: 180,
       valueGetter: (params: ValueGetterParams) => {
         const u = params.data;
         if (!u) return '';
@@ -173,6 +182,7 @@ export class SettingsComponent implements OnInit {
       headerName: 'DOB',
       field: 'dob',
       flex: 1,
+      minWidth: 130,
       valueFormatter: (params: any) => {
         if (!params.value) return '-';
         return new DatePipe('en-US').transform(params.value, 'mediumDate') || '-';
@@ -182,6 +192,7 @@ export class SettingsComponent implements OnInit {
       headerName: 'Joined',
       field: 'joining_date',
       flex: 1,
+      minWidth: 130,
       valueFormatter: (params: any) => {
         if (!params.value) return '-';
         return new DatePipe('en-US').transform(params.value, 'mediumDate') || '-';
@@ -190,6 +201,7 @@ export class SettingsComponent implements OnInit {
     {
       headerName: 'Actions',
       flex: 1,
+      minWidth: 120,
       cellRenderer: ActionRendererComponent,
       cellRendererParams: {
         onEdit: (data: any) => this.editUser(data),
@@ -200,14 +212,31 @@ export class SettingsComponent implements OnInit {
 
   // Table State
   searchTerm = '';
-  pageSize = 20; // Default page size passed to grid
+  pageSize = 20;
+  filteredUsers: any[] = [];
 
-  get filteredUsersForGrid() {
-    // Only filter by role - AG Grid Quick Filter handles text search
+  setFilter(role: string) {
+    this.staffFilter = role.toLowerCase();
+    this.applyFilter();
+  }
+
+  applyFilter() {
     if (this.staffFilter !== 'all') {
-      return this.users.filter(u => u.role?.toLowerCase() === this.staffFilter.toLowerCase());
+      this.filteredUsers = this.users.filter(u => u.role && u.role.toLowerCase() === this.staffFilter);
+    } else {
+      this.filteredUsers = [...this.users];
     }
-    return this.users;
+  }
+
+  // Navigation Helper
+  switchTab(tab: string) {
+    this.activeTab = tab;
+    this.isMobileMenuOpen = false;
+
+    // Additional logic if needed per tab
+    if (tab === 'audit') {
+      this.loadAuditLogs();
+    }
   }
 
   private dataService = inject(DataService);
@@ -244,7 +273,10 @@ export class SettingsComponent implements OnInit {
   async loadUsers() {
     try {
       const u = await this.dataService.invoke<any>('getUsers');
-      this.ngZone.run(() => { this.users = u; });
+      this.ngZone.run(() => {
+        this.users = u;
+        this.applyFilter();
+      });
     } catch (e) { console.error(e); }
   }
 
@@ -312,6 +344,28 @@ export class SettingsComponent implements OnInit {
       await this.dataService.invoke('deleteUser', id);
       this.ngZone.run(() => this.loadUsers());
     } catch (e) { console.error(e); }
+  }
+
+  // Batch Selection
+  selectedUsers: any[] = [];
+
+  async deleteSelectedUsers() {
+    if (this.selectedUsers.length === 0) return;
+    if (!confirm(`Are you sure you want to delete ${this.selectedUsers.length} users? This cannot be undone.`)) return;
+
+    try {
+      // Execute in parallel or sequential? 
+      // SQLite handles concurrency poorly if not managed, but dataService.invoke should handle it.
+      // Better to do sequential to avoid locking if the main process handles one by one.
+      for (const user of this.selectedUsers) {
+        await this.dataService.invoke('deleteUser', user.id);
+      }
+      this.ngZone.run(() => {
+        this.selectedUsers = [];
+        this.loadUsers();
+        alert('Users deleted successfully');
+      });
+    } catch (e) { console.error(e); alert('Error deleting users'); }
   }
 
   async loadAuditLogs() {

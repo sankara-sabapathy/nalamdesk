@@ -1,40 +1,70 @@
-<div class="h-full flex bg-gray-50 text-sm">
-    <!-- Left Sidebar: Navigation -->
-    <div class="w-64 bg-white border-r border-gray-200 flex flex-col">
-        <div class="p-6 border-b border-gray-100">
+<div class="h-full flex flex-col md:flex-row bg-gray-50 text-sm relative">
+
+    <!-- MOBILE HEADER (Visible only on small screens) -->
+    <div class="md:hidden bg-white border-b border-gray-200 p-4 flex items-center justify-between sticky top-0 z-20">
+        <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+            <span>Admin</span> Center
+        </h1>
+        <button (click)="isMobileMenuOpen = !isMobileMenuOpen" class="p-2 text-gray-600 hover:bg-gray-100 rounded-md">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                stroke="currentColor" class="w-6 h-6">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+            </svg>
+        </button>
+    </div>
+
+    <!-- MOBILE BACKDROP OVERLAY -->
+    <div *ngIf="isMobileMenuOpen" (click)="isMobileMenuOpen = false"
+        class="fixed inset-0 bg-black/50 z-30 md:hidden transition-opacity">
+    </div>
+
+    <!-- LEFT SIDEBAR: Navigation Drawer -->
+    <!-- Desktop: static w-64 block -->
+    <!-- Mobile: fixed inset-y-0 left-0 z-40 transform transition -->
+    <div [class.translate-x-0]="isMobileMenuOpen" [class.-translate-x-full]="!isMobileMenuOpen"
+        class="fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 ease-in-out md:static md:translate-x-0 md:h-full">
+
+        <!-- Sidebar Header (Desktop Only) -->
+        <div class="p-6 border-b border-gray-100 hidden md:block">
             <h1 class="text-xl font-bold text-gray-800 flex items-center gap-2">
                 <span>Admin</span> Center
             </h1>
             <p class="text-xs text-gray-400 mt-1">System Configuration</p>
         </div>
 
+        <!-- Mobile Drawer Header -->
+        <div class="p-4 border-b border-gray-100 flex justify-between items-center md:hidden bg-gray-50">
+            <span class="font-bold text-gray-700">Menu</span>
+            <button (click)="isMobileMenuOpen = false" class="text-gray-500">✕</button>
+        </div>
+
         <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
-            <button (click)="activeTab = 'general'"
+            <button (click)="switchTab('general')"
                 [class]="activeTab === 'general' ? 'bg-blue-50 text-blue-700 border-blue-500' : 'text-gray-600 hover:bg-gray-50 border-transparent'"
                 class="w-full text-left px-3 py-2 rounded-md transition-colors font-medium flex items-center gap-3 border-l-4">
                 <span>General</span>
             </button>
 
             <ng-container *ngIf="currentUser?.role === 'admin'">
-                <button (click)="activeTab = 'users'"
+                <button (click)="switchTab('users')"
                     [class]="activeTab === 'users' ? 'bg-blue-50 text-blue-700 border-blue-500' : 'text-gray-600 hover:bg-gray-50 border-transparent'"
                     class="w-full text-left px-3 py-2 rounded-md transition-colors font-medium flex items-center gap-3 border-l-4">
                     <span>Users</span>
                 </button>
 
-                <button (click)="activeTab = 'security'"
+                <button (click)="switchTab('security')"
                     [class]="activeTab === 'security' ? 'bg-blue-50 text-blue-700 border-blue-500' : 'text-gray-600 hover:bg-gray-50 border-transparent'"
                     class="w-full text-left px-3 py-2 rounded-md transition-colors font-medium flex items-center gap-3 border-l-4">
                     <span>Security</span>
                 </button>
 
-                <button (click)="activeTab = 'backup'" *ngIf="isElectron"
+                <button (click)="switchTab('backup')" *ngIf="isElectron"
                     [class]="activeTab === 'backup' ? 'bg-blue-50 text-blue-700 border-blue-500' : 'text-gray-600 hover:bg-gray-50 border-transparent'"
                     class="w-full text-left px-3 py-2 rounded-md transition-colors font-medium flex items-center gap-3 border-l-4">
                     <span>Data & Backup</span>
                 </button>
 
-                <button (click)="loadAuditLogs(); activeTab = 'audit'"
+                <button (click)="switchTab('audit')"
                     [class]="activeTab === 'audit' ? 'bg-blue-50 text-blue-700 border-blue-500' : 'text-gray-600 hover:bg-gray-50 border-transparent'"
                     class="w-full text-left px-3 py-2 rounded-md transition-colors font-medium flex items-center gap-3 border-l-4">
                     <span>Audit Logs</span>
@@ -47,14 +77,14 @@
         </div>
     </div>
 
-    <!-- Right Content: Workspaces -->
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <!-- RIGHT CONTENT AREA -->
+    <div class="flex-1 flex flex-col overflow-hidden w-full">
 
         <!-- 1. GENERAL TAB -->
-        <div *ngIf="activeTab === 'general'" class="h-full overflow-y-auto p-8">
+        <div *ngIf="activeTab === 'general'" class="h-full overflow-y-auto p-4 md:p-8">
             <h2 class="text-2xl font-bold text-gray-800 mb-6">Clinic Details</h2>
 
-            <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
+            <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
                 <form (ngSubmit)="saveSettings()">
                     <div class="grid grid-cols-1 gap-6">
                         <div>
@@ -71,7 +101,7 @@
                 </form>
             </div>
 
-            <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200" *ngIf="isElectron">
+            <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200" *ngIf="isElectron">
                 <div class="flex items-center justify-between mb-4">
                     <div>
                         <h3 class="text-lg font-medium text-purple-700">Online Booking</h3>
@@ -90,36 +120,49 @@
         <!-- 2. USERS TAB -->
         <div *ngIf="activeTab === 'users'" class="h-full flex flex-col">
             <!-- Header -->
-            <div class="flex-none px-8 pt-8 pb-4 flex justify-between items-center">
+            <div class="flex-none px-4 pt-4 md:px-8 md:pt-8 pb-4 flex justify-between items-center">
                 <div>
-                    <h2 class="text-2xl font-bold text-gray-800">Users</h2>
-                    <p class="text-gray-500 text-sm">Manage access, roles, and employee profiles.</p>
+                    <h2 class="text-xl md:text-2xl font-bold text-gray-800">Users</h2>
+                    <p class="text-gray-500 text-xs md:text-sm">Manage roles and employee access.</p>
                 </div>
-                <button (click)="editUser({})" class="btn btn-primary text-sm">
+                <button (click)="editUser({})" class="btn btn-primary btn-sm md:btn-md text-sm">
                     + Add User
                 </button>
             </div>
 
             <!-- AG Table Container -->
-            <div class="flex-1 min-h-0 overflow-hidden px-8 pb-8">
-                <app-shared-table [rowData]="filteredUsersForGrid" [columnDefs]="userColumnDefs" [pagination]="true"
-                    [pageSize]="20" [quickFilterText]="searchTerm">
+            <div class="flex-1 min-h-0 overflow-hidden px-2 md:px-8 pb-4 md:pb-8">
+                <app-shared-table [rowData]="filteredUsers" [columnDefs]="userColumnDefs" [pagination]="true"
+                    [pageSize]="20" [quickFilterText]="searchTerm" [multiSelect]="true"
+                    (selectionChanged)="selectedUsers = $event">
 
-                    <div toolbar-left class="flex items-center gap-4">
-                        <!-- Role Filter (Pills) -->
-                        <div class="flex gap-2">
+                    <div toolbar-left
+                        class="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-4 w-full">
+                        <!-- Batch Actions -->
+                        <button *ngIf="selectedUsers.length > 0" (click)="deleteSelectedUsers()"
+                            class="bg-red-50 text-red-600 px-3 py-1.5 rounded-md text-xs font-medium border border-red-200 hover:bg-red-100 flex items-center gap-2 transition-all">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor" class="w-4 h-4">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                            </svg>
+                            Delete ({{ selectedUsers.length }})
+                        </button>
+
+                        <!-- Role Filter (Scrollable on mobile) -->
+                        <div class="flex gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 hide-scrollbar">
                             <button *ngFor="let r of ['All', 'Admin', 'Doctor', 'Nurse', 'Receptionist']"
-                                (click)="staffFilter = r.toLowerCase()"
+                                (click)="setFilter(r)"
                                 [class]="staffFilter === r.toLowerCase() ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-500 font-medium' : 'text-gray-600 hover:bg-gray-100'"
-                                class="px-3 py-1.5 rounded-md text-xs transition-all border border-transparent">
+                                class="px-3 py-1.5 rounded-md text-xs transition-all border border-transparent whitespace-nowrap">
                                 {{ r }}
                             </button>
                         </div>
 
-                        <div class="h-4 w-px bg-gray-300 mx-2"></div>
+                        <div class="hidden md:block h-4 w-px bg-gray-300 mx-2"></div>
 
                         <!-- Search -->
-                        <div class="relative group">
+                        <div class="relative group w-full md:w-auto">
                             <span
                                 class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
@@ -129,7 +172,7 @@
                                 </svg>
                             </span>
                             <input [(ngModel)]="searchTerm" placeholder="Search..."
-                                class="pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 w-48 shadow-sm transition-all">
+                                class="pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 w-full md:w-48 shadow-sm transition-all">
                         </div>
                     </div>
 
@@ -138,12 +181,12 @@
         </div>
 
         <!-- 3. SECURITY TAB -->
-        <div *ngIf="activeTab === 'security'" class="h-full overflow-y-auto p-8">
+        <div *ngIf="activeTab === 'security'" class="h-full overflow-y-auto p-4 md:p-8">
             <h2 class="text-2xl font-bold text-gray-800 mb-6">Security & Resilience</h2>
 
             <!-- Recovery Code -->
-            <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
-                <div class="flex items-center justify-between">
+            <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
+                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
                         <h3 class="text-lg font-medium text-red-600">Master Recovery Code</h3>
                         <p class="text-sm text-gray-500 max-w-lg">Used to regain access if the admin password is lost.
@@ -151,24 +194,25 @@
                         <p class="text-xs text-red-500 mt-2 font-bold bg-red-50 inline-block px-2 py-1 rounded">⚠️
                             Generating a new code immediately invalidates the old one.</p>
                     </div>
-                    <button (click)="openRecoveryModal()" class="btn btn-outline btn-error">Generate New Code</button>
+                    <button (click)="openRecoveryModal()" class="btn btn-outline btn-error w-full md:w-auto">Generate
+                        New Code</button>
                 </div>
             </div>
         </div>
 
         <!-- 4. BACKUP TAB -->
-        <div *ngIf="activeTab === 'backup'" class="h-full overflow-y-auto p-8">
+        <div *ngIf="activeTab === 'backup'" class="h-full overflow-y-auto p-4 md:p-8">
             <h2 class="text-2xl font-bold text-gray-800 mb-6">Data Redundancy</h2>
 
-            <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
-                <div class="flex items-center justify-between mb-4">
+            <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
+                <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
                     <div>
                         <h3 class="text-lg font-medium text-blue-600 flex items-center gap-2">
                             <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg"
                                 class="w-5 h-5">
                             Google Drive Backup
                         </h3>
-                        <p class="text-sm text-gray-500">Securely sync encrypted database snapshots to your cloud.</p>
+                        <p class="text-sm text-gray-500">Securely sync encrypted database snapshots.</p>
                     </div>
                     <button (click)="connectDrive()" [disabled]="isLoading" class="btn btn-primary btn-sm">
                         {{ isLoading ? 'Connecting...' : 'Connect Drive' }}
@@ -181,9 +225,9 @@
                 </div>
 
                 <div class="border-t pt-4">
-                    <div class="flex justify-between items-center mb-4">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
                         <h4 class="font-medium text-gray-700">Snapshot History</h4>
-                        <div class="flex gap-2">
+                        <div class="flex gap-2 w-full md:w-auto justify-end">
                             <button (click)="listBackups()"
                                 class="text-blue-600 text-xs hover:underline">Refresh</button>
                             <button (click)="backupNow()" [disabled]="isBackupLoading"
@@ -197,12 +241,12 @@
                         <ng-container *ngIf="backups.length > 0; else noBackups">
                             <div *ngFor="let file of backups"
                                 class="flex items-center justify-between p-3 bg-gray-50 rounded border hover:bg-white transition-colors">
-                                <div>
-                                    <p class="font-medium text-gray-800 text-sm">{{ file.name }}</p>
+                                <div class="truncate mr-2">
+                                    <p class="font-medium text-gray-800 text-sm truncate">{{ file.name }}</p>
                                     <p class="text-xs text-gray-500">{{ file.createdTime | date:'medium' }}</p>
                                 </div>
                                 <button (click)="restore(file.id)"
-                                    class="text-red-600 border border-red-200 px-3 py-1 rounded hover:bg-red-50 text-xs font-medium">
+                                    class="text-red-600 border border-red-200 px-3 py-1 rounded hover:bg-red-50 text-xs font-medium whitespace-nowrap">
                                     Restore
                                 </button>
                             </div>
@@ -218,7 +262,7 @@
         </div>
 
         <!-- 5. AUDIT TAB -->
-        <div *ngIf="activeTab === 'audit'" class="h-full flex flex-col p-8">
+        <div *ngIf="activeTab === 'audit'" class="h-full flex flex-col p-4 md:p-8">
             <h2 class="flex-none text-2xl font-bold text-gray-800 mb-6">Audit Logs</h2>
             <div class="flex-1 min-h-0 overflow-hidden">
                 <app-shared-table [rowData]="auditLogs" [columnDefs]="auditColumnDefs" [pagination]="true"
@@ -242,7 +286,7 @@
         <!-- Scrollable Body -->
         <div class="flex-1 overflow-y-auto p-4 space-y-4">
             <!-- Account Info -->
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Username <span
                             class="text-red-500">*</span></label>
@@ -271,8 +315,8 @@
             </div>
 
             <!-- Personal Info -->
-            <div class="grid grid-cols-2 gap-4 pt-4 border-t">
-                <div class="col-span-2">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                <div class="md:col-span-2">
                     <label class="block text-sm font-medium text-gray-700">Full Name <span
                             class="text-red-500">*</span></label>
                     <input [(ngModel)]="editingUser.name" required minlength="2" #name="ngModel"
@@ -296,7 +340,7 @@
                         placeholder="Select Joining Date"></app-date-picker>
                 </div>
 
-                <div class="col-span-2">
+                <div class="md:col-span-2">
                     <label class="block text-sm font-medium text-gray-700">Designation / Title</label>
                     <input [(ngModel)]="editingUser.designation" placeholder="e.g. Senior Nurse"
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
@@ -304,7 +348,7 @@
             </div>
 
             <!-- Contact Info -->
-            <div class="grid grid-cols-2 gap-4 pt-4 border-t">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Mobile Number</label>
                     <input [(ngModel)]="editingUser.mobile" #mobile="ngModel" pattern="^[0-9]{10}$"
@@ -324,7 +368,7 @@
                         Invalid email format.
                     </p>
                 </div>
-                <div class="col-span-2">
+                <div class="md:col-span-2">
                     <label class="block text-sm font-medium text-gray-700">Residential Address</label>
                     <textarea [(ngModel)]="editingUser.address" rows="2"
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2"></textarea>
@@ -332,7 +376,7 @@
             </div>
 
             <!-- Password & Status -->
-            <div class="grid grid-cols-2 gap-4 pt-4 border-t">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">
                         {{ editingUser.id ? 'Reset Password' : 'Password' }} <span *ngIf="!editingUser.id"

@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterModule, Router } from '@angular/router';
 import { UniversalDialogComponent } from '../../shared/components/universal-dialog/universal-dialog.component';
@@ -11,14 +11,14 @@ import { AuthService } from '../../services/auth.service';
   imports: [CommonModule, RouterOutlet, RouterModule, UniversalDialogComponent],
   template: `
     <div class="drawer lg:drawer-open font-sans">
-      <input id="main-drawer" type="checkbox" class="drawer-toggle" />
+      <input #drawerCheckbox id="main-drawer" type="checkbox" class="drawer-toggle" />
       
       <div class="drawer-content flex flex-col min-h-screen bg-gray-100">
-        <!-- Window Title Bar Spacer -->
-        <div class="w-full h-8 bg-white flex-none sticky top-0 z-50" style="-webkit-app-region: drag"></div>
+        <!-- Window Title Bar Spacer REMOVED to fix white space issue -->
+        <!-- <div class="w-full h-8 bg-white flex-none sticky top-0 z-50" style="-webkit-app-region: drag"></div> -->
 
         <!-- Header -->
-        <div class="navbar bg-white shadow-sm sticky top-8 z-30 h-16 border-b border-gray-200">
+        <div class="navbar bg-white shadow-sm sticky top-0 z-30 h-16 border-b border-gray-200">
           <div class="flex-none lg:hidden">
             <label for="main-drawer" aria-label="open sidebar" class="btn btn-square btn-ghost">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-6 h-6 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
@@ -44,9 +44,10 @@ import { AuthService } from '../../services/auth.service';
                     <span class="text-sm font-bold">{{ getUserInitials() }}</span>
                   </div>
                 </div>
+                <!-- Add closeDrawer() to dropdown links too just in case -->
                 <ul tabindex="0" class="mt-3 z-[1] p-2 shadow-menu menu menu-sm dropdown-content bg-white rounded-box w-52">
-                  <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings">Manage Profile</a></li>
-                  <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings">Settings</a></li>
+                  <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings" (click)="closeDrawer()">Manage Profile</a></li>
+                  <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings" (click)="closeDrawer()">Settings</a></li>
                   <li><a class="text-red-600" (click)="logout()">Logout</a></li>
                 </ul>
              </div>
@@ -82,7 +83,7 @@ import { AuthService } from '../../services/auth.service';
           <li class="menu-title px-2 uppercase tracking-wider font-bold text-[11px] opacity-50 mt-2">Menu</li>
           
           <li>
-            <a routerLink="/dashboard" routerLinkActive="active" class="group">
+            <a routerLink="/dashboard" routerLinkActive="active" class="group" (click)="closeDrawer()">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="group-active:text-white"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
               Dashboard
             </a>
@@ -91,26 +92,26 @@ import { AuthService } from '../../services/auth.service';
           <li class="menu-title px-2 uppercase tracking-wider font-bold text-[11px] opacity-50 mt-4">Patient Management</li>
 
           <li>
-            <a routerLink="/queue" routerLinkActive="active" class="group">
+            <a routerLink="/queue" routerLinkActive="active" class="group" (click)="closeDrawer()">
                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
               Queue
               <span class="badge badge-sm badge-secondary ml-auto" *ngIf="queueCount > 0">{{ queueCount }}</span>
             </a>
           </li>
           <li>
-            <a routerLink="/online-booking" routerLinkActive="active" class="group">
+            <a routerLink="/online-booking" routerLinkActive="active" class="group" (click)="closeDrawer()">
                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
               Online Booking
             </a>
           </li>
           <li>
-            <a routerLink="/patients" routerLinkActive="active" class="group">
+            <a routerLink="/patients" routerLinkActive="active" class="group" (click)="closeDrawer()">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               Patients
             </a>
           </li>
           <li>
-            <a routerLink="/visits" routerLinkActive="active" class="group">
+            <a routerLink="/visits" routerLinkActive="active" class="group" (click)="closeDrawer()">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               Visits
             </a>
@@ -119,7 +120,7 @@ import { AuthService } from '../../services/auth.service';
            <li class="menu-title px-2 uppercase tracking-wider font-bold text-[11px] opacity-50 mt-4" *ngIf="currentUser?.role === 'admin'">System</li>
 
           <li *ngIf="currentUser?.role === 'admin'">
-            <a routerLink="/settings" routerLinkActive="active" class="group">
+            <a routerLink="/settings" routerLinkActive="active" class="group" (click)="closeDrawer()">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
               Settings
             </a>
@@ -169,6 +170,8 @@ export class MainLayoutComponent {
   queueCount = 0; // TODO: Connect to service
   currentUser: any = null;
 
+  @ViewChild('drawerCheckbox') drawerCheckbox!: ElementRef<HTMLInputElement>;
+
   constructor(
     private router: Router,
     public dialogService: DialogService,
@@ -182,6 +185,12 @@ export class MainLayoutComponent {
     const url = this.router.url.split('/')[1];
     if (!url) return 'Dashboard';
     return url.charAt(0).toUpperCase() + url.slice(1);
+  }
+
+  closeDrawer() {
+    if (this.drawerCheckbox && this.drawerCheckbox.nativeElement.checked) {
+      this.drawerCheckbox.nativeElement.checked = false;
+    }
   }
 
   logout() {

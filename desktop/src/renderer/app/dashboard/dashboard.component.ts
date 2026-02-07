@@ -13,8 +13,8 @@ import { PatientService } from '../services/patient.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="h-full w-full overflow-y-auto p-8">
-    <div class="w-full px-6">
+    <div class="h-full w-full overflow-y-auto p-4 md:p-8">
+    <div class="w-full max-w-[1600px] mx-auto">
         <!-- Welcome Section -->
         <div class="flex justify-between items-center mb-8 mt-2">
             <div>

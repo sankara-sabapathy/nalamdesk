@@ -10,33 +10,35 @@ NalamDesk employs a "Battle-Tested" testing strategy tailored to its hybrid arch
 
 The Desktop app runs on Electron and uses **Vitest** (powered by AnalogJS). To handle the complexity of testing Angular components within an Electron environment, we utilize a **Dual-Environment Architecture**.
 
-### A. Mixed Integration Tests (Legacy/DOM)
-Used for testing component templates, complex DOM interactions, and integration with Angular's `TestBed`.
+### Unit Testing Strategy
+Due to the complex interaction between Angular's `zone.js` and the Vitest JSDOM environment (specifically `ProxyZone` limitations), we enforce a **Manual Instantiation** strategy for business logic.
 
-- **Configuration**: `vitest.config.renderer.mjs`
-- **Setup File**: `src/test-setup.ts`
-- **Environment**: Loads `zone.js` and `TestBed`.
-- **Use Case**: UI testing, Directive testing.
-- **Run Command**:
-  ```bash
-  npm run test:renderer
-  ```
+#### A. Manual Component Instantiation ("Isolated Testing")
+This is the **primary** method for testing Angular components in this project.
+- **Why**: Bypasses unstable `TestBed` and `ProxyZone` issues.
+- **How**: Instantiate the component class directly with mocked dependencies.
+- **Focus**: Pure business logic, input validation, service calls.
 
-### B. Pure Unit Tests (Business Logic)
-Used for high-speed testing of component logic, services, and state management without the overhead of the DOM or Zone.js.
+**Example**:
+```typescript
+// GOOD: Stable & Fast
+beforeEach(() => {
+    mockService = { getData: vi.fn() };
+    component = new MyComponent(mockService);
+});
+```
 
-- **Configuration**: `vitest.config.pure.mjs`
-- **Setup File**: `src/test-setup-pure.ts`
-- **Environment**: **NO Zone.js**. Fast JIT compilation only.
-- **Methodology**: Uses **Constructor Injection** and **Manual Instantiation** (e.g., `new Component(...)`).
-- **Use Case**: Queue algorithms, Patient Data helpers, Service logic.
-- **Run Command**:
-  ```bash
-  npx vitest run -c vitest.config.pure.mjs
-  ```
+#### B. Integration Testing
+Since unit tests do not render the template, we rely on **Playwright** (E2E) to verify DOM rendering, bindings, and user interactions.
 
-> **Why two environments?**
-> Zone.js is required for Angular's reactivity but conflicts with Vitest's async/await handling in certain scenarios. By separating pure logic tests into a "Pure" environment, we achieve faster execution and eliminate "ProxyZone" errors.
+### Running Tests
+```bash
+# Run all renderer tests
+npm run test:renderer
+
+# Run specific file
+npx vitest run src/renderer/app/login/login.component.spec.ts
+```
 
 ---
 

@@ -1,4 +1,3 @@
-
 import { Component, Input, Output, EventEmitter, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -9,20 +8,31 @@ import { FormsModule } from '@angular/forms';
   imports: [CommonModule, FormsModule],
   template: `
     <div class="card bg-base-100 border border-base-200">
-      <div class="card-body p-4">
-        <h3 class="card-title text-sm">Prescription</h3>
+      <div class="card-body p-3 md:p-4">
+        <h3 class="card-title text-sm mb-2">Prescription</h3>
         
-        <div class="grid grid-cols-12 gap-2 mb-2 items-center" *ngFor="let item of items(); let i = index">
+        <!-- Header (Desktop Only) -->
+        <!-- Optional: Add headers for columns on desktop for clarity, skipping for now to keep simple -->
+
+        <div class="grid grid-cols-12 gap-2 mb-3 md:mb-2 items-start md:items-center bg-gray-50 md:bg-transparent p-3 md:p-0 rounded-lg md:rounded-none relative border md:border-none border-gray-100" 
+             *ngFor="let item of items(); let i = index">
           
-          <!-- Medicine -->
-          <div class="col-span-3">
+          <!-- Mobile Delete (Absolute Top Right) -->
+          <button class="md:hidden absolute top-1 right-1 btn btn-xs btn-ghost text-error" (click)="remove(i)">
+              ✕
+          </button>
+
+          <!-- 1. Medicine (Full Width on Mobile) -->
+          <div class="col-span-12 md:col-span-3">
+            <span class="text-xs text-gray-500 md:hidden font-bold">Medicine</span>
             <input type="text" placeholder="Medicine Name" 
                    [(ngModel)]="item.medicine" (ngModelChange)="emitChange()"
-                   class="input input-bordered input-sm w-full" />
+                   class="input input-bordered input-sm w-full font-medium" />
           </div>
 
-          <!-- Form (Tab/Syr) -->
-          <div class="col-span-1">
+          <!-- 2. Form (1/3 Mobile) -->
+          <div class="col-span-4 md:col-span-1">
+             <span class="text-xs text-gray-500 md:hidden">Form</span>
              <select [(ngModel)]="item.form" (ngModelChange)="emitChange()" class="select select-bordered select-sm w-full px-1">
                <option value="Tab">Tab</option>
                <option value="Cap">Cap</option>
@@ -33,15 +43,17 @@ import { FormsModule } from '@angular/forms';
              </select>
           </div>
 
-          <!-- Dosage -->
-           <div class="col-span-1">
-            <input type="text" placeholder="Dose" 
+          <!-- 3. Dosage (1/3 Mobile) -->
+           <div class="col-span-4 md:col-span-1">
+            <span class="text-xs text-gray-500 md:hidden">Dose</span>
+            <input type="text" placeholder="500mg" 
                    [(ngModel)]="item.dosage" (ngModelChange)="emitChange()"
                    class="input input-bordered input-sm w-full px-1" />
           </div>
 
-          <!-- Route -->
-          <div class="col-span-1">
+          <!-- 4. Route (1/3 Mobile) -->
+          <div class="col-span-4 md:col-span-1">
+             <span class="text-xs text-gray-500 md:hidden">Route</span>
              <select [(ngModel)]="item.route" (ngModelChange)="emitChange()" class="select select-bordered select-sm w-full px-1">
                <option value="Oral">Oral</option>
                <option value="IV">IV</option>
@@ -51,8 +63,9 @@ import { FormsModule } from '@angular/forms';
              </select>
           </div>
 
-          <!-- Frequency -->
-          <div class="col-span-2">
+          <!-- 5. Frequency (1/2 Mobile) -->
+          <div class="col-span-6 md:col-span-2">
+            <span class="text-xs text-gray-500 md:hidden">Frequency</span>
             <select [(ngModel)]="item.frequency" (ngModelChange)="emitChange()" class="select select-bordered select-sm w-full">
               <option value="1-0-1">1-0-1 (BID)</option>
               <option value="1-1-1">1-1-1 (TID)</option>
@@ -64,29 +77,34 @@ import { FormsModule } from '@angular/forms';
             </select>
           </div>
 
-          <!-- Duration -->
-          <div class="col-span-2">
-            <input type="text" placeholder="Dur" 
+          <!-- 6. Duration (1/2 Mobile) -->
+          <div class="col-span-6 md:col-span-2">
+            <span class="text-xs text-gray-500 md:hidden">Duration</span>
+            <input type="text" placeholder="3 days" 
                    [(ngModel)]="item.duration" (ngModelChange)="emitChange()"
                    class="input input-bordered input-sm w-full" />
           </div>
 
-          <!-- Instruction & Remove -->
-          <div class="col-span-2 flex gap-1">
-             <select [(ngModel)]="item.instruction" (ngModelChange)="emitChange()" class="select select-bordered select-sm w-full px-1">
-              <option value="After Food">After Food</option>
-              <option value="Before Food">Before Food</option>
-              <option value="With Food">With Food</option>
-              <option value="Empty Stomach">Empty Stomach</option>
-            </select>
-            <button class="btn btn-sm btn-square btn-ghost text-error" (click)="remove(i)">
+          <!-- 7. Instruction (Full Mobile) + Desktop Delete -->
+          <div class="col-span-12 md:col-span-2 flex gap-1 items-end">
+            <div class="w-full">
+                <span class="text-xs text-gray-500 md:hidden">Instruction</span>
+                <select [(ngModel)]="item.instruction" (ngModelChange)="emitChange()" class="select select-bordered select-sm w-full px-1">
+                    <option value="After Food">After Food</option>
+                    <option value="Before Food">Before Food</option>
+                    <option value="With Food">With Food</option>
+                    <option value="Empty Stomach">Empty Stomach</option>
+                </select>
+            </div>
+            
+            <button class="hidden md:flex btn btn-sm btn-square btn-ghost text-error" (click)="remove(i)">
               ✕
             </button>
           </div>
         </div>
         
         <div class="flex justify-between mt-2">
-           <button class="btn btn-sm btn-ghost gap-2" (click)="add()">
+           <button class="btn btn-sm btn-ghost gap-2 text-blue-600 hover:bg-blue-50" (click)="add()">
             + Add Medicine
           </button>
         </div>

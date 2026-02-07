@@ -11,7 +11,7 @@ import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
   standalone: true,
   imports: [CommonModule, VitalsFormComponent],
   template: `
-    <div class="h-full bg-gray-50 p-8 font-sans flex flex-col overflow-hidden">
+    <div class="h-full bg-gray-50 p-4 md:p-8 font-sans flex flex-col overflow-hidden">
       <div class="w-full">
         <!-- Header -->
         <div class="flex justify-between items-center mb-8">
@@ -40,11 +40,11 @@ import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
               <table class="table table-lg">
                 <thead class="bg-base-200/50 text-base-content/70 sticky top-0 z-10 backdrop-blur-sm">
                   <tr>
-                    <th>Priority</th>
-                    <th>Patient Details</th>
-                    <th>Check-in Time</th>
-                    <th>Status</th>
-                    <th class="text-right">Actions</th>
+                    <th class="min-w-[100px]">Priority</th>
+                    <th class="min-w-[200px]">Patient Details</th>
+                    <th class="min-w-[140px]">Check-in Time</th>
+                    <th class="min-w-[120px]">Status</th>
+                    <th class="text-right min-w-[140px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
