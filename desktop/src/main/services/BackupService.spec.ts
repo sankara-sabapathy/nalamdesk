@@ -6,7 +6,8 @@ import { SecurityService } from './SecurityService';
 
 // Mock dependencies
 const mockDbService = {
-    logAudit: vi.fn()
+    logAudit: vi.fn(),
+    backupDatabase: vi.fn()
 } as unknown as DatabaseService;
 
 const mockDriveService = {
@@ -35,7 +36,12 @@ vi.mock('cron', () => {
 });
 
 vi.mock('fs', () => ({
-    existsSync: vi.fn().mockReturnValue(true) // Default to true for tests
+    existsSync: vi.fn().mockReturnValue(true),
+    mkdirSync: vi.fn(),
+    readdirSync: vi.fn().mockReturnValue([]),
+    statSync: vi.fn().mockReturnValue({ mtimeMs: Date.now(), size: 1024 }),
+    unlinkSync: vi.fn(),
+    copyFileSync: vi.fn()
 }));
 
 // Import CronJob to check constructor calls if needed, OR just rely on instance method checks
@@ -70,7 +76,7 @@ describe('BackupService', () => {
 
             await service.performBackup();
 
-            expect(mockDriveService.uploadFile).toHaveBeenCalledWith('/path/to/db.db', expect.stringContaining('nalamdesk-auto-backup'));
+            expect(mockDriveService.uploadFile).toHaveBeenCalledWith('/path/to/db.db', expect.stringContaining('nalamdesk-cloud-backup'));
         });
 
         it('should skip if not authenticated', async () => {
