@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -192,7 +192,49 @@ export class SetupComponent {
   isSubmitting = false;
   recoveryCode = '';
 
-  constructor(private authService: AuthService, private router: Router) { }
+  // Recovery State
+  hasBackups = false;
+  showCloudRestore = false;
+  localBackups: any[] = [];
+  isRestoring = false;
+
+  constructor(private authService: AuthService, private router: Router, private ngZone: NgZone) { }
+
+  ngOnInit() {
+    this.checkRecovery();
+  }
+
+  async checkRecovery() {
+    // Only electron has recovery capability
+    if ((window as any).electron) {
+      try {
+        const status = await (window as any).electron.getRecoveryStatus();
+        this.ngZone.run(() => {
+          if (status.hasBackups && !status.isSetup) {
+            this.hasBackups = true;
+            this.localBackups = status.backups || [];
+          }
+        });
+      } catch (e) {
+        console.error('Failed to check recovery status', e);
+      }
+    }
+  }
+
+  async restoreLocal(path: string) {
+    if (!confirm('This will restore the selected database and restart the application. Continue?')) return;
+
+    this.isRestoring = true;
+    try {
+      await (window as any).electron.restoreSystemBackup(path);
+      // App should restart, but if not:
+      this.isRestoring = false;
+    } catch (e) {
+      console.error(e);
+      this.isRestoring = false;
+      alert('Restore Failed');
+    }
+  }
 
   async finishSetup() {
     this.isSubmitting = true;

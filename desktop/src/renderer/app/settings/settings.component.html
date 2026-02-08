@@ -234,7 +234,8 @@
         </div>
 
         <!-- Cloud Backup Section -->
-        <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
+        <div *ngIf="activeTab === 'backup'"
+            class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
             <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
                 <div>
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 87.3 78" class="w-6 h-6">
@@ -337,18 +338,18 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- 5. AUDIT TAB -->
-    <div *ngIf="activeTab === 'audit'" class="h-full flex flex-col p-4 md:p-8">
-        <h2 class="flex-none text-2xl font-bold text-gray-800 mb-6">Audit Logs</h2>
-        <div class="flex-1 min-h-0 overflow-hidden">
-            <app-shared-table [rowData]="auditLogs" [columnDefs]="auditColumnDefs" [pagination]="true" [pageSize]="50">
-            </app-shared-table>
+        <!-- 5. AUDIT TAB -->
+        <div *ngIf="activeTab === 'audit'" class="h-full flex flex-col p-4 md:p-8">
+            <h2 class="flex-none text-2xl font-bold text-gray-800 mb-6">Audit Logs</h2>
+            <div class="flex-1 min-h-0 overflow-hidden">
+                <app-shared-table [rowData]="auditLogs" [columnDefs]="auditColumnDefs" [pagination]="true"
+                    [pageSize]="50">
+                </app-shared-table>
+            </div>
         </div>
-    </div>
 
-</div>
+    </div>
 </div>
 
 <!-- USER FORM MODAL -->

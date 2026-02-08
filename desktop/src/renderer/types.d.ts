@@ -5,6 +5,8 @@ declare global {
         electron: {
             login: (credentials: { username: string, password: string }) => Promise<{ success: boolean; user?: any; error?: string }>;
             checkSetup: () => Promise<{ isSetup: boolean; hasRecovery: boolean }>;
+            getRecoveryStatus: () => Promise<{ isSetup: boolean; hasRecovery: boolean; hasBackups: boolean; backups?: any[] }>;
+            restoreSystemBackup: (path: string) => Promise<void>;
             setup: (data: any) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
             recover: (data: any) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
             regenerateRecoveryCode: (password: string) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
@@ -60,7 +62,9 @@ declare global {
             },
             backup: {
                 selectPath: () => Promise<string | null>;
+                useDefaultPath: () => Promise<string | null>;
                 runNow: () => Promise<{ success: boolean; error?: string }>;
+                listSystemBackups: () => Promise<any[]>;
             };
             utils: {
                 openExternal: (url: string) => Promise<void>;

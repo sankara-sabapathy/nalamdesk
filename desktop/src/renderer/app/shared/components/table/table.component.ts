@@ -2,7 +2,7 @@ import { Component, EventEmitter, Input, Output, ElementRef, NgZone, OnDestroy, 
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AgGridAngular } from 'ag-grid-angular';
-import { ColDef, GridOptions, themeQuartz } from 'ag-grid-community';
+import { ColDef, GridOptions } from 'ag-grid-community';
 
 @Component({
   selector: 'app-shared-table',
@@ -64,14 +64,13 @@ import { ColDef, GridOptions, themeQuartz } from 'ag-grid-community';
 
       <div class="flex-1 w-full overflow-hidden relative">
         <ag-grid-angular
-            class="h-full w-full"
-            [theme]="theme"
+            class="h-full w-full ag-theme-quartz"
             [rowData]="rowData"
             [columnDefs]="columnDefs"
             [defaultColDef]="defaultColDef"
             [paginationPageSize]="pageSize"
             [paginationPageSizeSelector]="[10, 20, 50, 100]"
-            [rowSelection]="rowSelectionConfig"
+            [rowSelection]="multiSelect ? 'multiple' : 'single'"
             [rowHeight]="rowHeight"
             [overlayNoRowsTemplate]="noRowsTemplate"
             [animateRows]="true"
@@ -111,18 +110,6 @@ export class SharedTableComponent implements OnDestroy, OnChanges {
   @Output() selectionChanged = new EventEmitter<any[]>();
 
   private gridApi: any;
-
-  // AG Grid v35 Theming API
-  theme = themeQuartz;
-
-  // AG Grid v32+ Row Selection
-  get rowSelectionConfig() {
-    return {
-      mode: this.multiSelect ? 'multiRow' as const : 'singleRow' as const,
-      checkboxes: this.multiSelect,
-      headerCheckbox: this.multiSelect,
-    };
-  }
 
   toolsState = { showCols: false };
   toggleableColumns: { colId: string, headerName: string, visible: boolean }[] = [];
