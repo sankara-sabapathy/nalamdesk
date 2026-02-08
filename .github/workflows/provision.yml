@@ -55,7 +55,7 @@ jobs:
           fi
 
       - name: Terraform Init
-        working-directory: ./infrastructure
+        working-directory: cloud/infrastructure
         # Note: We configure backend params here dynamically to avoid hardcoding bucket names
         run: |
           terraform init \
@@ -65,18 +65,18 @@ jobs:
             -backend-config="use_lockfile=true"
 
       - name: Terraform Validate
-        working-directory: ./infrastructure
+        working-directory: cloud/infrastructure
         run: terraform validate
 
       - name: Terraform Plan
-        working-directory: ./infrastructure
+        working-directory: cloud/infrastructure
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
-        working-directory: ./infrastructure
+        working-directory: cloud/infrastructure
         # In a real environment, this should be gated by a manual approval protection rule on the environment
         run: terraform apply tfplan
         
       - name: Output IP
-        working-directory: ./infrastructure
+        working-directory: cloud/infrastructure
         run: terraform output

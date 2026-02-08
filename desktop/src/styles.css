@@ -4863,6 +4863,11 @@ html:has(.drawer-toggle:checked) {
   border-color: rgb(37 99 235 / var(--tw-border-opacity, 1));
 }
 
+.border-blue-700 {
+  --tw-border-opacity: 1;
+  border-color: rgb(29 78 216 / var(--tw-border-opacity, 1));
+}
+
 .border-gray-100 {
   --tw-border-opacity: 1;
   border-color: rgb(243 244 246 / var(--tw-border-opacity, 1));
@@ -4937,11 +4942,6 @@ html:has(.drawer-toggle:checked) {
   border-color: rgb(161 98 7 / var(--tw-border-opacity, 1));
 }
 
-.border-blue-700 {
-  --tw-border-opacity: 1;
-  border-color: rgb(29 78 216 / var(--tw-border-opacity, 1));
-}
-
 .border-l-purple-500 {
   --tw-border-opacity: 1;
   border-left-color: rgb(168 85 247 / var(--tw-border-opacity, 1));
@@ -5011,6 +5011,10 @@ html:has(.drawer-toggle:checked) {
 .bg-blue-800 {
   --tw-bg-opacity: 1;
   background-color: rgb(30 64 175 / var(--tw-bg-opacity, 1));
+}
+
+.bg-blue-900\/30 {
+  background-color: rgb(30 58 138 / 0.3);
 }
 
 .bg-current {
@@ -5193,10 +5197,6 @@ html:has(.drawer-toggle:checked) {
   background-color: rgb(113 63 18 / 0.3);
 }
 
-.bg-blue-900\/30 {
-  background-color: rgb(30 58 138 / 0.3);
-}
-
 .bg-opacity-75 {
   --tw-bg-opacity: 0.75;
 }
@@ -5365,6 +5365,10 @@ html:has(.drawer-toggle:checked) {
   padding-left: 2rem;
 }
 
+.pr-2 {
+  padding-right: 0.5rem;
+}
+
 .pr-3 {
   padding-right: 0.75rem;
 }
@@ -5379,10 +5383,6 @@ html:has(.drawer-toggle:checked) {
 
 .pt-8 {
   padding-top: 2rem;
-}
-
-.pr-2 {
-  padding-right: 0.5rem;
 }
 
 .text-left {
