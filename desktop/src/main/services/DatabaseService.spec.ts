@@ -63,7 +63,10 @@ describe('DatabaseService', () => {
         });
 
         it('should update an existing user', async () => {
-            const user = { id: 1, username: 'test', role: 'doctor' }; // No password update
+            const user = { id: 1, username: 'test', role: 'doctor' };
+            // Mock existing user check
+            mockStatement.get.mockReturnValue({ id: 1, username: 'test', role: 'admin' });
+
             await service.saveUser(user);
 
             expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('UPDATE users SET'));
@@ -74,17 +77,17 @@ describe('DatabaseService', () => {
             mockStatement.get.mockReturnValue({
                 id: 1,
                 username: 'test',
-                password: 'hashed_password', // Matches the mock verify logic
+                password: 'hashed_password',
                 role: 'admin',
                 active: 1
             });
 
             const result = await service.validateUser('test', 'password');
-            expect(result).toBeTruthy();
-            expect(result?.username).toBe('test');
+            expect(result.success).toBe(true);
+            expect(result.user?.username).toBe('test');
         });
 
-        it('should return null for invalid password', async () => {
+        it('should return failure for invalid password', async () => {
             mockStatement.get.mockReturnValue({
                 id: 1, username: 'test', password: 'hashed_password', active: 1
             });
@@ -94,16 +97,18 @@ describe('DatabaseService', () => {
             vi.mocked(argon2.verify).mockResolvedValueOnce(false);
 
             const result = await service.validateUser('test', 'wrong_password');
-            expect(result).toBeNull();
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('INVALID_CREDENTIALS');
         });
 
-        it('should return null for inactive user', async () => {
+        it('should return failure for inactive user', async () => {
             mockStatement.get.mockReturnValue({
                 id: 1, username: 'test', password: 'hashed_password', active: 0
             });
 
             const result = await service.validateUser('test', 'password');
-            expect(result).toBeNull();
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('ACCESS_DENIED');
         });
     });
 
