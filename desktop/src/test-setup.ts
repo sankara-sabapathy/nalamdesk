@@ -9,11 +9,12 @@ import {
 } from '@angular/platform-browser-dynamic/testing';
 
 const testBed = getTestBed();
-// testBed.resetTestEnvironment();
-// testBed.initTestEnvironment(
-//     BrowserDynamicTestingModule,
-//     platformBrowserDynamicTesting()
-// );// );
+testBed.resetTestEnvironment();
+testBed.initTestEnvironment(
+    BrowserDynamicTestingModule,
+    platformBrowserDynamicTesting()
+);
+
 
 // Mock Electron
 (window as any).electron = {
