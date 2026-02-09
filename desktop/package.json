@@ -4,6 +4,7 @@
   "author": "Sankara Sabapathy <sankara.sabapathy@gmail.com>",
   "description": "NalamDesk - Medical Practice Management",
   "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/sankara-sabapathy/nalamdesk",
   "productName": "NalamDesk",
   "main": "dist/main/main.js",
   "scripts": {
