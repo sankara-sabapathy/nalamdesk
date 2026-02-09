@@ -1,36 +1,43 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+/**
+ * @vitest-environment jsdom
+ */
+import '@angular/compiler';
+import { describe, xdescribe, it, expect, vi, beforeEach } from 'vitest';
 import { NavbarComponent } from './navbar.component';
-import { ActivatedRoute, Router } from '@angular/router';
 import { DataService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
-import { of } from 'rxjs';
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+
+// Mock inject/core
+vi.mock('@angular/core', async () => {
+    const actual = await vi.importActual('@angular/core');
+    return {
+        ...actual as any,
+        inject: vi.fn(),
+    };
+});
+import { inject } from '@angular/core';
 
 describe('NavbarComponent', () => {
     let component: NavbarComponent;
-    let fixture: ComponentFixture<NavbarComponent>;
     let mockRouter: any;
+    let mockNgZone: any;
     let mockDataService: any;
     let mockAuthService: any;
 
-    beforeEach(async () => {
+    beforeEach(() => {
         mockRouter = { navigate: vi.fn() };
+        mockNgZone = { run: vi.fn((fn) => fn()) };
         mockDataService = { invoke: vi.fn().mockReturnValue(Promise.resolve({ clinic_name: 'Test Clinic' })) };
         mockAuthService = { getUser: vi.fn().mockReturnValue({ name: 'Dr. Test', role: 'doctor' }), logout: vi.fn() };
 
-        await TestBed.configureTestingModule({
-            imports: [NavbarComponent],
-            providers: [
-                { provide: Router, useValue: mockRouter },
-                { provide: ActivatedRoute, useValue: { snapshot: { paramMap: { get: () => '1' } } } },
-                { provide: DataService, useValue: mockDataService },
-                { provide: AuthService, useValue: mockAuthService }
-            ]
-        }).compileComponents();
+        // Mock inject implementation
+        vi.mocked(inject).mockImplementation((token: any) => {
+            if (token === DataService) return mockDataService;
+            if (token === AuthService) return mockAuthService;
+            return null;
+        });
 
-        fixture = TestBed.createComponent(NavbarComponent);
-        component = fixture.componentInstance;
-        fixture.detectChanges();
+        component = new NavbarComponent(mockRouter, mockNgZone);
     });
 
     it('should create', () => {
@@ -52,7 +59,10 @@ describe('NavbarComponent', () => {
     });
 
     it('should load clinic name on init', async () => {
-        await component.loadSettings();
+        // ngOnInit calls loadSettings (async but not awaited)
+        component.ngOnInit();
+        // Wait for promise resolution
+        await new Promise(resolve => setTimeout(resolve, 0));
         expect(component.clinicName).toBe('Test Clinic');
     });
 });

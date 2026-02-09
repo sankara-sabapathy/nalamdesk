@@ -593,7 +593,7 @@ export class PatientDetailsComponent implements OnInit {
         if (confirmed) {
             try {
                 await this.dataService.invoke('deleteVisit', visitId);
-                this.loadData();
+                await this.loadData();
             } catch (e) {
                 console.error(e);
                 this.dialogService.open({

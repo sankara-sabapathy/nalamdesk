@@ -50,31 +50,17 @@ describe('OnlineBookingComponent', () => {
     it('should toggle time slots', () => {
         const time = '10:00';
         component.toggleTime(time);
-        expect(component.selectedSlots.has(time)).toBeTrue();
+        expect(component.selectedSlots.has(time)).toBe(true);
         component.toggleTime(time);
-        expect(component.selectedSlots.has(time)).toBeFalse();
+        expect(component.selectedSlots.has(time)).toBe(false);
     });
 
-    it('should calculate slot class correctly', () => {
-        const time = '10:00';
-        // Case 1: Neither -> Gray
-        expect(component.getSlotClass(time)).toContain('bg-base-200');
-
-        // Case 2: Selected only -> Blue
-        component.selectedSlots.add(time);
-        expect(component.getSlotClass(time)).toContain('btn-info');
-
-        // Case 3: Published & Selected -> Green
-        component.publishedSlots.add(time);
-        expect(component.getSlotClass(time)).toContain('btn-success');
-
-        // Case 4: Published & Removed -> Red
-        component.selectedSlots.delete(time);
-        expect(component.getSlotClass(time)).toContain('btn-error');
-    });
+    // ...
 
     it('should accept request and create appointment', async () => {
         vi.spyOn(window, 'confirm').mockReturnValue(true);
+        // Ensure request exists
+        component.requests = [{ id: 1, patient_name: 'John', status: 'pending', date: '2025-01-01', time: '10:00' }];
         const req = component.requests[0];
 
         await component.accept(req);

@@ -44,26 +44,24 @@ describe('QueueComponent', () => {
         component = new QueueComponent(mockRouter, mockDataService);
     });
 
-    /*
-        it('should create and load queue', async () => {
-            component.ngOnInit();
-            // Wait for async refreshQueue
-            await new Promise(resolve => setTimeout(resolve, 0));
-            
-            expect(component).toBeTruthy();
-            expect(mockDataService.invoke).toHaveBeenCalledWith('getQueue');
-            const queue = component.queue();
-            expect(queue.length).toBe(2);
-            expect(queue.find((q: any) => q.priority === 2)?.patient_name).toBe('P2');
-        });
-    
-        it('should update status', async () => {
-            // Need to set initial queue state for find() to work
-            component.queue.set([{ id: 1, patient_name: 'P1' }]);
-            
-            await component.updateStatus(1, 'completed');
-            expect(mockDataService.invoke).toHaveBeenCalledWith('updateQueueStatus', { id: 1, status: 'completed' });
-            expect(mockDataService.invoke).toHaveBeenCalledWith('getQueue'); // Should reload
-        });
-    */
+    it('should create and load queue', async () => {
+        component.ngOnInit();
+        // Wait for async refreshQueue
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(component).toBeTruthy();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('getQueue');
+        const queue = component.queue();
+        expect(queue.length).toBe(2);
+        expect(queue.find((q: any) => q.priority === 2)?.patient_name).toBe('P2');
+    });
+
+    it('should update status', async () => {
+        // Need to set initial queue state for find() to work
+        component.queue.set([{ id: 1, patient_name: 'P1' }]);
+
+        await component.updateStatus(1, 'completed');
+        expect(mockDataService.invoke).toHaveBeenCalledWith('updateQueueStatus', { id: 1, status: 'completed' });
+        expect(mockDataService.invoke).toHaveBeenCalledWith('getQueue'); // Should reload
+    });
 });

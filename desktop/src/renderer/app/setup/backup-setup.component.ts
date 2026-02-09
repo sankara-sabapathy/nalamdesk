@@ -4,10 +4,10 @@ import { FormsModule } from '@angular/forms';
 import { DataService } from '../services/api.service';
 
 @Component({
-    selector: 'app-backup-setup',
-    standalone: true,
-    imports: [CommonModule, FormsModule],
-    template: `
+  selector: 'app-backup-setup',
+  standalone: true,
+  imports: [CommonModule, FormsModule],
+  template: `
     <div *ngIf="isVisible" class="fixed inset-0 bg-black/80 z-[100] flex items-center justify-center p-4">
       <div class="bg-white rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
         
@@ -96,121 +96,121 @@ import { DataService } from '../services/api.service';
       </div>
     </div>
   `,
-    styles: [`
+  styles: [`
     :host { display: block; }
   `]
 })
 export class BackupSetupComponent implements OnInit {
-    isVisible = false;
-    step = 1;
+  isVisible = false;
+  step = 1;
 
-    localPath = '';
-    driveClientId = '';
-    driveClientSecret = '';
+  localPath = '';
+  driveClientId = '';
+  driveClientSecret = '';
 
-    isElectron = !!(window as any).electron;
-    private dataService = inject(DataService);
+  isElectron = !!(window as any).electron;
+  private dataService = inject(DataService);
 
-    constructor(private ngZone: NgZone) { }
+  constructor(private ngZone: NgZone) { }
 
-    async ngOnInit() {
-        if (!this.isElectron) return;
-        try {
-            // Check if backup path is configured
-            const s = await this.dataService.invoke<any>('getSettings');
-            this.ngZone.run(() => {
-                if (s) {
-                    // If local path is missing, SHOW WIZARD
-                    // Note: We might want a dedicated flag 'backup_configured' to avoid showing if they intentionally cleared it?
-                    // But requirement says "Mandatory". So if missing, show it.
-                    // However, default might be set in logic but not DB? 
-                    // Implementation: Main process might require it.
-                    // Let's assume if 'local_backup_path' is empty string or null, we show this.
-                    if (!s.local_backup_path) {
-                        this.isVisible = true;
-                    } else {
-                        this.localPath = s.local_backup_path;
-                    }
+  async ngOnInit() {
+    if (!this.isElectron) return;
+    try {
+      // Check if backup path is configured
+      const s = await this.dataService.invoke<any>('getSettings');
+      this.ngZone.run(() => {
+        if (s) {
+          // If local path is missing, SHOW WIZARD
+          // Note: We might want a dedicated flag 'backup_configured' to avoid showing if they intentionally cleared it?
+          // But requirement says "Mandatory". So if missing, show it.
+          // However, default might be set in logic but not DB? 
+          // Implementation: Main process might require it.
+          // Let's assume if 'local_backup_path' is empty string or null, we show this.
+          if (!s.local_backup_path) {
+            this.isVisible = true;
+          } else {
+            this.localPath = s.local_backup_path;
+          }
 
-                    // Pre-fill drive (in case they are re-running or it was partial)
-                    if (s.drive_client_id) this.driveClientId = s.drive_client_id;
-                    if (s.drive_client_secret) this.driveClientSecret = s.drive_client_secret;
-                }
-            });
-        } catch (e) { console.error(e); }
-    }
-
-    async selectPath() {
-        try {
-            const path = await window.electron.backup.selectPath();
-            if (path) {
-                this.ngZone.run(() => this.localPath = path);
-            }
-        } catch (e) { console.error(e); }
-    }
-
-    skipCloud() {
-        this.driveClientId = '';
-        this.driveClientSecret = '';
-        this.finish();
-    }
-
-    canFinish() {
-        // If they entered one cred, must enter both
-        if (this.driveClientId && !this.driveClientSecret) return false;
-        if (!this.driveClientId && this.driveClientSecret) return false;
-        return true;
-    }
-
-    async finish() {
-        try {
-            // Save settings
-            const settings: any = {
-                local_backup_path: this.localPath || this.getDefaultPath()
-            };
-            if (this.driveClientId && this.driveClientSecret) {
-                settings.drive_client_id = this.driveClientId;
-                settings.drive_client_secret = this.driveClientSecret;
-            }
-
-            await this.dataService.invoke('saveSettings', settings);
-
-            this.ngZone.run(() => {
-                this.isVisible = false;
-                // Trigger backup init? Main process watches settings save? 
-                // Actually main.ts `drive:authenticate` logic checks settings but `saveSettings` doesn't auto-reinit backup service.
-                // We might need to reload or trigger a "config updated" event.
-                // For now, reloading app or simple 'backup:runNow' might be enough proof.
-                // Ideally, we should notify backend to re-init.
-                // Let's assume a restart or reload is good practice after such change, or we send a signal.
-                // But `main.ts` `saveSettings` is just DB write.
-
-                // Let's Invoke a "reconfigure" handler?
-                // Or just rely on next restart. for Backup Service init.
-                // Wait, BackupService init happens on Login. If we do this post-login, we need to re-init.
-                // I'll add 'backup:reinit' IPC or similar if needed.
-                // For now, simple save.
-            });
-
-            if (this.driveClientId) {
-                // Attempt auth flow if they added creds
-                window.electron.drive.authenticate();
-            }
-
-        } catch (e) {
-            console.error(e);
-            alert('Failed to save settings');
+          // Pre-fill drive (in case they are re-running or it was partial)
+          if (s.drive_client_id) this.driveClientId = s.drive_client_id;
+          if (s.drive_client_secret) this.driveClientSecret = s.drive_client_secret;
         }
-    }
+      });
+    } catch (e) { console.error('Backup Setup Error:', e); }
+  }
 
-    getDefaultPath() {
-        // Best guess for display, actual default logic is in Main if we send empty?
-        // Actually we should force user to select or accept a generated default.
-        // If localPath is empty here, we send 'documents/...' constructed in Renderer? 
-        // Better: Main process should have a 'backup:getDefaultPath' IPC.
-        // For now we trust `localPath` is set by user or we send a sensible default string.
-        // If they didn't click change, `localPath` is empty.
-        // Let's ask Main for default.
-        return 'NalamDesk_Backups'; // Placeholder, ideally get from Electron
+  async selectPath() {
+    try {
+      const path = await window.electron.backup.selectPath();
+      if (path) {
+        this.ngZone.run(() => this.localPath = path);
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  skipCloud() {
+    this.driveClientId = '';
+    this.driveClientSecret = '';
+    this.finish();
+  }
+
+  canFinish() {
+    // If they entered one cred, must enter both
+    if (this.driveClientId && !this.driveClientSecret) return false;
+    if (!this.driveClientId && this.driveClientSecret) return false;
+    return true;
+  }
+
+  async finish() {
+    try {
+      // Save settings
+      const settings: any = {
+        local_backup_path: this.localPath || this.getDefaultPath()
+      };
+      if (this.driveClientId && this.driveClientSecret) {
+        settings.drive_client_id = this.driveClientId;
+        settings.drive_client_secret = this.driveClientSecret;
+      }
+
+      await this.dataService.invoke('saveSettings', settings);
+
+      this.ngZone.run(() => {
+        this.isVisible = false;
+        // Trigger backup init? Main process watches settings save? 
+        // Actually main.ts `drive:authenticate` logic checks settings but `saveSettings` doesn't auto-reinit backup service.
+        // We might need to reload or trigger a "config updated" event.
+        // For now, reloading app or simple 'backup:runNow' might be enough proof.
+        // Ideally, we should notify backend to re-init.
+        // Let's assume a restart or reload is good practice after such change, or we send a signal.
+        // But `main.ts` `saveSettings` is just DB write.
+
+        // Let's Invoke a "reconfigure" handler?
+        // Or just rely on next restart. for Backup Service init.
+        // Wait, BackupService init happens on Login. If we do this post-login, we need to re-init.
+        // I'll add 'backup:reinit' IPC or similar if needed.
+        // For now, simple save.
+      });
+
+      if (this.driveClientId) {
+        // Attempt auth flow if they added creds
+        window.electron.drive.authenticate();
+      }
+
+    } catch (e) {
+      console.error(e);
+      alert('Failed to save settings');
     }
+  }
+
+  getDefaultPath() {
+    // Best guess for display, actual default logic is in Main if we send empty?
+    // Actually we should force user to select or accept a generated default.
+    // If localPath is empty here, we send 'documents/...' constructed in Renderer? 
+    // Better: Main process should have a 'backup:getDefaultPath' IPC.
+    // For now we trust `localPath` is set by user or we send a sensible default string.
+    // If they didn't click change, `localPath` is empty.
+    // Let's ask Main for default.
+    return 'NalamDesk_Backups'; // Placeholder, ideally get from Electron
+  }
 }

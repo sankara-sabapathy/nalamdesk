@@ -1,4 +1,5 @@
-/* AG Grid v35+ uses the Theming API - no CSS imports needed */
+@import "ag-grid-community/styles/ag-grid.css";
+@import "ag-grid-community/styles/ag-theme-quartz.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

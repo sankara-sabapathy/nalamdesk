@@ -14,7 +14,8 @@ describe('DatePickerComponent', () => {
         mockElementRef = {
             nativeElement: {
                 contains: vi.fn(),
-                isConnected: true
+                isConnected: true,
+                getBoundingClientRect: vi.fn().mockReturnValue({ bottom: 100, height: 50, top: 50, left: 0, right: 100, width: 100 })
             }
         };
         component = new DatePickerComponent(mockElementRef);

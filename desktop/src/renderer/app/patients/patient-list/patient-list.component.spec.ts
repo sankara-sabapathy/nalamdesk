@@ -131,34 +131,19 @@ describe('PatientListComponent', () => {
         expect(ageControl?.hasError('max')).toBe(true);
     });
 
-    // Delete Modal Tests
-    it('should open delete modal independent of edit modal', () => {
-        // Ensure edit modal is closed
-        component.showModal = false;
+    // Delete Tests (Batch)
+    it('should delete selected patients', async () => {
+        // Mock confirm
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
 
-        component.confirmDelete(1);
+        // Select a patient
+        const patient = { id: 1, name: 'John' };
+        component.selectedPatients = [patient];
 
-        expect(component.showDeleteModal).toBe(true);
-        expect(component.patientToDeleteId).toBe(1);
-        // Verify independence
-        expect(component.showModal).toBe(false);
-    });
-
-    it('should cancel delete', () => {
-        component.confirmDelete(1);
-        component.cancelDelete();
-
-        expect(component.showDeleteModal).toBe(false);
-        expect(component.patientToDeleteId).toBeNull();
-    });
-
-    it('should execute delete', async () => {
-        component.confirmDelete(1);
-        await component.executeDelete();
+        await component.deleteSelectedPatients();
 
         expect(mockDataService.invoke).toHaveBeenCalledWith('deletePatient', 1);
-        expect(component.showDeleteModal).toBe(false);
-        expect(component.patientToDeleteId).toBeNull();
-        expect(mockPatientService.getPatients).toHaveBeenCalled(); // Reloads list
+        expect(component.selectedPatients.length).toBe(0);
+        expect(mockPatientService.getPatients).toHaveBeenCalled();
     });
 });
