@@ -210,7 +210,8 @@ export class SettingsComponent implements OnInit {
       cellRenderer: ActionRendererComponent,
       cellRendererParams: {
         onEdit: (data: any) => this.editUser(data),
-        onDelete: (data: any) => this.deleteUser(data.id)
+        onDelete: (data: any) => this.deleteUser(data.id),
+        canDelete: (data: any) => data.username !== 'admin'
       }
     }
   ];

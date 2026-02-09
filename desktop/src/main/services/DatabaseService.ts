@@ -240,6 +240,12 @@ export class DatabaseService {
     }
 
     deleteUser(id: number, actingUserId?: number) {
+        // Prevent deleting the admin user
+        const user = this.db.prepare('SELECT username FROM users WHERE id = ?').get(id);
+        if (user && user.username === 'admin') {
+            throw new Error('Cannot delete the admin user.');
+        }
+
         // Soft delete preferred? For now we hard delete as per interface, 
         // but normally we should set active=0. 
         // However, 'active' flag usage in getDoctors/validateUser suggests soft delete support.

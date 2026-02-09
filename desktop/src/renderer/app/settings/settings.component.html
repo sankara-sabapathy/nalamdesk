@@ -210,7 +210,7 @@
                 <p class="text-sm text-gray-500 mb-4">
                     Automated daily backups are saved locally. Retention: 30 days.
                 </p>
-                <div class="flex items-center gap-4 bg-gray-50 p-3 rounded border border-gray-200">
+                <div class="flex items-center gap-4 bg-gray-50 p-3 rounded border border-gray-200 mb-3">
                     <div class="flex-1 overflow-hidden">
                         <label class="text-xs text-gray-500 font-bold uppercase flex items-center gap-1">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
@@ -231,110 +231,139 @@
                     <button (click)="selectBackupPath()" class="btn btn-outline btn-sm">Change Location</button>
                 </div>
             </div>
-        </div>
 
-        <!-- Cloud Backup Section -->
-        <div *ngIf="activeTab === 'backup'"
-            class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
-            <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
-                <div>
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 87.3 78" class="w-6 h-6">
-                        <path d="M6.6 66.85l15.3-26.6 17.25 29.9H12.9C9.7 70.15 6.4 67.25 6.6 66.85z" fill="#0066da" />
-                        <path d="M43.65 25l13.15 22.75 17.3-30-13.15-22.75L43.65 25z" fill="#00ac47" />
-                        <path d="M78.6 61.25l-15.5 26.6L45.9 57.65l15.5-26.6h25.7c.3.5 1.8 1.9-8.5 30.2z"
-                            fill="#ea4335" />
-                        <path d="M29.1 17.5l-15 25.8 15.3 26.5 28.5-49.6L29.1 17.5z" fill="#ffba00" />
-                        <path d="M29.1 17.5L50.75 55 24 55 2.1 17.5h27z" fill="#00ac47" />
-                        <path d="M43.65 25L24 59.25H65.1L86.85 22.9l-13-20.9-30.2 23z" fill="#2684fc" />
-                    </svg>
-                    Google Drive Backup
-                    <p class="text-sm text-gray-500">Securely sync encrypted database snapshots.</p>
-                </div>
-            </div>
-
-            <!-- BYOK Credentials -->
-            <div class="mb-6 border-b pb-6">
-                <h4 class="font-medium text-gray-700 mb-2">Configuration (BYOK)</h4>
-                <p class="text-xs text-gray-500 mb-4">
-                    To use Google Drive, you must provide your own Client ID and Secret.
-                    <a href="#" (click)="openDriveConsole($event)"
-                        class="font-medium text-blue-600 hover:text-blue-500">
-                        Open Google Cloud Console
-                    </a>
-                </p>
-
-                <div class="space-y-4 max-w-2xl">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
-                        <input type="text" [(ngModel)]="settings.drive_client_id"
-                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                            placeholder="7328...apps.googleusercontent.com">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
-                        <input type="password" [(ngModel)]="settings.drive_client_secret"
-                            class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                            placeholder="GOCSPX-...">
-                    </div>
-
-                    <div class="bg-blue-50 p-3 rounded-lg flex items-start gap-3">
-                        <svg class="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div class="text-xs text-blue-800">
-                            Need help? <a href="#" (click)="openSetupGuide($event)" class="font-bold underline">Read
-                                our Setup Guide</a>
+            <!-- Google Drive Backup Section -->
+            <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
+                <!-- Header -->
+                <div class="p-6 border-b border-gray-100 bg-gray-50/30">
+                    <div class="flex items-center gap-4">
+                        <div class="flex-shrink-0 p-3 bg-white rounded-xl shadow-sm border border-gray-100">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 87.3 78" class="w-10 h-10">
+                                <path d="M6.6 66.85l15.3-26.6 17.25 29.9H12.9C9.7 70.15 6.4 67.25 6.6 66.85z"
+                                    fill="#0066da" />
+                                <path d="M43.65 25l13.15 22.75 17.3-30-13.15-22.75L43.65 25z" fill="#00ac47" />
+                                <path d="M78.6 61.25l-15.5 26.6L45.9 57.65l15.5-26.6h25.7c.3.5 1.8 1.9-8.5 30.2z"
+                                    fill="#ea4335" />
+                                <path d="M29.1 17.5l-15 25.8 15.3 26.5 28.5-49.6L29.1 17.5z" fill="#ffba00" />
+                                <path d="M29.1 17.5L50.75 55 24 55 2.1 17.5h27z" fill="#00ac47" />
+                                <path d="M43.65 25L24 59.25H65.1L86.85 22.9l-13-20.9-30.2 23z" fill="#2684fc" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-gray-800">Google Drive Backup</h3>
+                            <p class="text-sm text-gray-500">Securely sync encrypted database snapshots to your personal
+                                Drive.</p>
                         </div>
                     </div>
-
-                    <button (click)="connectDrive()"
-                        [disabled]="!settings.drive_client_id || !settings.drive_client_secret || isLoading"
-                        class="w-full md:w-auto md:min-w-[200px] flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span *ngIf="isLoading" class="loading loading-spinner loading-xs mr-2"></span>
-                        Connect Drive
-                    </button>
-                </div>
-                <div *ngIf="message" class="mt-2 text-sm font-medium text-right"
-                    [ngClass]="{'text-green-600': success, 'text-red-500': !success}">
-                    Status: {{ message }}
-                </div>
-            </div>
-
-            <!-- Snapshots -->
-            <div>
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
-                    <h4 class="font-medium text-gray-700">Snapshot History</h4>
-                    <div class="flex gap-2 w-full md:w-auto justify-end">
-                        <button (click)="listBackups()" class="text-blue-600 text-xs hover:underline">Refresh</button>
-                        <button (click)="backupNow()" [disabled]="isBackupLoading || !success"
-                            class="bg-green-50 text-green-700 text-xs px-3 py-1 rounded border border-green-200 hover:bg-green-100 font-bold disabled:opacity-50">
-                            {{ isBackupLoading ? 'Uploading...' : 'Create Snapshot Now' }}
-                        </button>
-                    </div>
                 </div>
 
-                <div class="space-y-2 max-h-60 overflow-y-auto">
-                    <ng-container *ngIf="backups.length > 0; else noBackups">
-                        <div *ngFor="let file of backups"
-                            class="flex items-center justify-between p-3 bg-gray-50 rounded border hover:bg-white transition-colors">
-                            <div class="truncate mr-2">
-                                <p class="font-medium text-gray-800 text-sm truncate">{{ file.name }}</p>
-                                <p class="text-xs text-gray-500">{{ file.createdTime | date:'medium' }}</p>
-                            </div>
-                            <button (click)="restore(file.id)"
-                                class="text-red-600 border border-red-200 px-3 py-1 rounded hover:bg-red-50 text-xs font-medium whitespace-nowrap">
-                                Restore
-                            </button>
+                <!-- Configuration Body -->
+                <div class="p-6">
+                    <!-- BYOK Info -->
+                    <div class="flex flex-col md:flex-row justify-between items-start mb-6 gap-4">
+                        <div>
+                            <h4 class="font-bold text-gray-700">Configuration (BYOK)</h4>
+                            <p class="text-xs text-gray-500 mt-1">
+                                To use Google Drive, you must provide your own Client ID and Secret.
+                                <a href="#" (click)="openDriveConsole($event)"
+                                    class="font-medium text-blue-600 hover:text-blue-500 underline">
+                                    Open Google Cloud Console
+                                </a>
+                            </p>
                         </div>
-                    </ng-container>
-                    <ng-template #noBackups>
                         <div
-                            class="text-center py-8 bg-gray-50 text-gray-400 italic text-sm border-2 border-dashed border-gray-200 rounded-lg">
-                            No backups found. Configure Drive and create your first snapshot.
+                            class="flex items-center gap-2 text-xs text-blue-800 bg-blue-50 px-3 py-2 rounded-lg border border-blue-100 shadow-sm">
+                            <svg class="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span>Need help? <a href="#" (click)="openSetupGuide($event)"
+                                    class="font-bold underline">Read Setup Guide</a></span>
                         </div>
-                    </ng-template>
+                    </div>
+
+                    <!-- Credential Inputs -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div class="form-control w-full">
+                            <label class="label pt-0">
+                                <span
+                                    class="label-text font-semibold text-gray-600 text-xs uppercase tracking-wider">Client
+                                    ID</span>
+                            </label>
+                            <input type="text" [(ngModel)]="settings.drive_client_id"
+                                class="input input-bordered w-full font-mono text-xs"
+                                placeholder="7328...apps.googleusercontent.com">
+                        </div>
+                        <div class="form-control w-full">
+                            <label class="label pt-0">
+                                <span
+                                    class="label-text font-semibold text-gray-600 text-xs uppercase tracking-wider">Client
+                                    Secret</span>
+                            </label>
+                            <input type="password" [(ngModel)]="settings.drive_client_secret"
+                                class="input input-bordered w-full font-mono text-xs" placeholder="GOCSPX-...">
+                        </div>
+                    </div>
+
+                    <!-- Connect Button -->
+                    <div
+                        class="flex flex-col md:flex-row items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <button (click)="connectDrive()"
+                            [disabled]="!settings.drive_client_id || !settings.drive_client_secret || isLoading"
+                            class="w-full md:w-auto btn btn-primary px-8">
+                            <span *ngIf="isLoading" class="loading loading-spinner loading-xs mr-2"></span>
+                            {{ isLoading ? 'Connecting...' : 'Connect Drive' }}
+                        </button>
+                        <div *ngIf="message"
+                            class="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-white shadow-sm border"
+                            [ngClass]="{'border-green-100': success, 'border-red-100': !success}">
+                            <div class="w-2 h-2 rounded-full"
+                                [ngClass]="{'bg-green-500': success, 'bg-red-500': !success}"></div>
+                            <span class="text-sm font-bold"
+                                [ngClass]="{'text-green-600': success, 'text-red-500': !success}">
+                                {{ message }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Snapshot History (inside the Drive card) -->
+                <div class="p-6 pt-0">
+                    <div class="border-t border-gray-100 pt-6">
+                        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                            <h4 class="font-bold text-gray-800 text-sm">Cloud Snapshot History</h4>
+                            <div class="flex gap-2 w-full md:w-auto justify-end">
+                                <button (click)="listBackups()"
+                                    class="text-blue-600 text-xs hover:underline">Refresh</button>
+                                <button (click)="backupNow()" [disabled]="isBackupLoading || !success"
+                                    class="bg-green-600 text-white text-xs px-3 py-1 rounded-md hover:bg-green-700 disabled:opacity-50 font-bold">
+                                    {{ isBackupLoading ? 'Uploading...' : 'Create Snapshot Now' }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="space-y-2 max-h-60 overflow-y-auto">
+                            <ng-container *ngIf="backups.length > 0; else noBackups">
+                                <div *ngFor="let file of backups"
+                                    class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border hover:bg-white transition-colors">
+                                    <div class="truncate mr-2">
+                                        <p class="font-medium text-gray-800 text-sm truncate">{{ file.name }}</p>
+                                        <p class="text-[10px] text-gray-500">{{ file.createdTime | date:'medium' }}</p>
+                                    </div>
+                                    <button (click)="restore(file.id)"
+                                        class="text-red-600 border border-red-200 px-3 py-1 rounded hover:bg-red-50 text-xs font-medium whitespace-nowrap">
+                                        Restore
+                                    </button>
+                                </div>
+                            </ng-container>
+                            <ng-template #noBackups>
+                                <div
+                                    class="text-center py-8 bg-gray-50 text-gray-400 italic text-sm border-2 border-dashed border-gray-200 rounded-lg">
+                                    No cloud backups found. Connect to Drive and create your first snapshot.
+                                </div>
+                            </ng-template>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -381,14 +410,19 @@
                     <label class="block text-sm font-medium text-gray-700">System Role <span
                             class="text-red-500">*</span></label>
                     <select [(ngModel)]="editingUser.role" required #role="ngModel"
+                        [disabled]="editingUser.username === 'admin'"
                         [class.border-red-500]="(role.invalid && role.touched) || (formSubmitted && !editingUser.role)"
+                        [class.bg-gray-100]="editingUser.username === 'admin'"
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
                         <option value="doctor">Doctor</option>
                         <option value="nurse">Nurse</option>
                         <option value="receptionist">Receptionist</option>
                         <option value="admin">Admin</option>
                     </select>
-                    <p *ngIf="role.invalid && role.touched" class="text-xs text-red-500 mt-1">Role is required.</p>
+                    <p *ngIf="editingUser.username === 'admin'" class="text-[10px] text-blue-600 mt-1 font-medium">
+                        System Administrator role is mandatory.</p>
+                    <p *ngIf="role.invalid && role.touched && editingUser.username !== 'admin'"
+                        class="text-xs text-red-500 mt-1">Role is required.</p>
                 </div>
             </div>
 
