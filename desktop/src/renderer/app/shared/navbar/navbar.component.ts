@@ -37,7 +37,15 @@ import { AuthService } from '../../services/auth.service';
           </div>
           
           <div class="flex items-center gap-4">
-             <div class="hidden md:flex items-center gap-2 text-sm">
+             <div class="hidden md:flex items-center gap-4 text-sm">
+                 <div *ngIf="localIp" class="flex items-center gap-2 bg-blue-700/50 px-3 py-1 rounded-full border border-blue-500/30">
+                    <span class="relative flex h-2 w-2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                    <span class="font-mono text-xs text-blue-100 font-medium">http://{{localIp}}:3000</span>
+                 </div>
+
                  <div class="text-right">
                      <p class="font-bold">{{ currentUser?.name }}</p>
                      <p class="text-xs text-blue-200 uppercase">{{ currentUser?.role }}</p>
@@ -104,6 +112,9 @@ export class NavbarComponent implements OnInit {
   selectedDoctorId: number | null = null;
   isMobileMenuOpen = false;
 
+  localIp = '';
+  isElectron = !!(window as any).electron;
+
   currentUser: any = null;
   private dataService: DataService = inject(DataService);
   private authService: AuthService = inject(AuthService);
@@ -116,11 +127,30 @@ export class NavbarComponent implements OnInit {
     if (this.currentUser?.role === 'doctor') {
       // Auto-filter logic if needed, or UI hides global queue
     }
+
+    if (this.isElectron) {
+      this.loadLocalIp();
+    }
+  }
+
+  async loadLocalIp() {
+    try {
+      console.log('[Navbar] Loading local IP...');
+      const ip = await (window as any).electron.utils.getLocalIp();
+      console.log('[Navbar] Local IP received:', ip);
+      this.ngZone.run(() => {
+        this.localIp = ip;
+      });
+    } catch (e) {
+      console.error('Failed to load local IP', e);
+    }
   }
 
   toggleMobileMenu() {
     this.isMobileMenuOpen = !this.isMobileMenuOpen;
   }
+  // ... existing methods ...
+
 
   closeMobileMenu() {
     // Immediate close to ensure UI responsiveness. 

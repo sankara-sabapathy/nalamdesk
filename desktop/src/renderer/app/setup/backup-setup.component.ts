@@ -120,24 +120,21 @@ export class BackupSetupComponent implements OnInit {
       const s = await this.dataService.invoke<any>('getSettings');
       this.ngZone.run(() => {
         if (s) {
-          // If local path is missing, SHOW WIZARD
-          // Note: We might want a dedicated flag 'backup_configured' to avoid showing if they intentionally cleared it?
-          // But requirement says "Mandatory". So if missing, show it.
-          // However, default might be set in logic but not DB? 
-          // Implementation: Main process might require it.
-          // Let's assume if 'local_backup_path' is empty string or null, we show this.
           if (!s.local_backup_path) {
             this.isVisible = true;
           } else {
             this.localPath = s.local_backup_path;
           }
 
-          // Pre-fill drive (in case they are re-running or it was partial)
           if (s.drive_client_id) this.driveClientId = s.drive_client_id;
           if (s.drive_client_secret) this.driveClientSecret = s.drive_client_secret;
         }
       });
-    } catch (e) { console.error('Backup Setup Error:', e); }
+    } catch (e: any) {
+      // Ignore unauthorized errors (user not logged in yet)
+      if (e && e.message && e.message.includes('Unauthorized')) return;
+      console.error('Backup Setup Error:', e);
+    }
   }
 
   async selectPath() {

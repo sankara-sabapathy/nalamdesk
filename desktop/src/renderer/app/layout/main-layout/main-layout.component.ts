@@ -1,4 +1,4 @@
-import { Component, inject, ViewChild, ElementRef } from '@angular/core';
+import { Component, inject, ViewChild, ElementRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterModule, Router } from '@angular/router';
 import { UniversalDialogComponent } from '../../shared/components/universal-dialog/universal-dialog.component';
@@ -38,19 +38,38 @@ import { AuthService } from '../../services/auth.service';
           </div>
           <div class="flex-none gap-4 px-4">
              <!-- Theme Toggle (Simplified for now) -->
-             <div class="dropdown dropdown-end">
-                <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar placeholder">
-                  <div class="bg-blue-800 text-white rounded-full w-10">
-                    <span class="text-sm font-bold">{{ getUserInitials() }}</span>
-                  </div>
-                </div>
-                <!-- Add closeDrawer() to dropdown links too just in case -->
-                <ul tabindex="0" class="mt-3 z-[1] p-2 shadow-menu menu menu-sm dropdown-content bg-white rounded-box w-52">
-                  <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings" (click)="closeDrawer()">Manage Profile</a></li>
-                  <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings" (click)="closeDrawer()">Settings</a></li>
-                  <li><a class="text-red-600" (click)="logout()">Logout</a></li>
-                </ul>
-             </div>
+                <!-- Local IP Indicator (Enterprise Style) -->
+                 <div *ngIf="localIp" class="hidden md:flex items-center gap-2 bg-blue-50/50 px-3 py-1.5 rounded-full border border-blue-100 hover:bg-blue-50 transition-colors group">
+                    <span class="relative flex h-2 w-2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    </span>
+                    <span class="font-mono text-xs text-blue-800 font-semibold tracking-wide">http://{{localIp}}:3000</span>
+                    
+                    <!-- Copy Button -->
+                    <button class="btn btn-circle btn-xs btn-ghost text-blue-400 hover:text-blue-700 hover:bg-blue-100/50 min-h-0 h-5 w-5 ml-1" 
+                            (click)="copyIp()" 
+                            [title]="isCopied ? 'Copied!' : 'Copy Address'">
+                        <svg *ngIf="!isCopied" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span *ngIf="isCopied" class="text-[10px] font-bold text-green-600">✓</span>
+                    </button>
+                 </div>
+
+                 <!-- Theme Toggle (Simplified for now) -->
+                 <div class="dropdown dropdown-end">
+                    <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar placeholder">
+                      <div class="bg-blue-800 text-white rounded-full w-10">
+                        <span class="text-sm font-bold">{{ getUserInitials() }}</span>
+                      </div>
+                    </div>
+    
+                    <!-- Add closeDrawer() to dropdown links too just in case -->
+                    <ul tabindex="0" class="mt-3 z-[1] p-2 shadow-menu menu menu-sm dropdown-content bg-white rounded-box w-52">
+                      <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings" (click)="closeDrawer()">Manage Profile</a></li>
+                      <li *ngIf="currentUser?.role === 'admin'"><a routerLink="/settings" (click)="closeDrawer()">Settings</a></li>
+                      <li><a class="text-red-600" (click)="logout()">Logout</a></li>
+                    </ul>
+                 </div>
           </div>
         </div>
 
@@ -173,11 +192,59 @@ export class MainLayoutComponent {
   @ViewChild('drawerCheckbox') drawerCheckbox!: ElementRef<HTMLInputElement>;
 
   constructor(
-    private router: Router,
+    public router: Router,
     public dialogService: DialogService,
-    private authService: AuthService
+    private authService: AuthService,
+    private ngZone: NgZone
   ) {
     this.currentUser = this.authService.getUser();
+    if (!!(window as any).electron) {
+      this.loadLocalIp();
+    }
+  }
+
+  localIp = '';
+  isCopied = false;
+  async loadLocalIp() {
+    try {
+      const ip = await (window as any).electron.utils.getLocalIp();
+      this.ngZone.run(() => {
+        this.localIp = ip;
+      });
+    } catch (e) {
+      console.error('Failed to load local IP', e);
+    }
+  }
+
+  copyIp() {
+    if (!this.localIp) return;
+
+    const textToCopy = `http://${this.localIp}:3000`;
+
+    // 1. Try Electron IPC (Reliable)
+    if ((window as any).electron && (window as any).electron.clipboard) {
+      (window as any).electron.clipboard.writeText(textToCopy).then(() => {
+        this.showCopyFeedback();
+      });
+    }
+    // 2. Fallback to Browser API (Dev/Web)
+    else {
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        this.showCopyFeedback();
+      }).catch(err => {
+        console.error('Copy failed:', err);
+        // Fallback: alert? No, just log for now.
+      });
+    }
+  }
+
+  showCopyFeedback() {
+    this.ngZone.run(() => {
+      this.isCopied = true;
+      setTimeout(() => {
+        this.isCopied = false;
+      }, 2000);
+    });
   }
 
   get currentRouteName(): string {

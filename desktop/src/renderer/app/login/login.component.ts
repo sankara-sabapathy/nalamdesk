@@ -60,7 +60,16 @@ import { AuthService } from '../services/auth.service';
         
         <div class="mt-4 text-center flex justify-between text-xs text-gray-400">
             <a routerLink="/recover" class="hover:text-blue-400">Forgot Password?</a>
-            <span>Secure Local-First Access</span>
+            <div class="flex flex-col items-end">
+                <span>Secure Local-First Access</span>
+                <div *ngIf="localIp" class="mt-1 flex items-center gap-1.5 bg-gray-700/50 px-2 py-0.5 rounded-md border border-gray-600/30">
+                    <span class="relative flex h-1.5 w-1.5">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
+                    </span>
+                    <span class="font-mono text-[10px] text-gray-400">http://{{localIp}}:3000</span>
+                 </div>
+            </div>
         </div>
       </div>
     </div>
@@ -72,6 +81,8 @@ export class LoginComponent {
   password = '';
   error = '';
   isLoading = false;
+  localIp = '';
+  isElectron = !!(window as any).electron;
 
   constructor(
     private router: Router,
@@ -84,6 +95,21 @@ export class LoginComponent {
     const status = await this.authService.checkSetup();
     if (!status.isSetup) {
       this.router.navigate(['/setup']);
+    }
+
+    if (this.isElectron) {
+      this.loadLocalIp();
+    }
+  }
+
+  async loadLocalIp() {
+    try {
+      const ip = await (window as any).electron.utils.getLocalIp();
+      this.ngZone.run(() => {
+        this.localIp = ip;
+      });
+    } catch (e) {
+      console.error('Failed to load local IP', e);
     }
   }
 

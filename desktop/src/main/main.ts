@@ -24,11 +24,53 @@ const crashService = new CrashService();
 // Disable Hardware Acceleration to prevent input freezing/rendering glitches
 app.disableHardwareAcceleration();
 
+// Single Instance Lock
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+    console.log('[Main] Another instance is already running. Quitting...');
+    app.quit();
+} else {
+    app.on('second-instance', () => {
+        // Someone tried to run a second instance, we should focus our window.
+        if (mainWindow) {
+            if (mainWindow.isMinimized()) mainWindow.restore();
+            mainWindow.focus();
+        }
+    });
+
+    // Proceed with App Initialization
+    initializeApp();
+}
+
 let mainWindow: BrowserWindow | null = null;
+
 
 // IPC Handlers for utilities
 ipcMain.handle('utils:openExternal', async (_, url) => {
     await shell.openExternal(url);
+});
+
+ipcMain.handle('utils:getLocalIp', () => {
+    try {
+        const os = require('os');
+        const nets = os.networkInterfaces();
+        console.log('[Main] Network Interfaces:', Object.keys(nets));
+        for (const name of Object.keys(nets)) {
+            for (const net of nets[name] || []) {
+                // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
+                if (net.family === 'IPv4' && !net.internal) {
+                    console.log('[Main] Found IP:', net.address);
+                    return net.address;
+                }
+            }
+        }
+        console.log('[Main] IP not found, returning localhost');
+        return 'localhost';
+    } catch (e) {
+        console.error('[Main] getLocalIp error:', e);
+        return 'localhost';
+    }
 });
 
 // Services
@@ -106,71 +148,73 @@ async function createWindow() {
     }
 }
 
-app.whenReady().then(() => {
-    console.log('[Main] app.whenReady fired');
-    // 1. CSP (Content Security Policy)
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-        // Skip external origins
-        try {
-            const url = new URL(details.url);
-            if (url.protocol !== 'file:' && url.hostname !== 'localhost') {
-                return callback({});
+function initializeApp() {
+    app.whenReady().then(() => {
+        console.log('[Main] app.whenReady fired');
+        // 1. CSP (Content Security Policy)
+        session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+            // Skip external origins
+            try {
+                const url = new URL(details.url);
+                if (url.protocol !== 'file:' && url.hostname !== 'localhost') {
+                    return callback({});
+                }
+            } catch { return callback({}); }
+
+            const devCSP = "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; connect-src 'self' http://localhost:3000 https://www.googleapis.com https://accounts.google.com; img-src 'self' data: https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;";
+            const prodCSP = "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://www.googleapis.com https://accounts.google.com; img-src 'self' data: https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;";
+
+            callback({
+                responseHeaders: {
+                    ...details.responseHeaders,
+                    'Content-Security-Policy': [isDev ? devCSP : prodCSP],
+                },
+            });
+        });
+
+        // 2. Permission Handler (Deny by default)
+        session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+            // Allowed permissions
+            const allowedPermissions = ['media']; // e.g. for camera if needed later
+            if (allowedPermissions.includes(permission)) {
+                callback(true);
+            } else {
+                console.warn(`[Security] Denied permission request: ${permission}`);
+                callback(false);
             }
-        } catch { return callback({}); }
+        });
 
-        const devCSP = "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; connect-src 'self' http://localhost:3000 https://www.googleapis.com https://accounts.google.com; img-src 'self' data: https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;";
-        const prodCSP = "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://www.googleapis.com https://accounts.google.com; img-src 'self' data: https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;";
+        // 3. Navigation Guard
+        session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+            let urlObj: URL;
+            try {
+                urlObj = new URL(details.url);
+            } catch {
+                return callback({ cancel: true }); // Invalid URL
+            }
 
-        callback({
-            responseHeaders: {
-                ...details.responseHeaders,
-                'Content-Security-Policy': [isDev ? devCSP : prodCSP],
-            },
+            // Allow DevTools, File, and Localhost
+            if (urlObj.protocol === 'devtools:' || urlObj.protocol === 'file:' || urlObj.hostname === 'localhost') {
+                return callback({ cancel: false });
+            }
+
+            // Allow specific Google hosts for OAuth
+            const trustedHosts = ['accounts.google.com', 'www.googleapis.com'];
+            if (urlObj.protocol === 'https:' && trustedHosts.some(h => urlObj.hostname === h || urlObj.hostname.endsWith('.' + h))) {
+                return callback({ cancel: false });
+            }
+
+            console.warn(`[Security] Blocked request: ${details.url}`);
+            callback({ cancel: true });
+        });
+
+        createWindow();
+
+        app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) createWindow();
         });
     });
-
-    // 2. Permission Handler (Deny by default)
-    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-        // Allowed permissions
-        const allowedPermissions = ['media']; // e.g. for camera if needed later
-        if (allowedPermissions.includes(permission)) {
-            callback(true);
-        } else {
-            console.warn(`[Security] Denied permission request: ${permission}`);
-            callback(false);
-        }
-    });
-
-    // 3. Navigation Guard
-    session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-        let urlObj: URL;
-        try {
-            urlObj = new URL(details.url);
-        } catch {
-            return callback({ cancel: true }); // Invalid URL
-        }
-
-        // Allow DevTools, File, and Localhost
-        if (urlObj.protocol === 'devtools:' || urlObj.protocol === 'file:' || urlObj.hostname === 'localhost') {
-            return callback({ cancel: false });
-        }
-
-        // Allow specific Google hosts for OAuth
-        const trustedHosts = ['accounts.google.com', 'www.googleapis.com'];
-        if (urlObj.protocol === 'https:' && trustedHosts.some(h => urlObj.hostname === h || urlObj.hostname.endsWith('.' + h))) {
-            return callback({ cancel: false });
-        }
-
-        console.warn(`[Security] Blocked request: ${details.url}`);
-        callback({ cancel: true });
-    });
-
-    createWindow();
-
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) createWindow();
-    });
-});
+}
 
 // IPC Handlers
 // IPC Handlers
