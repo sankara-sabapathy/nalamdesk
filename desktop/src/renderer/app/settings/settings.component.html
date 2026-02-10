@@ -210,6 +210,17 @@
                 <p class="text-sm text-gray-500 mb-4">
                     Automated daily backups are saved locally. Retention: 30 days.
                 </p>
+
+                <!-- Schedule Input -->
+                <div class="mb-4">
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Local Backup Schedule</label>
+                    <div class="flex items-center gap-2">
+                        <input type="time" [(ngModel)]="settings.backup_schedule" (change)="saveSettings()"
+                            class="input input-bordered input-sm w-32 font-mono" />
+                        <span class="text-xs text-gray-400 italic">Saved automatically</span>
+                    </div>
+                </div>
+
                 <div class="flex items-center gap-4 bg-gray-50 p-3 rounded border border-gray-200 mb-3">
                     <div class="flex-1 overflow-hidden">
                         <label class="text-xs text-gray-500 font-bold uppercase flex items-center gap-1">
@@ -306,14 +317,24 @@
                     </div>
 
                     <!-- Connect Button -->
+                    <!-- Connect / Disconnect Button -->
                     <div
                         class="flex flex-col md:flex-row items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                        <button (click)="connectDrive()"
-                            [disabled]="!settings.drive_client_id || !settings.drive_client_secret || isLoading"
-                            class="w-full md:w-auto btn btn-primary px-8">
-                            <span *ngIf="isLoading" class="loading loading-spinner loading-xs mr-2"></span>
-                            {{ isLoading ? 'Connecting...' : 'Connect Drive' }}
-                        </button>
+                        <ng-container *ngIf="!success; else disconnectBtn">
+                            <button (click)="connectDrive()"
+                                [disabled]="!settings.drive_client_id || !settings.drive_client_secret || isLoading"
+                                class="w-full md:w-auto btn btn-primary px-8">
+                                <span *ngIf="isLoading" class="loading loading-spinner loading-xs mr-2"></span>
+                                {{ isLoading ? 'Connecting...' : 'Connect Drive' }}
+                            </button>
+                        </ng-container>
+                        <ng-template #disconnectBtn>
+                            <button (click)="disconnectDrive()"
+                                class="w-full md:w-auto btn btn-outline btn-error px-8 hover:bg-red-50">
+                                Disconnect
+                            </button>
+                        </ng-template>
+
                         <div *ngIf="message"
                             class="ml-auto flex items-center gap-2 px-4 py-2 rounded-lg bg-white shadow-sm border"
                             [ngClass]="{'border-green-100': success, 'border-red-100': !success}">

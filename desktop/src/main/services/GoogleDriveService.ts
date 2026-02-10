@@ -78,19 +78,76 @@ export class GoogleDriveService {
                 }
             });
 
+            server.on('error', (e: any) => {
+                if (e.code === 'EADDRINUSE') {
+                    reject(new Error('Port 3000 is occupied. Please stop other processes (like dev servers) on port 3000.'));
+                } else {
+                    reject(e);
+                }
+            });
+
             server.listen(3000, () => {
                 // Open the auth URL in the default browser (loopback)
                 require('electron').shell.openExternal(authUrl);
             });
+
+            // Timeout after 60 seconds to prevent infinite loading
+            const timeout = setTimeout(() => {
+                server.close();
+                reject(new Error('Authentication timed out. Please try again.'));
+            }, 60000);
+
+            // Allow server to close and clear timeout on success
+            const originalClose = server.close.bind(server);
+            server.close = (cb?: (err?: Error) => void) => {
+                clearTimeout(timeout);
+                return originalClose(cb);
+            };
         });
+    }
+
+    private async getOrCreateBackupFolder(): Promise<string> {
+        if (!this.tokens) throw new Error('Not authenticated');
+
+        // Check if folder exists
+        const q = "mimeType = 'application/vnd.google-apps.folder' and name = 'NalamDesk Backups' and trashed = false";
+        const res = await this.drive.files.list({
+            q: q,
+            fields: 'files(id, name)',
+            spaces: 'drive'
+        });
+
+        if (res.data.files && res.data.files.length > 0) {
+            return res.data.files[0].id;
+        }
+
+        // Create folder if not exists
+        const fileMetadata = {
+            name: 'NalamDesk Backups',
+            mimeType: 'application/vnd.google-apps.folder'
+        };
+
+        const folder = await this.drive.files.create({
+            requestBody: fileMetadata,
+            fields: 'id'
+        });
+
+        return folder.data.id;
     }
 
     async uploadFile(filePath: string, name: string) {
         if (!this.tokens) throw new Error('Not authenticated');
 
+        if (!this.tokens) throw new Error('Not authenticated');
+
+        // Ensure token is valid/refreshed
+        await this.oauth2Client.getAccessToken();
+
+        const folderId = await this.getOrCreateBackupFolder();
+
         const fileMetadata = {
             name: name,
-            parents: ['appDataFolder'] // Upload to hidden app folder
+            parents: [folderId]
         };
 
         const media = {
@@ -110,13 +167,22 @@ export class GoogleDriveService {
     async listBackups() {
         if (!this.tokens) throw new Error('Not authenticated');
 
-        const res = await this.drive.files.list({
-            q: "parents in 'appDataFolder' and trashed = false",
-            fields: 'files(id, name, createdTime, size)',
-            orderBy: 'createdTime desc'
-        });
+        // We need to find the folder first to list its contents
+        // Optimization: We could store folderId in settings, but for now lookup is safer
+        try {
+            const folderId = await this.getOrCreateBackupFolder();
 
-        return res.data.files;
+            const res = await this.drive.files.list({
+                q: `'${folderId}' in parents and trashed = false`,
+                fields: 'files(id, name, createdTime, size)',
+                orderBy: 'createdTime desc'
+            });
+
+            return res.data.files;
+        } catch (e) {
+            console.error('Error listing backups:', e);
+            return [];
+        }
     }
 
     async downloadFile(fileId: string, destPath: string) {

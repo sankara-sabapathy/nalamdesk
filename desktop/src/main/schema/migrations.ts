@@ -257,5 +257,19 @@ export const MIGRATIONS = [
                 try { db.exec(`ALTER TABLE settings ADD COLUMN ${col}`); } catch (e) { }
             });
         }
+    },
+    {
+        version: 5,
+        up: (db: any) => {
+            console.log('Running Migration v5 (Backup Schedule)...');
+            try { db.exec(`ALTER TABLE settings ADD COLUMN backup_schedule TEXT DEFAULT '13:00'`); } catch (e) { }
+        }
+    },
+    {
+        version: 6,
+        up: (db: any) => {
+            console.log('Running Migration v6 (Cloud Backup Schedule)...');
+            try { db.exec(`ALTER TABLE settings ADD COLUMN cloud_backup_schedule TEXT DEFAULT '13:00'`); } catch (e) { }
+        }
     }
 ];

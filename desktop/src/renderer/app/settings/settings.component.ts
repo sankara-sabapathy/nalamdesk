@@ -41,7 +41,9 @@ export class SettingsComponent implements OnInit {
     clinic_name: '',
     drive_client_id: '',
     drive_client_secret: '',
-    local_backup_path: ''
+    local_backup_path: '',
+    backup_schedule: '13:00',
+    cloud_backup_schedule: '13:00'
   };
   settingsSaved = false;
   isElectron = !!(window as any).electron;
@@ -255,6 +257,7 @@ export class SettingsComponent implements OnInit {
     this.loadSettings();
     if (this.isElectron) {
       this.listBackups();
+      this.checkDriveStatus();
       this.loadCloudStatus();
     }
     if (this.currentUser?.role === 'admin') {
@@ -271,6 +274,8 @@ export class SettingsComponent implements OnInit {
           this.settings.drive_client_id = s.drive_client_id || '';
           this.settings.drive_client_secret = s.drive_client_secret || '';
           this.settings.local_backup_path = s.local_backup_path || '';
+          this.settings.backup_schedule = s.backup_schedule || '13:00';
+          this.settings.cloud_backup_schedule = s.cloud_backup_schedule || '13:00';
         }
       });
     } catch (e) { console.error(e); }
@@ -444,15 +449,52 @@ export class SettingsComponent implements OnInit {
   async connectDrive() {
     if (!this.isElectron) return;
     this.isLoading = true;
+    this.message = '';
     try {
-      const res = await window.electron.drive.authenticate() as any;
+      const res = await window.electron.drive.authenticate({
+        clientId: this.settings.drive_client_id,
+        clientSecret: this.settings.drive_client_secret
+      }) as any;
       this.ngZone.run(() => {
         this.isLoading = false;
-        this.success = !!res;
-        this.message = res ? 'Connected' : 'Failed';
-        if (res) this.listBackups();
+        if (res && res.success) {
+          this.success = true;
+          this.message = 'Connected successfully';
+          this.listBackups();
+        } else {
+          this.success = false;
+          this.message = res.error || 'Connection failed';
+        }
       });
-    } catch { this.isLoading = false; }
+    } catch (error: any) {
+      this.ngZone.run(() => {
+        this.isLoading = false;
+        this.success = false;
+        this.message = error.message || 'An unexpected error occurred';
+      });
+    }
+  }
+
+  async disconnectDrive() {
+    if (!confirm('Are you sure you want to disconnect Google Drive? Automated backups will stop.')) return;
+    // We should probably have a backend method to clear tokens, but for now we can just clear local state 
+    // and maybe save empty tokens to settings? 
+    // Ideally, we should add a drive:disconnect IPC. 
+    // For now, let's just clear the success flag and maybe warn user?
+    // Actually, let's just clear the settings on backend if possible, or just UI for now.
+    // Wait, let's add a proper disconnect IPC handler in the next step.
+    // For now, I'll just add the method stub to be filled.
+
+    try {
+      await window.electron.drive.disconnect(); // Need to add this
+      this.ngZone.run(() => {
+        this.success = false;
+        this.message = 'Disconnected';
+        this.backups = [];
+      });
+    } catch (e) {
+      console.error('Disconnect failed', e);
+    }
   }
   async listBackups() {
     if (!this.isElectron) return;
@@ -472,9 +514,46 @@ export class SettingsComponent implements OnInit {
     } catch { this.isBackupLoading = false; }
   }
   async restore(id: string) {
-    if (!confirm('Overwrite local database? This is irreversible.')) return;
-    await window.electron.drive.restore(id);
-    alert('Restore initiated. App will restart.');
+    if (!confirm('OVERWRITE WARNING: This will replace your current database with the backup. This action cannot be undone. Are you sure?')) return;
+
+    this.isBackupLoading = true; // Use existing loading flag or add new one
+    this.message = 'Restoring backup... The app will restart automatically.';
+
+    try {
+      const res = await window.electron.drive.restore(id);
+      if (res.success && res.restartRequired) {
+        this.ngZone.run(() => {
+          alert('Restore Successful! The application will now restart.');
+          // In case main process doesn't kill it immediately (though it should)
+        });
+      } else {
+        this.ngZone.run(() => {
+          this.isBackupLoading = false;
+          alert('Restore Failed: ' + (res.error || 'Unknown Error'));
+        });
+      }
+    } catch (e: any) {
+      this.ngZone.run(() => {
+        this.isBackupLoading = false;
+        alert('Restore Error: ' + e.message);
+      });
+    }
+  }
+
+  async checkDriveStatus() {
+    if (!this.isElectron) return;
+    try {
+      const isAuth = await window.electron.drive.isAuthenticated();
+      this.ngZone.run(() => {
+        if (isAuth) {
+          this.success = true;
+          this.message = 'Connected successfully';
+          this.listBackups();
+        }
+      });
+    } catch (e) {
+      console.error('Failed to check drive status', e);
+    }
   }
 
   async loadCloudStatus() {

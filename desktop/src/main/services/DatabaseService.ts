@@ -65,9 +65,22 @@ export class DatabaseService {
     async backupDatabase(destPath: string) {
         if (!this.db) throw new Error('DB not initialized');
         console.log(`[DB] Starting backup to ${destPath}...`);
-        await this.db.backup(destPath);
-        console.log(`[DB] Backup failed to ${destPath} completed.`); // Typo in log message but keeping logic simple
-        console.log(`[DB] Backup to ${destPath} completed.`);
+
+        // Remove destination if exists (VACUUM INTO requires non-existent target)
+        const fs = require('fs');
+        if (fs.existsSync(destPath)) {
+            try { fs.unlinkSync(destPath); } catch (e) { console.warn('Failed to delete existing backup target', e); }
+        }
+
+        try {
+            // Use VACUUM INTO for encrypted DB compatibility
+            this.db.prepare(`VACUUM INTO ?`).run(destPath);
+            console.log(`[DB] Backup to ${destPath} completed.`);
+        } catch (e: any) {
+            console.error('[DB] VACUUM INTO failed, trying fallback to backup API...', e);
+            // Fallback (might fail with same error, but worth a shot if VACUUM fails for other reasons)
+            await this.db.backup(destPath);
+        }
     }
 
     async ensureAdminUser(password: string) {

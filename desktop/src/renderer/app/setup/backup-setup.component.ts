@@ -191,7 +191,10 @@ export class BackupSetupComponent implements OnInit {
 
       if (this.driveClientId) {
         // Attempt auth flow if they added creds
-        window.electron.drive.authenticate();
+        window.electron.drive.authenticate({
+          clientId: this.driveClientId,
+          clientSecret: this.driveClientSecret
+        });
       }
 
     } catch (e) {

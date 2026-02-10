@@ -6,7 +6,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export class BackupService {
-    private job: CronJob | null = null;
+    private localJob: CronJob | null = null;
+    private cloudJob: CronJob | null = null;
     private localBackupPath: string = '';
 
     constructor(
@@ -24,25 +25,63 @@ export class BackupService {
     }
 
     initAutomatedBackup() {
-        // Mandatory Daily Backup at 1:00 AM
-        const cronTime = '0 1 * * *';
-        this.scheduleDailyBackup(cronTime);
-        console.log('[Backup] Mandatory automated backup initialized for 1:00 AM');
+        const settings = this.dbService.getSettings();
+        const localTime = settings?.backup_schedule || '13:00';
+        const cloudTime = settings?.cloud_backup_schedule || '13:00';
+
+        console.log(`[Backup] Initializing schedules - Local: ${localTime}, Cloud: ${cloudTime}`);
+        this.scheduleLocalBackup(localTime);
+        this.scheduleCloudBackup(cloudTime);
     }
 
-    scheduleDailyBackup(cronTime: string = '0 1 * * *') {
-        if (this.job) {
-            this.job.stop();
+    private convertToCron(time: string): string {
+        // If it looks like HH:MM, convert to cron. Otherwise return as is.
+        if (/^\d{2}:\d{2}$/.test(time)) {
+            const [hours, minutes] = time.split(':');
+            return `0 ${minutes} ${hours} * * *`;
         }
+        return time; // Assume valid cron or default
+    }
 
+    scheduleLocalBackup(time: string) {
+        if (this.localJob) this.localJob.stop();
         try {
-            console.log(`[Backup] Scheduling backup job for ${cronTime}`);
-            this.job = new CronJob(cronTime, () => {
-                this.performBackup();
-            });
-            this.job.start();
+            const cronTime = this.convertToCron(time);
+            console.log(`[Backup] Scheduling LOCAL backup for ${cronTime}`);
+            this.localJob = new CronJob(cronTime, () => this.performLocalBackup());
+            this.localJob.start();
         } catch (e) {
-            console.error('[Backup] Failed to schedule backup:', e);
+            console.error('[Backup] Failed to schedule local backup:', e);
+        }
+    }
+
+    scheduleCloudBackup(time: string) {
+        if (this.cloudJob) this.cloudJob.stop();
+        try {
+            const cronTime = this.convertToCron(time);
+            console.log(`[Backup] Scheduling CLOUD backup for ${cronTime}`);
+            this.cloudJob = new CronJob(cronTime, () => this.performCloudBackup());
+            this.cloudJob.start();
+        } catch (e) {
+            console.error('[Backup] Failed to schedule cloud backup:', e);
+        }
+    }
+
+
+    updateSchedule(type: 'local' | 'cloud', time: string) {
+        if (type === 'local') this.scheduleLocalBackup(time);
+        else if (type === 'cloud') this.scheduleCloudBackup(time);
+    }
+
+    async performBackupOnQuit() {
+        console.log('[Backup] Performing backup on quit...');
+        try {
+            await this.performLocalBackup();
+            if (this.driveService.isAuthenticated()) {
+                await this.performCloudBackup();
+            }
+        } catch (e) {
+            console.error('[Backup] Backup on quit failed', e);
         }
     }
 

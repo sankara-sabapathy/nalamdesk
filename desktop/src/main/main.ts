@@ -216,6 +216,29 @@ function initializeApp() {
     });
 }
 
+// Global Backup on Quit Logic
+let isQuitting = false;
+app.on('before-quit', async (e) => {
+    if (isQuitting) return;
+
+    e.preventDefault();
+    console.log('[Main] App closing... Starting final backup.');
+
+    // Optional: Notify user via window if visible
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('app:quitting', 'Backing up data...');
+    }
+
+    try {
+        await backupService.performBackupOnQuit();
+    } catch (err) {
+        console.error('[Main] Final backup failed:', err);
+    }
+
+    isQuitting = true;
+    app.quit();
+});
+
 // IPC Handlers
 // IPC Handlers
 ipcMain.handle('auth:checkSetup', () => {
@@ -374,9 +397,20 @@ ipcMain.handle('auth:login', async (event, credentials) => {
 
                 // Check if settings has drive tokens -> Schedule Backup
                 const settings = databaseService.getSettings();
-                if (settings && settings.drive_tokens) {
-                    googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
-                    backupService.scheduleDailyBackup();
+                if (settings) {
+                    // Configure Drive Keys First
+                    if (settings.drive_client_id && settings.drive_client_secret) {
+                        googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
+                    }
+
+                    if (settings.drive_tokens) {
+                        try {
+                            googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+                        } catch (e) {
+                            console.error('Failed to parse drive tokens for admin', e);
+                        }
+                        backupService.initAutomatedBackup();
+                    }
                 }
 
                 return { success: true, user };
@@ -543,11 +577,27 @@ ipcMain.handle('db:getPublicSettings', () => {
     // Public endpoint - no auth required (used for Login screen)
     return databaseService.getPublicSettings();
 });
-ipcMain.handle('db:saveSettings', (_, settings) => {
+ipcMain.handle('db:saveSettings', async (_, settings) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
-    return databaseService.saveSettings(settings);
+
+    const result = await databaseService.saveSettings(settings);
+
+    // Update Backup Schedule if changed
+    if (settings.backup_schedule) {
+        backupService.updateSchedule('local', settings.backup_schedule);
+    }
+    if (settings.cloud_backup_schedule) {
+        backupService.updateSchedule('cloud', settings.cloud_backup_schedule);
+    }
+
+    // Update Drive Credebtials if changed
+    if (settings.drive_client_id && settings.drive_client_secret) {
+        googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
+    }
+
+    return result;
 });
 
 // Queue IPC Handlers
@@ -644,17 +694,42 @@ ipcMain.handle('db:saveAppointment', (_, appt) => {
 });
 
 // Drive IPC Handlers
-ipcMain.handle('drive:authenticate', async () => {
-    if (!mainWindow) return false;
+ipcMain.handle('drive:authenticate', async (_, { clientId, clientSecret }) => {
+    if (!mainWindow) return { success: false, error: 'Main window not found' };
     try {
+        // Configure credentials first
+        googleDriveService.configureCredentials(clientId, clientSecret);
+
         await googleDriveService.authenticate(mainWindow);
         const tokens = googleDriveService.getCredentials();
-        databaseService.saveSettings({ drive_tokens: JSON.stringify(tokens) });
-        return true;
-    } catch (e) {
+
+        // Save everything to settings
+        databaseService.saveSettings({
+            drive_client_id: clientId,
+            drive_client_secret: clientSecret,
+            drive_tokens: JSON.stringify(tokens)
+        });
+
+        return { success: true };
+    } catch (e: any) {
         console.error('Drive auth failed', e);
-        return false;
+        return { success: false, error: e.message || 'Authentication failed' };
     }
+});
+
+ipcMain.handle('drive:disconnect', async () => {
+    try {
+        googleDriveService.setCredentials(null);
+        await databaseService.saveSettings({ drive_tokens: '' });
+        return { success: true };
+    } catch (e: any) {
+        console.error('Drive disconnect failed', e);
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('drive:isAuthenticated', () => {
+    return googleDriveService.isAuthenticated();
 });
 
 ipcMain.handle('drive:backup', async () => {
@@ -677,9 +752,17 @@ ipcMain.handle('drive:restore', async (_, fileId) => {
         if (!dbPath) throw new Error('DB not open');
         securityService.closeDb();
         await googleDriveService.downloadFile(fileId, dbPath);
+
+        // Restart app to reload DB (delay to allow IPC response)
+        setTimeout(() => {
+            app.relaunch();
+            app.exit(0);
+        }, 1500);
+
         return { success: true, restartRequired: true };
     } catch (e: any) {
         console.error('Restore failed', e.message); // e might be object
+
         return { success: false, error: String(e) };
     }
 });
