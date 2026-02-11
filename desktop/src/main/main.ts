@@ -198,8 +198,13 @@ function initializeApp() {
                 return callback({ cancel: false });
             }
 
-            // Allow specific Google hosts for OAuth
-            const trustedHosts = ['accounts.google.com', 'www.googleapis.com'];
+            // Allow specific Google hosts for OAuth and Fonts
+            const trustedHosts = [
+                'accounts.google.com',
+                'www.googleapis.com',
+                'fonts.googleapis.com',
+                'fonts.gstatic.com'
+            ];
             if (urlObj.protocol === 'https:' && trustedHosts.some(h => urlObj.hostname === h || urlObj.hostname.endsWith('.' + h))) {
                 return callback({ cancel: false });
             }

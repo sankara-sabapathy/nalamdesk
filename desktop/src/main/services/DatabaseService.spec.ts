@@ -47,6 +47,29 @@ describe('DatabaseService', () => {
             mockDb.exec.mockImplementationOnce(() => { }).mockImplementationOnce(() => { throw new Error('duplicate column'); });
             expect(() => service.migrate()).not.toThrow();
         });
+
+        it('should perform VACUUM INTO backup for file-based databases', () => {
+            mockDb.name = 'test.db'; // Simulate file-based DB
+            const fs = require('fs');
+            vi.spyOn(fs, 'existsSync').mockReturnValue(false); // No existing backup
+
+            service.migrate();
+
+            expect(mockDb.prepare).toHaveBeenCalledWith('VACUUM INTO ?');
+            expect(mockStatement.run).toHaveBeenCalledWith('test.db.bak');
+        });
+
+        it('should fallback to .backup() if VACUUM INTO fails', async () => {
+            mockDb.name = 'test.db';
+            mockDb.prepare.mockImplementation((sql: string) => {
+                if (sql.includes('VACUUM INTO')) throw new Error('VACUUM failed');
+                return mockStatement;
+            });
+
+            await service.migrate();
+
+            expect(mockDb.backup).toHaveBeenCalledWith('test.db.bak');
+        });
     });
 
     describe('User Management', () => {

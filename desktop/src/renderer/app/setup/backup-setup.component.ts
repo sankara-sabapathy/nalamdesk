@@ -2,6 +2,7 @@ import { Component, OnInit, inject, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DataService } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
 
 @Component({
   selector: 'app-backup-setup',
@@ -30,7 +31,7 @@ import { DataService } from '../services/api.service';
             <div class="mb-6 bg-blue-50 border border-blue-100 p-4 rounded-lg">
               <h3 class="font-bold text-blue-900 mb-2">Mandatory Local Backups</h3>
               <p class="text-sm text-blue-800">
-                NalamDesk will automatically back up your database every day at 1:00 AM.
+                NalamDesk will automatically back up your database every day.
                 We keep the last 30 days of backups.
               </p>
             </div>
@@ -41,9 +42,13 @@ import { DataService } from '../services/api.service';
                 class="flex-1 bg-gray-100 border border-gray-300 rounded px-3 py-2 text-sm text-gray-600">
               <button (click)="selectPath()" class="btn btn-outline btn-sm">Change</button>
             </div>
-            <p class="text-xs text-gray-500 mt-2">
+            <p class="text-xs text-gray-500 mt-2 mb-4">
               Ensure this location has enough space. Only NalamDesk backups will be stored here.
             </p>
+
+            <label class="block text-sm font-medium text-gray-700 mb-2">Daily Backup Time</label>
+            <input type="time" [(ngModel)]="localBackupTime" 
+              class="border-gray-300 rounded-md shadow-sm border p-2 text-sm font-mono">
           </div>
 
           <!-- STEP 2: CLOUD BACKUP -->
@@ -69,6 +74,12 @@ import { DataService } from '../services/api.service';
                   <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Client Secret</label>
                   <input [(ngModel)]="driveClientSecret" type="password" placeholder="OAUTH2 Client Secret"
                     class="w-full border-gray-300 rounded-md shadow-sm border p-2 text-sm">
+               </div>
+
+               <div>
+                  <label class="block text-xs font-bold uppercase text-gray-500 mb-1">Cloud Backup Time</label>
+                  <input type="time" [(ngModel)]="cloudBackupTime"
+                    class="border-gray-300 rounded-md shadow-sm border p-2 text-sm font-mono">
                </div>
             </div>
             
@@ -105,17 +116,23 @@ export class BackupSetupComponent implements OnInit {
   step = 1;
 
   localPath = '';
+  localBackupTime = '13:00';
+
   driveClientId = '';
   driveClientSecret = '';
+  cloudBackupTime = '13:00';
 
   isElectron = !!(window as any).electron;
   private dataService = inject(DataService);
+  private authService = inject(AuthService);
 
   constructor(private ngZone: NgZone) { }
 
   async ngOnInit() {
     if (!this.isElectron) return;
     try {
+      if (!this.authService.getUser()) return; // Prevent unauthorized calls
+
       // Check if backup path is configured
       const s = await this.dataService.invoke<any>('getSettings');
       this.ngZone.run(() => {
@@ -125,6 +142,9 @@ export class BackupSetupComponent implements OnInit {
           } else {
             this.localPath = s.local_backup_path;
           }
+
+          if (s.backup_schedule) this.localBackupTime = s.backup_schedule;
+          if (s.cloud_backup_schedule) this.cloudBackupTime = s.cloud_backup_schedule;
 
           if (s.drive_client_id) this.driveClientId = s.drive_client_id;
           if (s.drive_client_secret) this.driveClientSecret = s.drive_client_secret;
@@ -163,11 +183,13 @@ export class BackupSetupComponent implements OnInit {
     try {
       // Save settings
       const settings: any = {
-        local_backup_path: this.localPath || this.getDefaultPath()
+        local_backup_path: this.localPath || this.getDefaultPath(),
+        backup_schedule: this.localBackupTime
       };
       if (this.driveClientId && this.driveClientSecret) {
         settings.drive_client_id = this.driveClientId;
         settings.drive_client_secret = this.driveClientSecret;
+        settings.cloud_backup_schedule = this.cloudBackupTime;
       }
 
       await this.dataService.invoke('saveSettings', settings);

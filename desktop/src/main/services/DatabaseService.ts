@@ -28,9 +28,15 @@ export class DatabaseService {
                         console.warn('[DB] Failed to delete old backup:', e);
                     }
 
-                    console.log(`[DB] Backing up to ${backupName}...`);
-                    await this.db.backup(backupName);
-                    console.log('[DB] Backup complete.');
+                    console.log(`[DB] Backing up manual snapshot to ${backupName}...`);
+                    // Use VACUUM INTO for encrypted DB safety
+                    try {
+                        this.db.prepare(`VACUUM INTO ?`).run(backupName);
+                        console.log('[DB] Backup (VACUUM INTO) complete.');
+                    } catch (e: any) {
+                        console.warn('[DB] VACUUM INTO failed during migration backup, trying fallback...', e);
+                        await this.db.backup(backupName);
+                    }
                 }
             }
         } catch (e) {

@@ -316,6 +316,20 @@
                         </div>
                     </div>
 
+                    <!-- Cloud Schedule (Visible only if connected) -->
+                    <div *ngIf="success"
+                        class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-100 flex items-center justify-between">
+                        <div>
+                            <h5 class="text-sm font-bold text-gray-800">Cloud Backup Schedule</h5>
+                            <p class="text-xs text-gray-500">Automatically upload snapshots to Drive at this time.</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="time" [(ngModel)]="settings.cloud_backup_schedule" (change)="saveSettings()"
+                                class="input input-bordered input-sm w-32 font-mono" />
+                            <span class="text-[10px] text-gray-400 italic">Auto-saved</span>
+                        </div>
+                    </div>
+
                     <!-- Connect Button -->
                     <!-- Connect / Disconnect Button -->
                     <div
