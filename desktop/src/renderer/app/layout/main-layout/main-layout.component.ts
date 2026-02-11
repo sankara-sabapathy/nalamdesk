@@ -1,4 +1,4 @@
-import { Component, inject, ViewChild, ElementRef, NgZone } from '@angular/core';
+import { Component, ViewChild, ElementRef, NgZone, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterOutlet, RouterModule, Router } from '@angular/router';
 import { UniversalDialogComponent } from '../../shared/components/universal-dialog/universal-dialog.component';
@@ -185,7 +185,7 @@ import { AuthService } from '../../services/auth.service';
     }
   `]
 })
-export class MainLayoutComponent {
+export class MainLayoutComponent implements OnInit {
   queueCount = 0; // TODO: Connect to service
   currentUser: any = null;
 
@@ -198,7 +198,10 @@ export class MainLayoutComponent {
     private ngZone: NgZone
   ) {
     this.currentUser = this.authService.getUser();
-    if (!!(window as any).electron) {
+  }
+
+  ngOnInit() {
+    if (!!(globalThis as any).electron) {
       this.loadLocalIp();
     }
   }
@@ -207,7 +210,7 @@ export class MainLayoutComponent {
   isCopied = false;
   async loadLocalIp() {
     try {
-      const ip = await (window as any).electron.utils.getLocalIp();
+      const ip = await (globalThis as any).electron.utils.getLocalIp();
       this.ngZone.run(() => {
         this.localIp = ip;
       });
@@ -222,8 +225,8 @@ export class MainLayoutComponent {
     const textToCopy = `http://${this.localIp}:3000`;
 
     // 1. Try Electron IPC (Reliable)
-    if ((window as any).electron && (window as any).electron.clipboard) {
-      (window as any).electron.clipboard.writeText(textToCopy).then(() => {
+    if ((globalThis as any).electron && (globalThis as any).electron.clipboard) {
+      (globalThis as any).electron.clipboard.writeText(textToCopy).then(() => {
         this.showCopyFeedback();
       });
     }

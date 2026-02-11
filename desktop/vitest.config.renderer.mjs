@@ -24,6 +24,19 @@ export default defineConfig({
         setupFiles: [path.resolve(__dirname, 'src/test-setup.ts')],
         include: ['src/renderer/**/*.spec.ts'],
         reporters: ['default'],
+        coverage: {
+            provider: 'v8',
+            reporter: ['text', 'json', 'html', 'lcov'],
+            reportsDirectory: './coverage/renderer',
+            include: ['src/renderer/**/*.ts'],
+            exclude: [
+                'src/renderer/**/*.spec.ts',
+                'src/renderer/**/*.test.ts',
+                '**/node_modules/**',
+                '**/dist/**',
+                'src/test-setup.ts',
+            ],
+        },
     },
     resolve: {
         alias: {

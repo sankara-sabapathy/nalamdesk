@@ -7,38 +7,39 @@ export class DatabaseService {
         this.db = db;
     }
 
+    private async createBackup(dbName: string) {
+        if (!dbName || dbName === ':memory:') return;
+
+        const backupName = `${dbName}.bak`;
+        // Delete existing backup to prevent "incompatible source and target" errors 
+        // if the schema/key changed since the last backup.
+        try {
+            const fs = require('node:fs');
+            if (fs.existsSync(backupName)) {
+                fs.unlinkSync(backupName);
+                console.log(`[DB] Deleted old backup: ${backupName}`);
+            }
+        } catch (e) {
+            console.warn('[DB] Failed to delete old backup:', e);
+        }
+
+        console.log(`[DB] Backing up manual snapshot to ${backupName}...`);
+        // Use VACUUM INTO for encrypted DB safety
+        try {
+            this.db.prepare(`VACUUM INTO ?`).run(backupName);
+            console.log('[DB] Backup (VACUUM INTO) complete.');
+        } catch (e: any) {
+            console.warn('[DB] VACUUM INTO failed during migration backup, trying fallback...', e);
+            await this.db.backup(backupName);
+        }
+    }
+
     async migrate() {
         if (!this.db) throw new Error('DB not initialized');
 
         // Safety: Backup before migrating
         try {
-            const dbName = this.db.name;
-            if (dbName && dbName !== ':memory:') {
-                if (dbName && dbName !== ':memory:') {
-                    const backupName = `${dbName}.bak`;
-                    // Delete existing backup to prevent "incompatible source and target" errors 
-                    // if the schema/key changed since the last backup.
-                    try {
-                        const fs = require('fs');
-                        if (fs.existsSync(backupName)) {
-                            fs.unlinkSync(backupName);
-                            console.log(`[DB] Deleted old backup: ${backupName}`);
-                        }
-                    } catch (e) {
-                        console.warn('[DB] Failed to delete old backup:', e);
-                    }
-
-                    console.log(`[DB] Backing up manual snapshot to ${backupName}...`);
-                    // Use VACUUM INTO for encrypted DB safety
-                    try {
-                        this.db.prepare(`VACUUM INTO ?`).run(backupName);
-                        console.log('[DB] Backup (VACUUM INTO) complete.');
-                    } catch (e: any) {
-                        console.warn('[DB] VACUUM INTO failed during migration backup, trying fallback...', e);
-                        await this.db.backup(backupName);
-                    }
-                }
-            }
+            await this.createBackup(this.db.name);
         } catch (e) {
             console.error('[DB] Backup failed! Proceeding with caution...', e);
             // Optional: Throw if backup is critical? For now, log and proceed (or user can't login).
@@ -73,7 +74,7 @@ export class DatabaseService {
         console.log(`[DB] Starting backup to ${destPath}...`);
 
         // Remove destination if exists (VACUUM INTO requires non-existent target)
-        const fs = require('fs');
+        const fs = require('node:fs');
         if (fs.existsSync(destPath)) {
             try { fs.unlinkSync(destPath); } catch (e) { console.warn('Failed to delete existing backup target', e); }
         }
@@ -261,7 +262,7 @@ export class DatabaseService {
     deleteUser(id: number, actingUserId?: number) {
         // Prevent deleting the admin user
         const user = this.db.prepare('SELECT username FROM users WHERE id = ?').get(id);
-        if (user && user.username === 'admin') {
+        if (user?.username === 'admin') {
             throw new Error('Cannot delete the admin user.');
         }
 

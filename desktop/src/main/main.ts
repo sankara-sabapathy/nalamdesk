@@ -332,54 +332,49 @@ ipcMain.handle('clipboard:writeText', (event, text) => {
     return true;
 });
 
+async function tryUnlockDatabase(password: string): Promise<string | null> {
+    if (securityService.getDb()) return null; // Already open
+
+    try {
+        const userDataPath = app.getPath('userData');
+        const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
+        const dbPath = app.isPackaged
+            ? path.join(userDataPath, dbName)
+            : path.join(__dirname, '../../', dbName);
+
+        // This handles Unlock OR V1->V2 Migration
+        await securityService.initialize(password, dbPath, userDataPath);
+        databaseService.setDb(securityService.getDb());
+
+        // Ensure schema is up to date (safe idempotent)
+        await databaseService.migrate();
+        return null;
+    } catch (e: any) {
+        if (e.message === 'NOT_SETUP') return 'SETUP_REQUIRED';
+        if (e.message === 'INVALID_PASSWORD') return 'INVALID_PASSWORD';
+
+        console.error('DB Init failed:', e);
+        return 'SYSTEM_ERROR';
+    }
+}
+
 ipcMain.handle('auth:login', async (event, credentials) => {
     try {
         const { username, password } = credentials;
 
-        // 1. Initialize / Unlock DB if not already open
-        if (!securityService.getDb()) {
-            try {
-                const userDataPath = app.getPath('userData');
-                const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
-                const dbPath = app.isPackaged
-                    ? path.join(userDataPath, dbName)
-                    : path.join(__dirname, '../../', dbName);
-
-                // This handles Unlock OR V1->V2 Migration
-                await securityService.initialize(password, dbPath, userDataPath);
-
-                databaseService.setDb(securityService.getDb());
-
-                // If migration happened, we might want to ensure schema is up to date?
-                // V2 Migration does NOT run schema migrations automatically, but V1 Logic did.
-                // Let's run migrate just in case (safe idempotent)
-                await databaseService.migrate();
-
-            } catch (e: any) {
-                if (e.message === 'INVALID_PASSWORD') {
-                    // If DB unlock fails, we can't proceed.
-                    // But wait! If the user is NOT admin, they can't unlock the DB.
-                    // They rely on DB being already open.
-                } else if (e.message === 'NOT_SETUP') {
-                    return { success: false, error: 'SETUP_REQUIRED' };
-                } else {
-                    console.error('DB Init failed:', e);
-                    return { success: false, error: 'SYSTEM_ERROR' };
-                }
-            }
-        }
+        // 1. Initialize / Unlock DB
+        const unlockResult = await tryUnlockDatabase(password);
+        if (unlockResult === 'SETUP_REQUIRED') return { success: false, error: 'SETUP_REQUIRED' };
+        if (unlockResult === 'SYSTEM_ERROR') return { success: false, error: 'SYSTEM_ERROR' };
 
         // 2. Check if DB is open
         const db = securityService.getDb();
         if (!db) {
-            // DB is locked. Only Admin can unlock it.
-            // If we are here, it means `initialize` failed or wasn't called (e.g. wrong password).
-
-            // If the user trying to login is 'admin', then the `initialize` call above failed with INVALID_PASSWORD.
+            // Unlock failed (INVALID_PASSWORD)
+            // If user is Admin, they MUST be able to unlock it.
             if (username === 'admin') {
                 return { success: false, error: 'INVALID_CREDENTIALS' };
             } else {
-                // If normal user, they are blocked until Admin unlocks.
                 return { success: false, error: 'SYSTEM_LOCKED' };
             }
         }
@@ -387,82 +382,49 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         databaseService.setDb(db);
 
         // 3. Validate User against DB
-        // If we are Admin, we just unlocked the DB with the password.
-        // Does that mean we are automatically logged in? 
-        // Yes, if we unlocked it, we possess the master password.
-
         if (username === 'admin') {
-            // Verify the DB internal user 'admin' also has this password?
-            // V1 Logic: ensureAdminUser(password) was called on login.
-            // We should probably keep that sync logic or just trust the Vault Unlock?
-            // Best practice: Trust Vault Unlock for Admin.
             const user = await databaseService.getUserByUsername('admin');
             if (user) {
-                sessionService.setUser(user);
+                // Verify admin password against DB too (optional but good for consistency)
+                const argon2 = await import('argon2');
+                if (await argon2.verify(user.password, password)) {
+                    sessionService.setUser(user);
 
-                // Check if settings has drive tokens -> Schedule Backup
-                const settings = databaseService.getSettings();
-                if (settings) {
-                    // Configure Drive Keys First
-                    if (settings.drive_client_id && settings.drive_client_secret) {
-                        googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
-                    }
-
-                    if (settings.drive_tokens) {
+                    // Configure Drive & Backup for Admin
+                    const settings = databaseService.getSettings();
+                    if (settings) {
                         try {
-                            googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
-                        } catch (e) {
-                            console.error('Failed to parse drive tokens for admin', e);
-                        }
-                        backupService.initAutomatedBackup();
+                            if (settings.drive_client_id && settings.drive_client_secret) {
+                                googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
+                            }
+                            if (settings.drive_tokens) {
+                                googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+                                backupService.initAutomatedBackup();
+                            }
+                        } catch (e) { console.error('Failed to configure services for admin', e); }
                     }
+                    return { success: true, user };
                 }
-
-                return { success: true, user };
             }
+            // If admin DB user not found or password mismatch (but vault unlocked? weird state)
+            // Fallthrough to standard validation
         }
 
         console.log(`[Auth] Validating user: ${username}`);
         const result = await databaseService.validateUser(username, password);
-        console.log(`[Auth] Validation result:`, result.success ? 'Success' : 'Failed');
 
         if (result.success && result.user) {
-            sessionService.setUser(result.user); // Use SessionService
+            sessionService.setUser(result.user);
 
-            // Initialize Backup & Drive Services
+            // Initialize Backup & Drive Services (shared logic)
             try {
                 const settings = databaseService.getSettings();
                 if (settings) {
-                    // 1. Configure Drive Keys
-                    if (settings.drive_client_id && settings.drive_client_secret) {
-                        googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
-                    }
-
-                    // 2. Hydrate Tokens
-                    if (settings.drive_tokens) {
-                        try {
-                            googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
-                        } catch (e) {
-                            console.error('Failed to parse drive tokens', e);
-                        }
-                    }
-
-                    // 3. Configure Local Backup
-                    if (settings.local_backup_path) {
-                        backupService.setLocalBackupPath(settings.local_backup_path);
-                    }
-
-                    // 4. Start Scheduler (Mandatory)
-                    backupService.initAutomatedBackup();
+                    if (settings.drive_client_id && settings.drive_client_secret) googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
+                    if (settings.drive_tokens) googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+                    if (settings.local_backup_path) backupService.initAutomatedBackup();
                 }
             } catch (e) {
-                console.error('[Main] Failed to init settings/backup services:', e);
-            }
-
-            return { success: true, user: result.user };
-        } else {
-            if (result.error === 'ACCESS_DENIED') {
-                return { success: false, error: 'Access Denied: Account is disabled.' };
             }
             return { success: false, error: 'INVALID_CREDENTIALS' };
         }
@@ -587,7 +549,7 @@ ipcMain.handle('db:saveSettings', async (_, settings) => {
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
 
-    const result = await databaseService.saveSettings(settings);
+    const result = databaseService.saveSettings(settings);
 
     // Update Backup Schedule if changed
     if (settings.backup_schedule) {
@@ -725,7 +687,7 @@ ipcMain.handle('drive:authenticate', async (_, { clientId, clientSecret }) => {
 ipcMain.handle('drive:disconnect', async () => {
     try {
         googleDriveService.setCredentials(null);
-        await databaseService.saveSettings({ drive_tokens: '' });
+        databaseService.saveSettings({ drive_tokens: '' });
         return { success: true };
     } catch (e: any) {
         console.error('Drive disconnect failed', e);

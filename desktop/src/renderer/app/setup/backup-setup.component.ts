@@ -122,9 +122,9 @@ export class BackupSetupComponent implements OnInit {
   driveClientSecret = '';
   cloudBackupTime = '13:00';
 
-  isElectron = !!(window as any).electron;
-  private dataService = inject(DataService);
-  private authService = inject(AuthService);
+  isElectron = !!(globalThis as any).electron;
+  private readonly dataService = inject(DataService);
+  private readonly authService = inject(AuthService);
 
   constructor(private ngZone: NgZone) { }
 
@@ -159,7 +159,7 @@ export class BackupSetupComponent implements OnInit {
 
   async selectPath() {
     try {
-      const path = await window.electron.backup.selectPath();
+      const path = await (globalThis as any).electron.backup.selectPath();
       if (path) {
         this.ngZone.run(() => this.localPath = path);
       }
@@ -213,7 +213,7 @@ export class BackupSetupComponent implements OnInit {
 
       if (this.driveClientId) {
         // Attempt auth flow if they added creds
-        window.electron.drive.authenticate({
+        (globalThis as any).electron.drive.authenticate({
           clientId: this.driveClientId,
           clientSecret: this.driveClientSecret
         });

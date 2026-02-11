@@ -33,8 +33,8 @@ describe('DatabaseService', () => {
     });
 
     describe('migrate', () => {
-        it('should execute schema creation queries', () => {
-            service.migrate();
+        it('should execute schema creation queries', async () => {
+            await service.migrate();
             // Expect multiple exec calls for tables
             expect(mockDb.exec).toHaveBeenCalled();
             const calls = mockDb.exec.mock.calls.map((c: any) => c[0]);
@@ -43,17 +43,17 @@ describe('DatabaseService', () => {
             expect(calls.some((sql: string) => sql.includes('CREATE TABLE IF NOT EXISTS visits'))).toBe(true);
         });
 
-        it('should handle existing column errors gracefully during migration', () => {
+        it('should handle existing column errors gracefully during migration', async () => {
             mockDb.exec.mockImplementationOnce(() => { }).mockImplementationOnce(() => { throw new Error('duplicate column'); });
-            expect(() => service.migrate()).not.toThrow();
+            expect(async () => await service.migrate()).not.toThrow();
         });
 
-        it('should perform VACUUM INTO backup for file-based databases', () => {
+        it('should perform VACUUM INTO backup for file-based databases', async () => {
             mockDb.name = 'test.db'; // Simulate file-based DB
-            const fs = require('fs');
+            const fs = require('node:fs');
             vi.spyOn(fs, 'existsSync').mockReturnValue(false); // No existing backup
 
-            service.migrate();
+            await service.migrate();
 
             expect(mockDb.prepare).toHaveBeenCalledWith('VACUUM INTO ?');
             expect(mockStatement.run).toHaveBeenCalledWith('test.db.bak');

@@ -254,7 +254,7 @@ export const MIGRATIONS = [
                 'local_backup_path TEXT'
             ];
             cols.forEach(col => {
-                try { db.exec(`ALTER TABLE settings ADD COLUMN ${col}`); } catch (e) { }
+                try { db.exec(`ALTER TABLE settings ADD COLUMN ${col}`); } catch (e) { console.debug(`[Migration] Column ${col} might already exist.`); }
             });
         }
     },
@@ -262,14 +262,14 @@ export const MIGRATIONS = [
         version: 5,
         up: (db: any) => {
             console.log('Running Migration v5 (Backup Schedule)...');
-            try { db.exec(`ALTER TABLE settings ADD COLUMN backup_schedule TEXT DEFAULT '13:00'`); } catch (e) { }
+            try { db.exec(`ALTER TABLE settings ADD COLUMN backup_schedule TEXT DEFAULT '13:00'`); } catch (e) { console.debug('[Migration] backup_schedule column might already exist.'); }
         }
     },
     {
         version: 6,
         up: (db: any) => {
             console.log('Running Migration v6 (Cloud Backup Schedule)...');
-            try { db.exec(`ALTER TABLE settings ADD COLUMN cloud_backup_schedule TEXT DEFAULT '13:00'`); } catch (e) { }
+            try { db.exec(`ALTER TABLE settings ADD COLUMN cloud_backup_schedule TEXT DEFAULT '13:00'`); } catch (e) { console.debug('[Migration] cloud_backup_schedule column might already exist.'); }
         }
     }
 ];
