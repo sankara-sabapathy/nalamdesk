@@ -425,9 +425,12 @@ ipcMain.handle('auth:login', async (event, credentials) => {
                     if (settings.local_backup_path) backupService.initAutomatedBackup();
                 }
             } catch (e) {
+                console.error('Failed to configure services for user', e);
             }
-            return { success: false, error: 'INVALID_CREDENTIALS' };
+            return { success: true, user: result.user };
         }
+
+        return { success: false, error: 'INVALID_CREDENTIALS' };
 
     } catch (error: any) {
         console.error('Login failed:', error);
