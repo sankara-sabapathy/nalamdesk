@@ -153,8 +153,8 @@ import { AuthService } from '../../services/auth.service';
       [title]="dialogService.options().title"
       [message]="dialogService.options().message"
       [icon]="dialogService.options().icon ?? true"
-      (confirm)="dialogService.confirm()"
-      (cancel)="dialogService.close()"
+      (confirmDialog)="dialogService.confirm()"
+      (cancelDialog)="dialogService.close()"
       (isOpenChange)="!$event ? dialogService.close() : null">
       
       <div actions class="flex gap-2 w-full justify-end">

@@ -1,4 +1,4 @@
-import { Component, NgZone } from '@angular/core';
+import { Component, NgZone, OnInit } from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -76,13 +76,13 @@ import { AuthService } from '../services/auth.service';
   `,
   styles: []
 })
-export class LoginComponent {
+export class LoginComponent implements OnInit {
   username = '';
   password = '';
   error = '';
   isLoading = false;
   localIp = '';
-  isElectron = !!(window as any).electron;
+  isElectron = !!(globalThis as any).electron;
 
   constructor(
     private router: Router,

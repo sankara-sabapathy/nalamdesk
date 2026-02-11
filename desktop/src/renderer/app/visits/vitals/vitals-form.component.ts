@@ -66,7 +66,7 @@ export class VitalsFormComponent implements OnInit {
     @Input() patientId: number | null = null;
     @Input() visitId: number | null = null;
 
-    @Output() close = new EventEmitter<void>();
+    @Output() closeDialog = new EventEmitter<void>();
     @Output() save = new EventEmitter<any>();
 
     get bmi(): string {
@@ -103,7 +103,7 @@ export class VitalsFormComponent implements OnInit {
     }
 
     cancel() {
-        this.close.emit();
+        this.closeDialog.emit();
     }
 
     async saveVitals() {

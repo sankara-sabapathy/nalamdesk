@@ -13,6 +13,13 @@ describe('LoginComponent', () => {
     let mockAuthService: any;
 
     beforeEach(() => {
+        // Mock window.electron
+        (window as any).electron = {
+            utils: {
+                getLocalIp: vi.fn().mockResolvedValue('192.168.1.10')
+            }
+        };
+
         mockRouter = { navigate: vi.fn() };
         // NgZone mock that simply executes the function immediately
         mockNgZone = { run: vi.fn((fn) => fn()) };

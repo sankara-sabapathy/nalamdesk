@@ -1,4 +1,4 @@
-import { Component, NgZone } from '@angular/core';
+import { Component, OnInit, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -181,7 +181,7 @@ import { jsPDF } from 'jspdf';
     </div>
   `
 })
-export class SetupComponent {
+export class SetupComponent implements OnInit {
   step = 1;
 
   password = '';
@@ -206,7 +206,7 @@ export class SetupComponent {
 
   async checkRecovery() {
     // Only electron has recovery capability
-    if ((window as any).electron) {
+    if ((globalThis as any).electron) {
       try {
         const status = await (window as any).electron.getRecoveryStatus();
         this.ngZone.run(() => {

@@ -343,7 +343,7 @@ export class SettingsComponent implements OnInit {
       errors.push('Mobile number must be exactly 10 digits.');
     }
 
-    if (user.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
+    if (user.email && !/^[^\s@]{1,64}@[^\s@]{1,253}\.[^\s@]{1,63}$/.test(user.email)) {
       errors.push('Invalid email format.');
     }
 

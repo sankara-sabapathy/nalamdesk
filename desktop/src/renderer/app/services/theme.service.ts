@@ -12,7 +12,7 @@ export class ThemeService {
         // This ensures CSS variables are available from the start
         if (typeof document !== 'undefined') {
             const saved = localStorage.getItem('theme') || 'light';
-            document.documentElement.setAttribute('data-theme', saved);
+            document.documentElement.dataset['theme'] = saved;
             this.currentTheme.set(saved);
         }
     }
@@ -20,7 +20,7 @@ export class ThemeService {
     setTheme(theme: string) {
         this.currentTheme.set(theme);
         if (typeof document !== 'undefined') {
-            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.dataset['theme'] = theme;
             localStorage.setItem('theme', theme);
         }
     }

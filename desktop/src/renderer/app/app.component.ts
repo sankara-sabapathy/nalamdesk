@@ -19,7 +19,5 @@ import { BackupSetupComponent } from './setup/backup-setup.component';
 export class AppComponent {
   // Inject ThemeService so it runs at app startup (sets `data-theme`).
   // Without this, DaisyUI theme tokens can look inconsistent depending on environment defaults.
-  constructor(private themeService: ThemeService) {
-    void this.themeService;
-  }
+  constructor(private _themeService: ThemeService) { }
 }

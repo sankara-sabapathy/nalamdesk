@@ -16,11 +16,7 @@ export default defineConfig({
     test: {
         globals: true,
         environment: 'jsdom',
-        poolOptions: {
-            threads: {
-                singleThread: true
-            }
-        },
+
         setupFiles: [path.resolve(__dirname, 'src/test-setup.ts')],
         include: ['src/renderer/**/*.spec.ts'],
         reporters: ['default'],

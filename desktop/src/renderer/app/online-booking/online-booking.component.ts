@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CloudService } from '../services/cloud.service';
@@ -97,7 +97,7 @@ import { PatientService } from '../services/patient.service';
     </div>
   `
 })
-export class OnlineBookingComponent implements OnInit {
+export class OnlineBookingComponent implements OnInit, OnDestroy {
   activeTab: 'requests' | 'availability' = 'requests';
   requests: any[] = [];
 
@@ -111,11 +111,8 @@ export class OnlineBookingComponent implements OnInit {
   // State Sets
   publishedSlots: Set<string> = new Set(); // Slots currently in DB (Green)
   selectedSlots: Set<string> = new Set();  // Slots currently selected (Blue/Green)
-  // Logic: 
-  // In published & selected -> Green (Active)
-  // In published & !selected -> Red (Marked for Removal)
-  // !published & selected -> Blue (New)
-  // !published & !selected -> Gray (Available)
+
+  private refreshInterval: any;
 
   constructor(public cloud: CloudService, private patientService: PatientService) {
     this.generateTimeSlots();
@@ -125,7 +122,13 @@ export class OnlineBookingComponent implements OnInit {
   async ngOnInit() {
     await this.loadRequests();
     // Poll every 30s locally for UI updates
-    setInterval(() => this.loadRequests(), 30000);
+    this.refreshInterval = setInterval(() => this.loadRequests(), 30000);
+  }
+
+  ngOnDestroy() {
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+    }
   }
 
   setCalendarLimits() {

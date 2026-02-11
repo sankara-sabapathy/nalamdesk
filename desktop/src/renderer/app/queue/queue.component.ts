@@ -136,7 +136,7 @@ import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
       
       <!-- Vitals Modal -->
       <app-vitals-form *ngIf="showVitalsModal" 
-        (close)="closeVitalsModal()" 
+        (closeDialog)="closeVitalsModal()" 
         (save)="onVitalsSaved($event)"
         [patientId]="selectedPatientIdForVitals">
       </app-vitals-form>

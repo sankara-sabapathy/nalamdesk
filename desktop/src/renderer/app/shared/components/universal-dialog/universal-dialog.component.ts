@@ -80,8 +80,8 @@ export class UniversalDialogComponent implements OnChanges, OnDestroy {
   @Input() showDefaultActions = true;
 
   @Output() isOpenChange = new EventEmitter<boolean>();
-  @Output() confirm = new EventEmitter<void>();
-  @Output() cancel = new EventEmitter<void>();
+  @Output() confirmDialog = new EventEmitter<void>();
+  @Output() cancelDialog = new EventEmitter<void>();
 
   animateIn = false;
 
@@ -129,7 +129,7 @@ export class UniversalDialogComponent implements OnChanges, OnDestroy {
     setTimeout(() => {
       // Do NOT mutate @Input directly
       this.isOpenChange.emit(false);
-      this.cancel.emit();
+      this.cancelDialog.emit();
     }, 200); // Wait for transition
   }
 
@@ -138,7 +138,7 @@ export class UniversalDialogComponent implements OnChanges, OnDestroy {
   }
 
   onConfirm() {
-    this.confirm.emit();
+    this.confirmDialog.emit();
     this.close();
   }
 }

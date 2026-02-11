@@ -270,7 +270,7 @@ ipcMain.handle('auth:setup', async (event, { password, clinicDetails, adminDetai
         await databaseService.migrate();
 
         // 4. Save Settings
-        await databaseService.saveSettings(clinicDetails);
+        databaseService.saveSettings(clinicDetails);
 
         // 5. Create Admin User
         // We pass password here, but remember, Auth is now decoupled from DB Key.
@@ -358,6 +358,34 @@ async function tryUnlockDatabase(password: string): Promise<string | null> {
     }
 }
 
+function initializeServices(settings: any): void {
+    try {
+        if (settings?.drive_client_id && settings?.drive_client_secret) {
+            googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
+        }
+        if (settings?.drive_tokens) {
+            googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
+        }
+        if (settings?.local_backup_path || settings?.drive_tokens) {
+            backupService.initAutomatedBackup();
+        }
+    } catch (e) {
+        console.error('Failed to configure services', e);
+    }
+}
+
+async function handleAdminLogin(password: string): Promise<{ success: boolean; user?: any; error?: string } | null> {
+    const user = await databaseService.getUserByUsername('admin');
+    if (!user) return null;
+
+    const argon2 = await import('argon2');
+    if (!await argon2.verify(user.password, password)) return null;
+
+    sessionService.setUser(user);
+    initializeServices(databaseService.getSettings());
+    return { success: true, user };
+}
+
 ipcMain.handle('auth:login', async (event, credentials) => {
     try {
         const { username, password } = credentials;
@@ -370,63 +398,27 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         // 2. Check if DB is open
         const db = securityService.getDb();
         if (!db) {
-            // Unlock failed (INVALID_PASSWORD)
-            // If user is Admin, they MUST be able to unlock it.
-            if (username === 'admin') {
-                return { success: false, error: 'INVALID_CREDENTIALS' };
-            } else {
-                return { success: false, error: 'SYSTEM_LOCKED' };
-            }
+            return username === 'admin'
+                ? { success: false, error: 'INVALID_CREDENTIALS' }
+                : { success: false, error: 'SYSTEM_LOCKED' };
         }
 
         databaseService.setDb(db);
 
-        // 3. Validate User against DB
+        // 3. Admin fast path
         if (username === 'admin') {
-            const user = await databaseService.getUserByUsername('admin');
-            if (user) {
-                // Verify admin password against DB too (optional but good for consistency)
-                const argon2 = await import('argon2');
-                if (await argon2.verify(user.password, password)) {
-                    sessionService.setUser(user);
-
-                    // Configure Drive & Backup for Admin
-                    const settings = databaseService.getSettings();
-                    if (settings) {
-                        try {
-                            if (settings.drive_client_id && settings.drive_client_secret) {
-                                googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
-                            }
-                            if (settings.drive_tokens) {
-                                googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
-                                backupService.initAutomatedBackup();
-                            }
-                        } catch (e) { console.error('Failed to configure services for admin', e); }
-                    }
-                    return { success: true, user };
-                }
-            }
-            // If admin DB user not found or password mismatch (but vault unlocked? weird state)
-            // Fallthrough to standard validation
+            const adminResult = await handleAdminLogin(password);
+            if (adminResult) return adminResult;
+            // Fallthrough to standard validation if admin user missing from DB
         }
 
+        // 4. Standard user validation
         console.log(`[Auth] Validating user: ${username}`);
         const result = await databaseService.validateUser(username, password);
 
         if (result.success && result.user) {
             sessionService.setUser(result.user);
-
-            // Initialize Backup & Drive Services (shared logic)
-            try {
-                const settings = databaseService.getSettings();
-                if (settings) {
-                    if (settings.drive_client_id && settings.drive_client_secret) googleDriveService.configureCredentials(settings.drive_client_id, settings.drive_client_secret);
-                    if (settings.drive_tokens) googleDriveService.setCredentials(JSON.parse(settings.drive_tokens));
-                    if (settings.local_backup_path) backupService.initAutomatedBackup();
-                }
-            } catch (e) {
-                console.error('Failed to configure services for user', e);
-            }
+            initializeServices(databaseService.getSettings());
             return { success: true, user: result.user };
         }
 
