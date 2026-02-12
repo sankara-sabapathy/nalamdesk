@@ -1,0 +1,138 @@
+@import "ag-grid-community/styles/ag-grid.css";
+@import "ag-grid-community/styles/ag-theme-quartz.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: theme('colors.base-200');
+    color: theme('colors.base-content');
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: theme('colors.slate.300');
+    border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background-color: theme('colors.slate.600');
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: theme('colors.slate.400');
+}
+
+/* Custom Scrollbar */
+
+@layer utilities {
+
+    /* Used by dropdown menus (e.g. avatar menu) */
+    .shadow-menu {
+        @apply shadow-lg shadow-black/5 border border-base-200;
+    }
+
+
+    /* Used on Dashboard root container */
+    .animate-fade-in-up {
+        animation: fade-in-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+}
+
+@keyframes fade-in-up {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 10px, 0);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+/* AG Grid Custom Theme - Nalam Style */
+:root {
+    --ag-header-background-color: #ffffff;
+    /* pure white header */
+    --ag-row-hover-color: #f8fafc;
+    /* slate-50 - very subtle */
+    --ag-selected-row-background-color: #eff6ff;
+    /* blue-50 */
+    --ag-odd-row-background-color: #ffffff;
+    --ag-background-color: #ffffff;
+    --ag-font-family: 'Inter', sans-serif;
+    --ag-font-size: 14px;
+    /* Increased from 13px */
+    --ag-header-foreground-color: #374151;
+    /* gray-700 - darker for contrast */
+    --ag-secondary-foreground-color: #6b7280;
+    /* gray-500 */
+    --ag-row-border-color: #e2e8f0;
+    /* slate-200 */
+    --ag-cell-horizontal-padding: 24px;
+    /* More spacious */
+    --ag-header-column-separator-display: none;
+    --ag-input-focus-border-color: #3b82f6;
+    /* blue-500 */
+    --ag-borders: solid 1px;
+    --ag-border-color: #e2e8f0;
+}
+
+/* Hide the watermark for Community version */
+.ag-watermark {
+    display: none !important;
+}
+
+.ag-header-cell-text {
+    font-weight: 600;
+    text-transform: none;
+    /* Removed Uppercase for modern feel */
+    letter-spacing: normal;
+    font-size: 13px;
+    color: #111827;
+    /* gray-900 */
+}
+
+/* Add bottom border to header to separate from content */
+.ag-header {
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+/* AG Grid Global Overrides - Force Vertical Centering (Moved from styles.css) */
+.ag-cell,
+.ag-cell-value {
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* Ensure React containers (if any, though we use Angular) or custom templates also align */
+.ag-react-container {
+    display: flex !important;
+    align-items: center !important;
+    height: 100%;
+}

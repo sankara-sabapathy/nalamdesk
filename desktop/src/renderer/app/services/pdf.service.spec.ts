@@ -1,0 +1,150 @@
+/**
+ * @vitest-environment jsdom
+ */
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+
+// Hoist the mock object so it's accessible in both factory and tests
+const { mockDoc, mockAutoTable } = vi.hoisted(() => {
+    const doc = {
+        setFontSize: vi.fn(),
+        setTextColor: vi.fn(),
+        text: vi.fn(),
+        setDrawColor: vi.fn(),
+        line: vi.fn(),
+        save: vi.fn(),
+        lastAutoTable: { finalY: 100 }
+    };
+    return {
+        mockDoc: doc,
+        mockAutoTable: vi.fn()
+    };
+});
+
+// Mock jsPDF and autoTable
+vi.mock('jspdf', () => {
+    return {
+        default: class {
+            constructor() {
+                return mockDoc;
+            }
+        }
+    };
+});
+
+vi.mock('jspdf-autotable', () => ({
+    default: mockAutoTable
+}));
+
+import { PdfService } from './pdf.service';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+describe('PdfService', () => {
+    let service: PdfService;
+
+    beforeEach(() => {
+        service = new PdfService();
+        vi.clearAllMocks();
+        // Reset properties if needed
+        mockDoc.lastAutoTable.finalY = 100;
+        // mockDoc methods are spies, clearAllMocks clears them
+    });
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    describe('generatePrescription', () => {
+        const mockVisit = {
+            date: '2026-01-15T10:00:00Z',
+            diagnosis: 'Common Cold',
+            prescription: [
+                { medicine: 'Paracetamol', dosage: '500mg', frequency: '3x/day', duration: '5 days', instruction: 'After food' },
+                { medicine: 'Cough Syrup', dosage: '5ml', frequency: '2x/day', duration: '3 days', instruction: 'Before sleep' }
+            ]
+        };
+
+        const mockPatient = {
+            name: 'John Doe',
+            age: 35,
+            gender: 'Male'
+        };
+
+        const mockDoctor = {
+            name: 'Dr. Smith',
+            specialty: 'General Medicine',
+            license_number: 'MED12345'
+        };
+
+        it('should create a new jsPDF document', async () => {
+            // We can't easily spy on constructor, but we can verify methods are called on the instance
+            await service.generatePrescription(mockVisit, mockPatient, mockDoctor);
+            // expect(jsPDF).toHaveBeenCalled(); // Removed as it's a class now
+            expect(mockDoc.setFontSize).toHaveBeenCalled();
+        });
+
+        it('should set doctor header info', async () => {
+            await service.generatePrescription(mockVisit, mockPatient, mockDoctor);
+            expect(mockDoc.text).toHaveBeenCalledWith('Dr. Smith', 14, 20);
+            expect(mockDoc.text).toHaveBeenCalledWith('General Medicine', 14, 26);
+            expect(mockDoc.text).toHaveBeenCalledWith('License: MED12345', 14, 30);
+        });
+
+        it('should use fallback values for missing doctor info', async () => {
+            await service.generatePrescription(mockVisit, mockPatient, {});
+            expect(mockDoc.text).toHaveBeenCalledWith('NalamDesk Clinic', 14, 20);
+            expect(mockDoc.text).toHaveBeenCalledWith('General Practice', 14, 26);
+            expect(mockDoc.text).toHaveBeenCalledWith('License: N/A', 14, 30);
+        });
+
+        it('should add patient info', async () => {
+            await service.generatePrescription(mockVisit, mockPatient, mockDoctor);
+            expect(mockDoc.text).toHaveBeenCalledWith('Patient: John Doe', 14, 45);
+            expect(mockDoc.text).toHaveBeenCalledWith('Age/Gender: 35 / Male', 14, 50);
+        });
+
+        it('should add diagnosis', async () => {
+            await service.generatePrescription(mockVisit, mockPatient, mockDoctor);
+            expect(mockDoc.text).toHaveBeenCalledWith('Diagnosis:', 14, 65);
+            expect(mockDoc.text).toHaveBeenCalledWith('Common Cold', 14, 70);
+        });
+
+        it('should use "Review" as fallback when diagnosis is missing', async () => {
+            await service.generatePrescription({ ...mockVisit, diagnosis: '' }, mockPatient, mockDoctor);
+            expect(mockDoc.text).toHaveBeenCalledWith('Review', 14, 70);
+        });
+
+        it('should call autoTable with prescription data', async () => {
+            await service.generatePrescription(mockVisit, mockPatient, mockDoctor);
+            expect(mockAutoTable).toHaveBeenCalled(); // Check autoTable mock directly
+            const atCall = (mockAutoTable as any).mock.calls[0];
+            expect(atCall[1].body.length).toBe(2);
+            expect(atCall[1].body[0][0]).toBe('Paracetamol');
+            expect(atCall[1].head[0]).toEqual(['Medicine', 'Dosage', 'Frequency', 'Duration', 'Instruction']);
+        });
+
+        it('should handle empty prescription array', async () => {
+            await service.generatePrescription({ ...mockVisit, prescription: [] }, mockPatient, mockDoctor);
+            expect(mockAutoTable).toHaveBeenCalled();
+            const atCall = (mockAutoTable as any).mock.calls[0];
+            expect(atCall[1].body.length).toBe(0);
+        });
+
+        it('should handle null prescription', async () => {
+            await service.generatePrescription({ ...mockVisit, prescription: null }, mockPatient, mockDoctor);
+            expect(mockAutoTable).toHaveBeenCalled();
+            const atCall = (mockAutoTable as any).mock.calls[0];
+            expect(atCall[1].body.length).toBe(0);
+        });
+
+        it('should save the PDF with patient name', async () => {
+            await service.generatePrescription(mockVisit, mockPatient, mockDoctor);
+            expect(mockDoc.save).toHaveBeenCalledWith(expect.stringContaining('Prescription-John Doe-'));
+        });
+
+        it('should draw a separator line', async () => {
+            await service.generatePrescription(mockVisit, mockPatient, mockDoctor);
+            expect(mockDoc.line).toHaveBeenCalledWith(14, 35, 196, 35);
+        });
+    });
+});

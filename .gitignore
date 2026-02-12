@@ -1,75 +1,58 @@
-# See http://help.github.com/ignore-files/ for more about ignoring files.
-
-# Compiled output
-dist/
-tmp/
-out-tsc/
-bazel-out/
-
 # Node
 node_modules/
+npm-debug.log
+yarn-error.log
+dist/
+build/
+release/
 
-# IDEs and editors
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
 .idea/
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
+*.swp
+*.swo
 
-# Visual Studio Code
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-.history/*
-
-# Miscellaneous
-.angular/
-.sass-cache/
-connect.lock
-coverage/
-libpeerconnection.log
-testem.log
-typings/
-
-# System files
-.DS_Store
+# OS
 Thumbs.db
+.DS_Store
 
-# Build logs
-output.txt
-
-# release artifacts
-/release
-
-# Local Database
+# Application Data (Ignore Local DBs and Backups)
 *.db
-*.db-shm
-*.db-wal
-/data
-
-
-# Test reports and artifacts
-/playwright-report
-/test-results
-/html
-
-# Logs and outputs
-*.log
-test_output.txt
-tsc_output.txt
-
-# Scripts
-fix-images.js
-debug_client_db.js
-debug_db_check.js
-debug_db_encrypted.js
-get_db_key.js
-
-# Crash Reports and Backups
-nalamdesk-crash-report-*.json
+*.db-journal
+*.sqlite
+*.sqlite3
 *.bak
-test-results*.json
+*.log
+desktop/nalamdesk.db
+desktop/nalamdesk-test.db
+cloud/api/nalamdesk.db
+
+# Test Coverage
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Angular
+.angular/
+
+# Temporary/Debug Files
+test_output.txt
+final_test_output.txt
+test_log.txt
+git-status.txt
+*_output.txt
+*_log.txt
+nalamdesk/
+desktop/nalamdesk/
+desktop/html/

@@ -1,40 +1,65 @@
 # NalamDesk 🏥
 
-**NalamDesk** is a secure, offline-first Clinic Management System designed for doctors who prioritize data privacy. Built with a "Zero-Knowledge" architecture, it ensures that medical data is encrypted locally and accessible only to you.
+**NalamDesk** is a privacy-focused Medical Practice Management System that works offline-first (Desktop) with optional Cloud Sync.
 
-![License](https://img.shields.io/badge/license-AGPLv3-blue.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
+## Architecture
+The project is split into two domains:
 
-## 📚 Documentation
+1.  **Desktop App** (`/desktop`): The core Electron application running locally. Stores data in SQLite.
+2.  **[Cloud Platform](./cloud/README.md)** (`/cloud`): The remote infrastructure (API + Web) for syncing and patient access.
 
-*   **[User Guide](USER_GUIDE.md):** For Doctors & Clinic Staff. (Features, Settings, Online Booking)
-*   **[Developer Guide](DEVELOPER_GUIDE.md):** For Contributors. (Architecture, Setup, Sync Protocol)
+## Desktop Development Setup 💻
 
-## ✨ Key Highlights
+Follow these steps to set up the development environment from a clean repository.
 
-*   **🔒 Zero-Knowledge Security:** AES-256 Encryption with Argon2id. Your password is the key. (Implementation uses a random per-installation salt for robust security; older vaults will need migration).
-*   **⚡ Offline-First:** Works perfectly without internet.
-*   **☁️ Hybrid Cloud Sync:** Optional "Online Booking" module that securely syncs appointments to your offline desktop (Self-Hostable on AWS/Docker).
-*   **🛡️ Robust Security:** Advanced Role-Based Access Control (RBAC) and automated encrypted backups.
-*   **🚀 Modern Stack:** Electron, Angular v17+, SQLite, Node.js.
+### Prerequisites
+- **Node.js**: LTS version (v18+ recommended).
+- **Git**: For version control.
+- **Windows Build Tools**: Required for compiling native modules like `better-sqlite3`.
+    - Install via admin PowerShell: `npm install --global --production windows-build-tools`
+    - OR install "Desktop development with C++" workload via Visual Studio Installer.
 
-## 🚀 Quick Start
+### Setup Instructions
 
-1.  **Install:**
+1.  **Clone the Repository**
+    ```bash
+    git clone https://github.com/sankara-sabapathy/nalamdesk.git
+    cd nalamdesk/desktop
+    ```
+
+2.  **Install Dependencies**
+    This will also trigger `electron-builder install-app-deps` to recompile native modules for Electron.
     ```bash
     npm install
     ```
-2.  **Run:**
+
+3.  **Run the Application**
+    This command compiles CSS, starts the Angular renderer, and launches Electron.
     ```bash
     npm start
     ```
-3.  **Build:**
-    ```bash
-    npm run pack
-    ```
 
-## ⚠️ Security Warning
-**Do not lose your Vault Password.** We cannot recover it for you.
+### Troubleshooting
+- **Missing Styles/Tailwind**:
+    - If the UI looks unstyled, manually rebuild the CSS:
+      ```bash
+      npm run build:css
+      ```
+- **Native Module Errors (`better-sqlite3`)**:
+    - Ensure you have the Windows Build Tools installed.
+    - Re-run `npm run postinstall` to rebuild modules against the Electron header files.
+- **Database**:
+    - A local SQLite database `nalamdesk.db` is automatically created in the `desktop` directory (dev) or `%APPDATA%` (prod) on first run.
 
-## 📄 License
-AGPLv3 License - see [LICENSE](LICENSE).
+## Cloud Deployment
+Deployment is managed via Terraform in `cloud/infrastructure`.
+```bash
+cd cloud/infrastructure
+terraform init
+terraform apply
+```
+
+## Documentation
+## Documentation
+See `cloud/documentation` for full architectural details.
+See **[Testing Strategy](./cloud/documentation/docs/developer-guide/testing-strategy.md)** for detailed Testing Architecture.
