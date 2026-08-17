@@ -4,6 +4,7 @@ import { RouterOutlet, RouterModule, Router } from '@angular/router';
 import { UniversalDialogComponent } from '../../shared/components/universal-dialog/universal-dialog.component';
 import { DialogService } from '../../shared/services/dialog.service';
 import { AuthService } from '../../services/auth.service';
+import { RuntimeService } from '../../services/runtime.service';
 
 @Component({
   selector: 'app-main-layout',
@@ -39,12 +40,12 @@ import { AuthService } from '../../services/auth.service';
           <div class="flex-none gap-4 px-4">
              <!-- Theme Toggle (Simplified for now) -->
                 <!-- Local IP Indicator (Enterprise Style) -->
-                 <div *ngIf="localIp" class="hidden md:flex items-center gap-2 bg-blue-50/50 px-3 py-1.5 rounded-full border border-blue-100 hover:bg-blue-50 transition-colors group">
+                 <div *ngIf="runtime.lanAccessUrl" class="hidden md:flex items-center gap-2 bg-blue-50/50 px-3 py-1.5 rounded-full border border-blue-100 hover:bg-blue-50 transition-colors group">
                     <span class="relative flex h-2 w-2">
                       <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                       <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                     </span>
-                    <span class="font-mono text-xs text-blue-800 font-semibold tracking-wide">http://{{localIp}}:3000</span>
+                    <span class="font-mono text-xs text-blue-800 font-semibold tracking-wide">{{ runtime.lanAccessUrl }}</span>
                     
                     <!-- Copy Button -->
                     <button class="btn btn-circle btn-xs btn-ghost text-blue-400 hover:text-blue-700 hover:bg-blue-100/50 min-h-0 h-5 w-5 ml-1" 
@@ -195,34 +196,24 @@ export class MainLayoutComponent implements OnInit {
     public router: Router,
     public dialogService: DialogService,
     private authService: AuthService,
-    private ngZone: NgZone
+    private ngZone: NgZone,
+    public runtime: RuntimeService
   ) {
     this.currentUser = this.authService.getUser();
   }
 
   ngOnInit() {
     if (!!(globalThis as any).electron) {
-      this.loadLocalIp();
+      this.runtime.init();
     }
   }
 
-  localIp = '';
   isCopied = false;
-  async loadLocalIp() {
-    try {
-      const ip = await (globalThis as any).electron.utils.getLocalIp();
-      this.ngZone.run(() => {
-        this.localIp = ip;
-      });
-    } catch (e) {
-      console.error('Failed to load local IP', e);
-    }
-  }
 
   copyIp() {
-    if (!this.localIp) return;
+    if (!this.runtime.lanAccessUrl) return;
 
-    const textToCopy = `http://${this.localIp}:3000`;
+    const textToCopy = this.runtime.lanAccessUrl;
 
     // 1. Try Electron IPC (Reliable)
     if ((globalThis as any).electron && (globalThis as any).electron.clipboard) {

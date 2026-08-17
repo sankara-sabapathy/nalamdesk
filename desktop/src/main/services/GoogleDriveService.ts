@@ -1,11 +1,12 @@
 import { google } from 'googleapis';
-import * as http from 'http';
-import * as url from 'url';
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
 import * as fs from 'fs';
+import { getApiPort } from '../../shared/runtime-config';
 
-// Dynamic credentials configured via Settings
-const REDIRECT_URI = 'http://localhost:3000/oauth2callback';
+function getRedirectUri(): string {
+    const port = getApiPort(app.isPackaged);
+    return `http://localhost:${port}/oauth2callback`;
+}
 
 export class GoogleDriveService {
     private oauth2Client: any = null;
@@ -24,7 +25,7 @@ export class GoogleDriveService {
             this.oauth2Client = new google.auth.OAuth2(
                 this.clientId,
                 this.clientSecret,
-                REDIRECT_URI
+                getRedirectUri()
             );
             this.drive = google.drive({ version: 'v3', auth: this.oauth2Client });
         }
@@ -45,71 +46,29 @@ export class GoogleDriveService {
         return !!this.tokens && !!this.oauth2Client;
     }
 
-    async authenticate(mainWindow: BrowserWindow): Promise<boolean> {
+    async authenticate(
+        _mainWindow: BrowserWindow,
+        waitForCallback: () => Promise<string>
+    ): Promise<boolean> {
         if (!this.oauth2Client) {
             throw new Error('Google Drive Client ID and Secret not configured.');
         }
 
-        return new Promise((resolve, reject) => {
-            const authUrl = this.oauth2Client.generateAuthUrl({
-                access_type: 'offline',
-                scope: ['https://www.googleapis.com/auth/drive.file'],
-            });
-
-            const server = http.createServer(async (req, res) => {
-                try {
-                    if (req.url!.indexOf('/oauth2callback') > -1) {
-                        const qs = new url.URL(req.url!, 'http://localhost:3000').searchParams;
-                        const code = qs.get('code');
-
-                        res.end('Authentication successful! You can close this window.');
-                        server.close();
-
-                        if (code) {
-                            const { tokens } = await this.oauth2Client.getToken(code);
-                            this.setCredentials(tokens);
-                            resolve(true);
-                        } else {
-                            reject(new Error('No code found'));
-                        }
-                    }
-                } catch (e) {
-                    reject(e);
-                }
-            });
-
-            server.on('error', (e: any) => {
-                if (e.code === 'EADDRINUSE') {
-                    reject(new Error('Port 3000 is occupied. Please stop other processes (like dev servers) on port 3000.'));
-                } else {
-                    reject(e);
-                }
-            });
-
-            server.listen(3000, () => {
-                // Open the auth URL in the default browser (loopback)
-                require('electron').shell.openExternal(authUrl);
-            });
-
-            // Timeout after 60 seconds to prevent infinite loading
-            const timeout = setTimeout(() => {
-                server.close();
-                reject(new Error('Authentication timed out. Please try again.'));
-            }, 60000);
-
-            // Allow server to close and clear timeout on success
-            const originalClose = server.close.bind(server);
-            server.close = (cb?: (err?: Error) => void) => {
-                clearTimeout(timeout);
-                return originalClose(cb);
-            };
+        const authUrl = this.oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: ['https://www.googleapis.com/auth/drive.file'],
         });
+
+        await shell.openExternal(authUrl);
+        const code = await waitForCallback();
+        const { tokens } = await this.oauth2Client.getToken(code);
+        this.setCredentials(tokens);
+        return true;
     }
 
     private async getOrCreateBackupFolder(): Promise<string> {
         if (!this.tokens) throw new Error('Not authenticated');
 
-        // Check if folder exists
         const q = "mimeType = 'application/vnd.google-apps.folder' and name = 'NalamDesk Backups' and trashed = false";
         const res = await this.drive.files.list({
             q: q,
@@ -121,7 +80,6 @@ export class GoogleDriveService {
             return res.data.files[0].id;
         }
 
-        // Create folder if not exists
         const fileMetadata = {
             name: 'NalamDesk Backups',
             mimeType: 'application/vnd.google-apps.folder'
@@ -138,9 +96,6 @@ export class GoogleDriveService {
     async uploadFile(filePath: string, name: string) {
         if (!this.tokens) throw new Error('Not authenticated');
 
-        if (!this.tokens) throw new Error('Not authenticated');
-
-        // Ensure token is valid/refreshed
         await this.oauth2Client.getAccessToken();
 
         const folderId = await this.getOrCreateBackupFolder();
@@ -167,8 +122,6 @@ export class GoogleDriveService {
     async listBackups() {
         if (!this.tokens) throw new Error('Not authenticated');
 
-        // We need to find the folder first to list its contents
-        // Optimization: We could store folderId in settings, but for now lookup is safer
         try {
             const folderId = await this.getOrCreateBackupFolder();
 
@@ -199,7 +152,7 @@ export class GoogleDriveService {
                 .on('end', () => {
                     resolve(true);
                 })
-                .on('error', (err: any) => {
+                .on('error', (err: unknown) => {
                     reject(err);
                 })
                 .pipe(dest);

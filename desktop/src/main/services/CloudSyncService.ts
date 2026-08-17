@@ -1,7 +1,7 @@
 import { DatabaseService } from './DatabaseService';
 import log from 'electron-log';
+import { getCloudApiUrl } from '../../shared/runtime-config';
 
-const API_URL = process.env['CLOUD_API_URL'] || 'http://127.0.0.1:3001/api/v1'; // Use IP to avoid resolution issues
 const APP_SECRET = 'nalam_build_secret_v1'; // Must match Server
 
 export class CloudSyncService {
@@ -31,7 +31,7 @@ export class CloudSyncService {
 
     async onboard(clinicName: string, city: string) {
         try {
-            const response = await fetch(`${API_URL}/onboard`, {
+            const response = await fetch(`${getCloudApiUrl()}/onboard`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -93,7 +93,7 @@ export class CloudSyncService {
         }
 
         try {
-            await fetch(`${API_URL}/slots`, {
+            await fetch(`${getCloudApiUrl()}/slots`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -116,7 +116,7 @@ export class CloudSyncService {
         }
 
         try {
-            const url = `${API_URL}/slots/${settings.cloud_clinic_id}?date=${date}`;
+            const url = `${getCloudApiUrl()}/slots/${settings.cloud_clinic_id}?date=${date}`;
             log.info(`[Cloud] Fetching slots from: ${url}`);
 
             const response = await fetch(url, {
@@ -154,7 +154,7 @@ export class CloudSyncService {
                 return;
             }
 
-            const response = await fetch(`${API_URL}/sync`, {
+            const response = await fetch(`${getCloudApiUrl()}/sync`, {
                 method: 'GET',
                 headers: {
                     'x-clinic-id': settings.cloud_clinic_id,
@@ -214,7 +214,7 @@ export class CloudSyncService {
 
             // Ack processed messages
             if (processedIds.length > 0) {
-                await fetch(`${API_URL}/ack`, {
+                await fetch(`${getCloudApiUrl()}/ack`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

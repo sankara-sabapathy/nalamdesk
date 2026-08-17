@@ -70,6 +70,8 @@ declare global {
             };
             utils: {
                 openExternal: (url: string) => Promise<void>;
+                getLocalIp: () => Promise<string>;
+                getRuntimeInfo: () => Promise<{ localIp: string; apiPort: number; isDev: boolean; appName: string }>;
             };
         };
     }

@@ -1,10 +1,9 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../environments/environment';
 
-// In production, this Angular app is served by the same server hosting the API.
-// So relative path works perfectly.
-const API_BASE = 'http://localhost:3001/api/v1'; // Local Dev API
+const API_BASE = environment.cloudApiBase;
 
 export interface Clinic {
     id: string;

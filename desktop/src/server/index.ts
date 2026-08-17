@@ -1,16 +1,21 @@
 
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-// Load Env BEFORE importing services that might use it
+import { loadDevelopmentEnv } from '../shared/load-env';
+
+loadDevelopmentEnv();
+// Standalone server mode may also load a local .env in cwd
 dotenv.config();
 
 import Database from 'better-sqlite3-multiple-ciphers';
 
 import { DatabaseService } from '../main/services/DatabaseService';
 import { ApiServer } from './app';
+import { PROD_API_PORT, DEV_API_PORT } from '../shared/runtime-config';
 
-const PORT_RAW = parseInt(process.env['PORT'] || '3000', 10);
-const PORT = (Number.isFinite(PORT_RAW) && PORT_RAW > 0 && PORT_RAW < 65536) ? PORT_RAW : 3000;
+const DEFAULT_PORT = process.env['NODE_ENV'] === 'production' ? PROD_API_PORT : DEV_API_PORT;
+const PORT_RAW = parseInt(process.env['PORT'] || String(DEFAULT_PORT), 10);
+const PORT = (Number.isFinite(PORT_RAW) && PORT_RAW > 0 && PORT_RAW < 65536) ? PORT_RAW : DEFAULT_PORT;
 const HOST = process.env['HOST'] || '0.0.0.0';
 const DB_PATH = process.env['DB_PATH'] || 'nalamdesk.db';
 

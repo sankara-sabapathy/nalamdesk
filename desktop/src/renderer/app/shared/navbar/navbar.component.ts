@@ -4,6 +4,7 @@ import { Router, RouterModule } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DataService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { RuntimeService } from '../../services/runtime.service';
 
 @Component({
   // ... (omitted)
@@ -38,12 +39,12 @@ import { AuthService } from '../../services/auth.service';
           
           <div class="flex items-center gap-4">
              <div class="hidden md:flex items-center gap-4 text-sm">
-                 <div *ngIf="localIp" class="flex items-center gap-2 bg-blue-700/50 px-3 py-1 rounded-full border border-blue-500/30">
+                 <div *ngIf="runtime.lanAccessUrl" class="flex items-center gap-2 bg-blue-700/50 px-3 py-1 rounded-full border border-blue-500/30">
                     <span class="relative flex h-2 w-2">
                       <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                       <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                     </span>
-                    <span class="font-mono text-xs text-blue-100 font-medium">http://{{localIp}}:3000</span>
+                    <span class="font-mono text-xs text-blue-100 font-medium">{{ runtime.lanAccessUrl }}</span>
                  </div>
 
                  <div class="text-right">
@@ -112,12 +113,12 @@ export class NavbarComponent implements OnInit {
   selectedDoctorId: number | null = null;
   isMobileMenuOpen = false;
 
-  localIp = '';
   isElectron = !!(window as any).electron;
 
   currentUser: any = null;
   private dataService: DataService = inject(DataService);
   private authService: AuthService = inject(AuthService);
+  runtime: RuntimeService = inject(RuntimeService);
 
   constructor(private router: Router, private ngZone: NgZone) { }
 
@@ -129,20 +130,7 @@ export class NavbarComponent implements OnInit {
     }
 
     if (this.isElectron) {
-      this.loadLocalIp();
-    }
-  }
-
-  async loadLocalIp() {
-    try {
-      console.log('[Navbar] Loading local IP...');
-      const ip = await (window as any).electron.utils.getLocalIp();
-      console.log('[Navbar] Local IP received:', ip);
-      this.ngZone.run(() => {
-        this.localIp = ip;
-      });
-    } catch (e) {
-      console.error('Failed to load local IP', e);
+      this.runtime.init();
     }
   }
 

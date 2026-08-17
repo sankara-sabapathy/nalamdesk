@@ -6,8 +6,10 @@ import { DatabaseService } from '../main/services/DatabaseService';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
+import * as http from 'node:http';
+import { loadDevelopmentEnv } from '../shared/load-env';
 
-// Load env vars if present (e.g. in standalone mode)
+loadDevelopmentEnv();
 dotenv.config();
 
 if (process.env['NODE_ENV'] === 'production' && !process.env['JWT_SECRET']) {
@@ -36,10 +38,15 @@ export class ApiServer {
     private dbService: DatabaseService;
     private staticPath: string;
     private _started = false;
+    private oauthResolver: ((code: string) => void) | null = null;
+    private oauthRejecter: ((err: Error) => void) | null = null;
+    private oauthTimeout: ReturnType<typeof setTimeout> | null = null;
+    private devUiProxyUrl?: string;
 
-    constructor(dbService: DatabaseService, staticPath: string) {
+    constructor(dbService: DatabaseService, staticPath: string, devUiProxyUrl?: string) {
         this.dbService = dbService;
         this.staticPath = staticPath;
+        this.devUiProxyUrl = devUiProxyUrl;
         this.fastify = Fastify({ logger: true });
     }
 
@@ -51,8 +58,8 @@ export class ApiServer {
                     ? process.env['ALLOWED_ORIGINS'].split(',')
                     : [];
 
-                // Allow all in Dev if no specific list provided
-                if (process.env['NODE_ENV'] === 'development' && allowedOrigins.length === 0) {
+                // Allow all in dev (Electron npm start or NODE_ENV=development)
+                if ((this.devUiProxyUrl || process.env['NODE_ENV'] === 'development') && allowedOrigins.length === 0) {
                     callback(null, { origin: true });
                     return;
                 }
@@ -67,14 +74,36 @@ export class ApiServer {
         });
 
         console.log(`[API Server] Serving static files from: ${this.staticPath}`);
+        if (this.devUiProxyUrl) {
+            console.log(`[API Server] Dev LAN UI proxy → ${this.devUiProxyUrl}`);
+        }
 
-        this.fastify.register(fastifyStatic, {
-            root: this.staticPath,
-            prefix: '/',
-        });
+        if (!this.devUiProxyUrl) {
+            this.fastify.register(fastifyStatic, {
+                root: this.staticPath,
+                prefix: '/',
+            });
+        }
 
         // API Routes
         this.fastify.post('/api/auth/login', this.handleLogin.bind(this));
+
+        // Google Drive OAuth callback (same port as API — avoids a second listener)
+        this.fastify.get('/oauth2callback', async (request, reply) => {
+            const code = (request.query as { code?: string }).code;
+            reply.type('text/html').send('Authentication successful! You can close this window.');
+
+            if (code && this.oauthResolver) {
+                this.clearOAuthWait();
+                this.oauthResolver(code);
+                return;
+            }
+
+            if (this.oauthRejecter) {
+                this.clearOAuthWait();
+                this.oauthRejecter(new Error('No authorization code received'));
+            }
+        });
 
         // Protected Routes
         this.fastify.register(async (instance) => {
@@ -82,12 +111,63 @@ export class ApiServer {
             instance.post('/api/ipc/:method', this.handleIpcCall.bind(this));
         });
 
-        // SPA Fallback
-        this.fastify.setNotFoundHandler((req, reply) => {
-            if (req.method === 'GET' && !req.url.startsWith('/api')) {
+        // SPA Fallback (prod: index.html; dev: proxy to ng serve for LAN access)
+        this.fastify.setNotFoundHandler(async (req, reply) => {
+            if (req.method === 'GET' && !req.url.startsWith('/api') && !req.url.startsWith('/oauth2callback')) {
+                if (this.devUiProxyUrl) {
+                    return this.proxyToDevUi(req, reply);
+                }
                 return reply.sendFile('index.html');
             }
             return reply.code(404).send({ message: 'Route ' + req.method + ':' + req.url + ' not found', error: 'Not Found', statusCode: 404 });
+        });
+    }
+
+    /** In dev, LAN clients hit :3002 but UI is served by ng on :4200 — proxy GET requests. */
+    private async proxyToDevUi(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+        if (!this.devUiProxyUrl) {
+            reply.code(404).send({ error: 'Not Found' });
+            return;
+        }
+
+        const target = new URL(request.url, this.devUiProxyUrl);
+
+        await new Promise<void>((resolve) => {
+            const proxyReq = http.request(
+                {
+                    hostname: target.hostname,
+                    port: target.port,
+                    path: `${target.pathname}${target.search}`,
+                    method: request.method,
+                    headers: {
+                        ...request.headers,
+                        host: target.host,
+                    },
+                },
+                (proxyRes) => {
+                    reply.status(proxyRes.statusCode ?? 502);
+                    for (const [key, value] of Object.entries(proxyRes.headers)) {
+                        if (value !== undefined) {
+                            reply.header(key, value);
+                        }
+                    }
+                    reply.send(proxyRes);
+                    resolve();
+                }
+            );
+
+            proxyReq.on('error', (err) => {
+                console.error('[API Server] Dev UI proxy error:', err.message);
+                if (!reply.sent) {
+                    reply.code(502).send({
+                        error: 'Dev UI server not ready',
+                        hint: 'Wait for ng serve on port 4200, then refresh',
+                    });
+                }
+                resolve();
+            });
+
+            proxyReq.end();
         });
     }
 
@@ -107,6 +187,28 @@ export class ApiServer {
             console.error('[API Server] Failed to start:', err);
             throw err;
         }
+    }
+
+    /** Resolves when Google redirects to /oauth2callback on this API server. */
+    waitForOAuthCallback(timeoutMs = 60_000): Promise<string> {
+        this.clearOAuthWait();
+        return new Promise((resolve, reject) => {
+            this.oauthResolver = resolve;
+            this.oauthRejecter = reject;
+            this.oauthTimeout = setTimeout(() => {
+                this.clearOAuthWait();
+                reject(new Error('Authentication timed out. Please try again.'));
+            }, timeoutMs);
+        });
+    }
+
+    private clearOAuthWait(): void {
+        if (this.oauthTimeout) {
+            clearTimeout(this.oauthTimeout);
+            this.oauthTimeout = null;
+        }
+        this.oauthResolver = null;
+        this.oauthRejecter = null;
     }
 
     // Middleware: Auth

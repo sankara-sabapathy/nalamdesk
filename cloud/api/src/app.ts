@@ -3,7 +3,9 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import dotenv from 'dotenv';
 import path from 'path';
+import { loadDevelopmentEnv } from './load-env';
 
+loadDevelopmentEnv();
 dotenv.config();
 
 const server = Fastify({
@@ -31,7 +33,7 @@ server.get('/health', async (request, reply) => {
 
 const start = async () => {
     try {
-        const rawPort = process.env.PORT || '3001';
+        const rawPort = process.env.NALAMDESK_CLOUD_API_PORT || process.env.PORT || '3001';
         const port = parseInt(rawPort, 10);
 
         if (Number.isNaN(port) || port <= 0 || port > 65535) {

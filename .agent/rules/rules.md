@@ -14,7 +14,7 @@ NalamDesk is a **Hybrid Medical Practice Management System** that combines priva
 - **Logic**: 
   - Main Process (`src/main`): Handles OS integration, SQLite DB access, Google Drive Backups, and Cloud Sync.
   - Renderer (`src/renderer`): Angular UI.
-  - Local Server (`src/server`): Embedded Fastify server for local device access (optional).
+  - Local Server (`src/server`): Fastify — API + LAN browser access (prod: serves `dist`; dev: proxies UI to ng serve).
 
 ### ☁️ Cloud Platform
 - **Location**: `cloud/`
@@ -51,9 +51,9 @@ NalamDesk is a **Hybrid Medical Practice Management System** that combines priva
 ## 3. Critical Rules ⚠️
 1.  **Process Hygiene**: Always KILL `node`, `git`, `npm` processes before performing directory operations on Windows to avoid file locks.
 2.  **Stateless Cloud**: The Cloud API (`cloud/api`) MUST NOT rely on local file storage. It uses ephemeral containers. State is in SQLite (Desktop) or Sync Payload.
-3.  **Database Path**: 
-    - Prod: `app.getPath('userData')/nalamdesk.db`
-    - Dev: `desktop/nalamdesk.db` (Relative path: `../../nalamdesk.db` from dist).
+3.  **Dev vs Prod isolation** (defaults in repo-root `.env.development`; override via `.env.local`):
+    - **DB**: `userData/nalamdesk.db` — prod `NalamDesk/`, dev `NalamDesk-Dev/` (not `desktop/nalamdesk.db`).
+    - **Ports**: 3000 installed API · 3001 cloud API · 3002 dev API · 4200 ng serve. Dev and installed app may run together.
 4.  **Secrets**: NEVER commit `.env` or `credentials.json`.
 5.  **Sync Logic**: If Cloud returns `401` or `404` (Clinic Not Found), the Desktop App MUST self-heal (reset cloud settings) to prevent orphaned states.
 
@@ -61,16 +61,17 @@ NalamDesk is a **Hybrid Medical Practice Management System** that combines priva
 - **Start Desktop**: `cd desktop && npm start`
 - **Build Desktop**: `cd desktop && npm run dist:win`
 - **Deploy Cloud**: `cd cloud/infrastructure && terraform apply`
-- **Deploy Cloud**: `cd cloud/infrastructure && terraform apply`
 
 ## 5. Architecture Clarification (Desktop vs Cloud) 🌐
 - **Distinct Applications**: The `desktop` application (Electron) and `cloud/web` application are **distinct entities**.
-    - **Desktop**: Local-first, runs on SQLite, uses IPC for communication.
-    - **Cloud Web**: Separate Angular app hosted on S3, communicates via API, has its own authentication and state.
+    - **Desktop**: Local-first, SQLite, Electron window uses IPC.
+    - **LAN browser** (tablet/phone on clinic Wi‑Fi): hits Fastify on API port, JWT via `/api/auth/login` — not IPC.
+    - **Cloud Web**: Separate Angular app on S3, remote API, own auth.
 - **Authentication**:
-    - **Desktop Auth**: Unlocks local SQLite DB via Master Password / Key Wrapping.
-    - **Cloud Auth**: Uses stateless JWT/API tokens (Future Implementation).
-    - **Do NOT conflate them**: Changes to Desktop auth (local DB) do not automatically apply to Cloud Web auth (remote API).
+    - **Desktop (Electron)**: Unlocks local SQLite via Master Password / Key Wrapping.
+    - **LAN browser**: JWT from Fastify (same port as API).
+    - **Cloud Web**: Stateless JWT/API tokens (remote).
+    - **Do NOT conflate them**.
 
 ## 6. SonarQube Code Quality Standards 🔍
 
