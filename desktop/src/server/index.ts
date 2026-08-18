@@ -1,12 +1,5 @@
 
 import * as path from 'path';
-import * as dotenv from 'dotenv';
-import { loadDevelopmentEnv } from '../shared/load-env';
-
-loadDevelopmentEnv();
-// Standalone server mode may also load a local .env in cwd
-dotenv.config();
-
 import Database from 'better-sqlite3-multiple-ciphers';
 
 import { DatabaseService } from '../main/services/DatabaseService';

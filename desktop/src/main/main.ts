@@ -150,7 +150,7 @@ async function createWindow() {
                 : path.join(app.getAppPath(), 'build/icon.png'),
             show: !isDev,
             webPreferences: {
-                nodeIntegration: true,
+                nodeIntegration: false,
                 contextIsolation: true,
                 preload: path.join(__dirname, 'preload.js'),
             },

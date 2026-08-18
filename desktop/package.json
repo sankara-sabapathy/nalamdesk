@@ -12,8 +12,8 @@
     "dev": "npm start",
     "start": "npm run build:main && npm run build:css && concurrently \"npm run watch:css\" \"npm run start:renderer\" \"npm run watch:main\" \"wait-on dist/main/main.js http://localhost:4200 && npm run start:electron:watch\"",
     "start:renderer": "ng serve --open=false",
-    "start:electron": "env -u ELECTRON_RUN_AS_NODE tsc -p tsconfig.main.json && env -u ELECTRON_RUN_AS_NODE electron dist/main/main.js",
-    "start:electron:watch": "nodemon --watch dist/main --exec \"env -u ELECTRON_RUN_AS_NODE electron dist/main/main.js\"",
+    "start:electron": "tsc -p tsconfig.main.json && node scripts/run-electron.js",
+    "start:electron:watch": "nodemon --watch dist/main --exec \"node scripts/run-electron.js\"",
     "watch:main": "tsc -p tsconfig.main.json --watch",
     "watch:css": "tailwindcss -i src/tailwind.css -o src/styles.css --watch",
     "build:main": "tsc -p tsconfig.main.json",
@@ -31,7 +31,7 @@
     "dist:linux": "npm run build && electron-builder --linux",
     "dist:mac": "npm run build && electron-builder --mac",
     "build:server": "tsc -p tsconfig.server.json",
-    "start:server": "npm run build:server && node dist/server/index.js"
+    "start:server": "npm run build:server && node dist/server/bootstrap.js"
   },
   "private": true,
   "build": {

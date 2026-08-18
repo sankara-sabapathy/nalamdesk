@@ -1,5 +1,5 @@
 export const environment = {
   production: false,
-  // Keep in sync with repo-root .env.development (NALAMDESK_CLOUD_API_PORT / CLOUD_API_URL)
-  cloudApiBase: 'http://localhost:3001/api/v1',
+  // Relative path; ng serve proxies /api to cloud API (see proxy.conf.json / NALAMDESK_CLOUD_API_PORT)
+  cloudApiBase: '/api/v1',
 };

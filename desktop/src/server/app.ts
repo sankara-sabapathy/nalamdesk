@@ -93,28 +93,33 @@ export class ApiServer {
         this.fastify.get('/oauth2callback', async (request, reply) => {
             const query = request.query as { code?: string; state?: string };
             const { code, state } = query;
-            reply.type('text/html').send('Authentication successful! You can close this window.');
 
             const resolve = this.oauthResolver;
             const reject = this.oauthRejecter;
             const expectedState = this.expectedOAuthState;
-            this.clearOAuthWait();
 
             if (!resolve && !reject) {
+                reply.code(400).type('text/html').send('No pending authentication request.');
                 return;
             }
 
             if (!expectedState || state !== expectedState) {
-                reject?.(new Error('Invalid OAuth state'));
+                reply.code(400).type('text/html').send('Invalid OAuth state. Please try again.');
                 return;
             }
 
-            if (code && resolve) {
-                resolve(code);
+            const capturedResolve = resolve;
+            const capturedReject = reject;
+            this.clearOAuthWait();
+
+            reply.type('text/html').send('Authentication successful! You can close this window.');
+
+            if (code && capturedResolve) {
+                capturedResolve(code);
                 return;
             }
 
-            reject?.(new Error('No authorization code received'));
+            capturedReject?.(new Error('No authorization code received'));
         });
 
         // Protected Routes
@@ -224,7 +229,12 @@ export class ApiServer {
 
     /** Resolves when Google redirects to /oauth2callback on this API server. */
     waitForOAuthCallback(expectedState: string, timeoutMs = 60_000): Promise<string> {
+        const existingReject = this.oauthRejecter;
         this.clearOAuthWait();
+        if (existingReject) {
+            existingReject(new Error('A new authentication attempt was started.'));
+        }
+
         this.expectedOAuthState = expectedState;
         return new Promise((resolve, reject) => {
             this.oauthResolver = resolve;
