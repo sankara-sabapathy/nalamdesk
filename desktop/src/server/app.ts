@@ -41,6 +41,7 @@ export class ApiServer {
     private oauthResolver: ((code: string) => void) | null = null;
     private oauthRejecter: ((err: Error) => void) | null = null;
     private oauthTimeout: ReturnType<typeof setTimeout> | null = null;
+    private expectedOAuthState: string | null = null;
     private devUiProxyUrl?: string;
 
     constructor(dbService: DatabaseService, staticPath: string, devUiProxyUrl?: string) {
@@ -90,19 +91,30 @@ export class ApiServer {
 
         // Google Drive OAuth callback (same port as API — avoids a second listener)
         this.fastify.get('/oauth2callback', async (request, reply) => {
-            const code = (request.query as { code?: string }).code;
+            const query = request.query as { code?: string; state?: string };
+            const { code, state } = query;
             reply.type('text/html').send('Authentication successful! You can close this window.');
 
-            if (code && this.oauthResolver) {
-                this.clearOAuthWait();
-                this.oauthResolver(code);
+            const resolve = this.oauthResolver;
+            const reject = this.oauthRejecter;
+            const expectedState = this.expectedOAuthState;
+            this.clearOAuthWait();
+
+            if (!resolve && !reject) {
                 return;
             }
 
-            if (this.oauthRejecter) {
-                this.clearOAuthWait();
-                this.oauthRejecter(new Error('No authorization code received'));
+            if (!expectedState || state !== expectedState) {
+                reject?.(new Error('Invalid OAuth state'));
+                return;
             }
+
+            if (code && resolve) {
+                resolve(code);
+                return;
+            }
+
+            reject?.(new Error('No authorization code received'));
         });
 
         // Protected Routes
@@ -133,6 +145,15 @@ export class ApiServer {
         const target = new URL(request.url, this.devUiProxyUrl);
 
         await new Promise<void>((resolve) => {
+            let settled = false;
+            const finish = () => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                resolve();
+            };
+
             const proxyReq = http.request(
                 {
                     hostname: target.hostname,
@@ -152,9 +173,21 @@ export class ApiServer {
                         }
                     }
                     reply.send(proxyRes);
-                    resolve();
+                    finish();
                 }
             );
+
+            proxyReq.setTimeout(30_000, () => {
+                proxyReq.destroy();
+                console.error('[API Server] Dev UI proxy timed out');
+                if (!reply.sent) {
+                    reply.code(502).send({
+                        error: 'Dev UI proxy timed out',
+                        hint: 'Wait for ng serve, then refresh',
+                    });
+                }
+                finish();
+            });
 
             proxyReq.on('error', (err) => {
                 console.error('[API Server] Dev UI proxy error:', err.message);
@@ -164,7 +197,7 @@ export class ApiServer {
                         hint: 'Wait for ng serve on port 4200, then refresh',
                     });
                 }
-                resolve();
+                finish();
             });
 
             proxyReq.end();
@@ -190,8 +223,9 @@ export class ApiServer {
     }
 
     /** Resolves when Google redirects to /oauth2callback on this API server. */
-    waitForOAuthCallback(timeoutMs = 60_000): Promise<string> {
+    waitForOAuthCallback(expectedState: string, timeoutMs = 60_000): Promise<string> {
         this.clearOAuthWait();
+        this.expectedOAuthState = expectedState;
         return new Promise((resolve, reject) => {
             this.oauthResolver = resolve;
             this.oauthRejecter = reject;
@@ -209,6 +243,7 @@ export class ApiServer {
         }
         this.oauthResolver = null;
         this.oauthRejecter = null;
+        this.expectedOAuthState = null;
     }
 
     // Middleware: Auth

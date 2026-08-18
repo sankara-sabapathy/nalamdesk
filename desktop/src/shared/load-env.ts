@@ -12,8 +12,8 @@ export function loadDevelopmentEnv(): void {
     loaded = true;
 
     const envPaths = resolveEnvFilePaths();
-    for (const envPath of envPaths) {
-        dotenv.config({ path: envPath });
+    for (let i = 0; i < envPaths.length; i++) {
+        dotenv.config({ path: envPaths[i], override: i > 0 });
     }
 }
 

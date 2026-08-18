@@ -11,11 +11,10 @@ import Database from 'better-sqlite3-multiple-ciphers';
 
 import { DatabaseService } from '../main/services/DatabaseService';
 import { ApiServer } from './app';
-import { PROD_API_PORT, DEV_API_PORT } from '../shared/runtime-config';
+import { PROD_API_PORT, DEV_API_PORT, parsePort } from '../shared/runtime-config';
 
 const DEFAULT_PORT = process.env['NODE_ENV'] === 'production' ? PROD_API_PORT : DEV_API_PORT;
-const PORT_RAW = parseInt(process.env['PORT'] || String(DEFAULT_PORT), 10);
-const PORT = (Number.isFinite(PORT_RAW) && PORT_RAW > 0 && PORT_RAW < 65536) ? PORT_RAW : DEFAULT_PORT;
+const PORT = parsePort(process.env['PORT'], DEFAULT_PORT);
 const HOST = process.env['HOST'] || '0.0.0.0';
 const DB_PATH = process.env['DB_PATH'] || 'nalamdesk.db';
 

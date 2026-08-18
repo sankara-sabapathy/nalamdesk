@@ -74,9 +74,11 @@ function parsePort(raw: string | undefined, fallback: number): number {
     if (!raw) {
         return fallback;
     }
-    const parsed = parseInt(raw, 10);
-    if (Number.isFinite(parsed) && parsed > 0 && parsed < 65536) {
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed < 65536) {
         return parsed;
     }
     return fallback;
 }
+
+export { parsePort };

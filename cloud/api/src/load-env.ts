@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 let loaded = false;
 
@@ -19,7 +19,7 @@ export function loadDevelopmentEnv(): void {
         dotenv.config({ path: devEnv });
         const localEnv = path.join(root, '.env.local');
         if (fs.existsSync(localEnv)) {
-            dotenv.config({ path: localEnv });
+            dotenv.config({ path: localEnv, override: true });
         }
         return;
     }

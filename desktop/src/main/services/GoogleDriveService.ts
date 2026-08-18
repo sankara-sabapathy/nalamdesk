@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { app, BrowserWindow, shell } from 'electron';
+import * as crypto from 'node:crypto';
 import * as fs from 'fs';
 import { getApiPort } from '../../shared/runtime-config';
 
@@ -48,19 +49,23 @@ export class GoogleDriveService {
 
     async authenticate(
         _mainWindow: BrowserWindow,
-        waitForCallback: () => Promise<string>
+        waitForCallback: (state: string) => Promise<string>
     ): Promise<boolean> {
         if (!this.oauth2Client) {
             throw new Error('Google Drive Client ID and Secret not configured.');
         }
 
+        const state = crypto.randomBytes(32).toString('hex');
+        const codePromise = waitForCallback(state);
+
         const authUrl = this.oauth2Client.generateAuthUrl({
             access_type: 'offline',
             scope: ['https://www.googleapis.com/auth/drive.file'],
+            state,
         });
 
         await shell.openExternal(authUrl);
-        const code = await waitForCallback();
+        const code = await codePromise;
         const { tokens } = await this.oauth2Client.getToken(code);
         this.setCredentials(tokens);
         return true;

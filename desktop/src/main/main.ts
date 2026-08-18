@@ -148,6 +148,7 @@ async function createWindow() {
             icon: isDev
                 ? path.join(__dirname, '../../build/icon.png')
                 : path.join(app.getAppPath(), 'build/icon.png'),
+            show: !isDev,
             webPreferences: {
                 nodeIntegration: true,
                 contextIsolation: true,
@@ -155,14 +156,21 @@ async function createWindow() {
             },
         });
 
+        if (isDev) {
+            mainWindow.once('ready-to-show', () => {
+                mainWindow?.showInactive();
+            });
+        }
+
         // Remove default menu bar completely
         mainWindow.setMenu(null);
         console.log('[Main] BrowserWindow created');
 
         if (isDev) {
-            console.log('[Main] Loading URL: http://localhost:4200');
-            await mainWindow.loadURL('http://localhost:4200');
-            mainWindow.webContents.openDevTools();
+            const devUiUrl = getDevUiProxyUrl();
+            console.log(`[Main] Loading URL: ${devUiUrl}`);
+            await mainWindow.loadURL(devUiUrl);
+            mainWindow.webContents.openDevTools({ mode: 'right', activate: false });
             console.log('[Main] URL loaded');
         } else {
             console.log(`[Main] Loading File: ${path.join(staticPath, 'index.html')}`);
@@ -182,7 +190,7 @@ function initializeApp() {
             // Skip external origins
             try {
                 const url = new URL(details.url);
-                if (url.protocol !== 'file:' && url.hostname !== 'localhost') {
+                if (url.protocol !== 'file:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
                     return callback({});
                 }
             } catch { return callback({}); }
@@ -220,7 +228,7 @@ function initializeApp() {
             }
 
             // Allow DevTools, File, and Localhost
-            if (urlObj.protocol === 'devtools:' || urlObj.protocol === 'file:' || urlObj.hostname === 'localhost') {
+            if (urlObj.protocol === 'devtools:' || urlObj.protocol === 'file:' || urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
                 return callback({ cancel: false });
             }
 
@@ -682,7 +690,7 @@ ipcMain.handle('drive:authenticate', async (_, { clientId, clientSecret }) => {
         // Configure credentials first
         googleDriveService.configureCredentials(clientId, clientSecret);
 
-        await googleDriveService.authenticate(mainWindow, () => apiServer.waitForOAuthCallback());
+        await googleDriveService.authenticate(mainWindow, (state) => apiServer.waitForOAuthCallback(state));
         const tokens = googleDriveService.getCredentials();
 
         // Save everything to settings
