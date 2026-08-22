@@ -509,6 +509,48 @@ ipcMain.handle('db:saveVisit', (_, visit) => {
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.saveVisit(visit);
 });
+ipcMain.handle('db:beginConsultation', (_, input) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.beginConsultation(input, user.id);
+});
+ipcMain.handle('db:getActiveConsultation', (_, patientId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.getActiveConsultation(patientId);
+});
+ipcMain.handle('db:saveConsultationProgress', (_, input) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.saveConsultationProgress(input, user.id);
+});
+ipcMain.handle('db:completeConsultation', (_, input) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.completeConsultation(input, user.id);
+});
+ipcMain.handle('db:postponeConsultation', (_, input) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.postponeConsultation(input, user.id);
+});
+ipcMain.handle('db:resumeConsultation', (_, input) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.resumeConsultation(input, user.id);
+});
+ipcMain.handle('db:beginNextConsultation', (_, input) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.beginNextConsultation(input, user.id);
+});
 ipcMain.handle('db:deleteVisit', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
@@ -835,6 +877,4 @@ ipcMain.handle('auth:restoreSystemBackup', async (_, backupPath) => {
         return { success: false, error: e.message };
     }
 });
-
-
 

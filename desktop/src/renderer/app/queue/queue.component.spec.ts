@@ -28,11 +28,12 @@ describe('QueueComponent', () => {
             invoke: vi.fn().mockImplementation((endpoint: string) => {
                 if (endpoint === 'getQueue') {
                     return Promise.resolve([
-                        { id: 1, patient_name: 'P1', priority: 1, status: 'waiting', check_in_time: new Date().toISOString() },
-                        { id: 2, patient_name: 'P2', priority: 2, status: 'waiting', check_in_time: new Date().toISOString() }
+                        { id: 1, patient_id: 11, patient_name: 'P1', priority: 1, status: 'waiting', check_in_time: new Date().toISOString() },
+                        { id: 2, patient_id: 22, patient_name: 'P2', priority: 2, status: 'waiting', check_in_time: new Date().toISOString() }
                     ]);
                 }
-                if (endpoint === 'updateQueueStatus') return Promise.resolve();
+                if (endpoint === 'beginConsultation') return Promise.resolve({ id: 101, patient_id: 11 });
+                if (endpoint === 'resumeConsultation') return Promise.resolve({ id: 102, patient_id: 11 });
                 return Promise.resolve(null);
             })
         };
@@ -42,6 +43,18 @@ describe('QueueComponent', () => {
         };
 
         component = new QueueComponent(mockRouter, mockDataService);
+    });
+
+    it('should resume the exact linked encounter for a postponed queue item', async () => {
+        const item = { id: 1, patient_id: 11, patient_name: 'P1', status: 'waiting', active_encounter_id: 102 };
+
+        await component.startConsult(item);
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('resumeConsultation', { encounterId: 102 });
+        expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'beginConsultation')).toBe(false);
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 11], {
+            state: { isConsulting: true, encounterId: 102, patientName: 'P1' }
+        });
     });
 
     it('should create and load queue', async () => {
@@ -56,12 +69,18 @@ describe('QueueComponent', () => {
         expect(queue.find((q: any) => q.priority === 2)?.patient_name).toBe('P2');
     });
 
-    it('should update status', async () => {
-        // Need to set initial queue state for find() to work
-        component.queue.set([{ id: 1, patient_name: 'P1' }]);
+    it('should atomically start an encounter before navigating', async () => {
+        const item = { id: 1, patient_id: 11, patient_name: 'P1' };
 
-        await component.updateStatus(1, 'completed');
-        expect(mockDataService.invoke).toHaveBeenCalledWith('updateQueueStatus', { id: 1, status: 'completed' });
+        await component.startConsult(item);
+        expect(mockDataService.invoke).toHaveBeenCalledWith('beginConsultation', expect.objectContaining({
+            patientId: 11,
+            queueEntryId: 1,
+            startRequestId: expect.any(String)
+        }));
         expect(mockDataService.invoke).toHaveBeenCalledWith('getQueue'); // Should reload
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 11], {
+            state: { isConsulting: true, encounterId: 101, patientName: 'P1' }
+        });
     });
 });

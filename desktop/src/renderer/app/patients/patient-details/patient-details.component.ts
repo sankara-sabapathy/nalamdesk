@@ -63,7 +63,7 @@ import { DatePickerComponent } from '../../shared/components/date-picker/date-pi
         </div>
         <div class="flex gap-3">
              <button *ngIf="currentUser?.role === 'admin'" (click)="deletePatient()" class="text-red-500 hover:bg-red-50 px-3 py-1 rounded text-sm font-medium transition border border-transparent hover:border-red-100">Delete Patient</button>
-             <button *ngIf="currentUser?.role === 'admin' || currentUser?.role === 'doctor'" (click)="startConsult()" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow-sm flex items-center gap-2 transition">
+             <button *ngIf="currentUser?.role === 'admin' || currentUser?.role === 'doctor'" (click)="startConsult()" [disabled]="startingConsult" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 font-bold shadow-sm flex items-center gap-2 transition disabled:opacity-50">
                 Start Consultation
              </button>
         </div>
@@ -556,8 +556,37 @@ export class PatientDetailsComponent implements OnInit {
         }
     }
 
-    startConsult() {
-        this.router.navigate(['/visit', this.patientId], { state: { isConsulting: true } });
+    startingConsult = false;
+
+    async startConsult() {
+        if (this.startingConsult) return;
+        this.startingConsult = true;
+        try {
+            let queue = await this.dataService.invoke<any[]>('getQueue');
+            let queueEntry = queue.find(item => item.patient_id === this.patientId);
+            if (!queueEntry) {
+                await this.dataService.invoke('addToQueue', { patientId: this.patientId, priority: 1 });
+                queue = await this.dataService.invoke<any[]>('getQueue');
+                queueEntry = queue.find(item => item.patient_id === this.patientId);
+            }
+            if (!queueEntry) throw new Error('Queue entry was not created');
+
+            const encounter = queueEntry.active_encounter_id
+                ? await this.dataService.invoke<any>('resumeConsultation', { encounterId: queueEntry.active_encounter_id })
+                : await this.dataService.invoke<any>('beginConsultation', {
+                    patientId: this.patientId,
+                    queueEntryId: queueEntry.id,
+                    startRequestId: globalThis.crypto?.randomUUID?.() || `consult-${Date.now()}-${Math.random()}`
+                });
+            this.router.navigate(['/visit', this.patientId], {
+                state: { isConsulting: true, encounterId: encounter.id }
+            });
+        } catch (e) {
+            console.error('Failed to start consultation', e);
+            alert('Failed to start consultation');
+        } finally {
+            this.startingConsult = false;
+        }
     }
 
     viewVisit(visit: any) {

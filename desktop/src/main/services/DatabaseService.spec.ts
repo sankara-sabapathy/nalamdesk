@@ -172,9 +172,20 @@ describe('DatabaseService', () => {
         });
 
         it('should log audit when updating queue status', () => {
-            service.updateQueueStatus(1, 'in-consult', 999);
+            service.updateQueueStatus(1, 'waiting', 999);
             // Check for Audit Log Insert
             expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO audit_logs'));
+        });
+
+        it('should reject encounter lifecycle transitions outside encounter commands', () => {
+            expect(() => service.updateQueueStatus(1, 'completed', 999))
+                .toThrow('Consultation queue transitions require an encounter command');
+        });
+    });
+    describe('Visit Management', () => {
+        it('should reject legacy insert paths that bypass encounter identity', () => {
+            expect(() => service.saveVisit({ patient_id: 1, diagnosis: 'Test' }))
+                .toThrow('New encounters must be created with beginConsultation');
         });
     });
     describe('RBAC', () => {
