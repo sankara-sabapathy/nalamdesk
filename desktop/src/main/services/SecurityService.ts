@@ -24,7 +24,8 @@ export interface RecoveryEnvelope {
 interface PendingRecoveryAck {
     protectedPayload: string;
     createdAt: string;
-    reason: 'fresh-setup' | 'legacy-migration' | 'transition-recovery';
+    reason: 'fresh-setup' | 'legacy-migration' | 'transition-recovery' | 'recovery-rotation';
+    nextRecovery?: RecoveryEnvelope;
 }
 
 export interface TransitionRecoveryEnvelope extends RecoveryEnvelope {
@@ -309,7 +310,12 @@ export class SecurityService {
         if (!this.dek) throw new Error('VAULT_LOCKED');
         const config = this.loadConfigV3();
         const recoveryCode = this.generateRecoveryCodeString();
-        config.recovery = await this.createRecoveryEnvelope(this.dek, recoveryCode, config.vaultId, config.keyVersion);
+        const nextRecovery = await this.createRecoveryEnvelope(
+            this.dek, recoveryCode, config.vaultId, config.keyVersion
+        );
+        config.pendingRecoveryAck = this.createPendingRecoveryAck(
+            recoveryCode, config.vaultId, config.keyVersion, 'recovery-rotation', nextRecovery
+        );
         this.saveConfigAtomic(config);
         return recoveryCode;
     }
@@ -340,6 +346,11 @@ export class SecurityService {
         if (!config.pendingRecoveryAck) throw new Error('NO_PENDING_RECOVERY_CODE');
         const pending = this.getPendingRecoveryCode();
         if (!pending || !this.constantTimeEqual(pending, recoveryCode)) throw new Error('INVALID_RECOVERY_ACK');
+        if (config.pendingRecoveryAck.reason === 'recovery-rotation') {
+            if (!config.pendingRecoveryAck.nextRecovery) throw new Error('PENDING_RECOVERY_ENVELOPE_MISSING');
+            this.validateRecoveryEnvelope(config.pendingRecoveryAck.nextRecovery);
+            config.recovery = config.pendingRecoveryAck.nextRecovery;
+        }
         delete config.pendingRecoveryAck;
         delete config.transitionRecovery;
         this.saveConfigAtomic(config);
@@ -818,7 +829,8 @@ export class SecurityService {
         recoveryCode: string,
         vaultId: string,
         keyVersion: number,
-        reason: PendingRecoveryAck['reason']
+        reason: PendingRecoveryAck['reason'],
+        nextRecovery?: RecoveryEnvelope
     ): PendingRecoveryAck {
         return {
             protectedPayload: this.protectContextPayload({
@@ -829,7 +841,8 @@ export class SecurityService {
                 recoveryCode
             }),
             createdAt: new Date().toISOString(),
-            reason
+            reason,
+            ...(nextRecovery ? { nextRecovery } : {})
         };
     }
 

@@ -184,15 +184,34 @@
         <div *ngIf="activeTab === 'security'" class="h-full overflow-y-auto p-4 md:p-8">
             <h2 class="text-2xl font-bold text-gray-800 mb-6">Security & Resilience</h2>
 
+            <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
+                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-800">Administrator Login Password</h3>
+                        <p class="text-sm text-gray-500 max-w-lg">Changes only the administrator sign-in credential. It does not rotate the database device key or recovery code.</p>
+                    </div>
+                    <button (click)="openLoginPasswordModal()" class="btn btn-outline w-full md:w-auto">Change Login Password</button>
+                </div>
+            </div>
+
+            <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
+                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-lg font-medium text-gray-800">This Device Key Envelope</h3>
+                        <p class="text-sm text-gray-500 max-w-lg">Re-protects the unchanged database key for this device. Login passwords and the portable recovery code remain unchanged.</p>
+                    </div>
+                    <button (click)="openDeviceRotationModal()" class="btn btn-outline w-full md:w-auto">Rotate Device Envelope</button>
+                </div>
+            </div>
+
             <!-- Recovery Code -->
             <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
                 <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div>
-                        <h3 class="text-lg font-medium text-red-600">Master Recovery Code</h3>
-                        <p class="text-sm text-gray-500 max-w-lg">Used to regain access if the admin password is lost.
-                            Store this securely offline.</p>
+                        <h3 class="text-lg font-medium text-red-600">Portable Vault Recovery Code</h3>
+                        <p class="text-sm text-gray-500 max-w-lg">Used to enrol a replacement device when its device key is unavailable. It does not reset any user's login password. Store it securely offline.</p>
                         <p class="text-xs text-red-500 mt-2 font-bold bg-red-50 inline-block px-2 py-1 rounded">⚠️
-                            Generating a new code immediately invalidates the old one.</p>
+                            The old code remains valid until you save the new code and select Done.</p>
                     </div>
                     <button (click)="openRecoveryModal()" class="btn btn-outline btn-error w-full md:w-auto">Generate
                         New Code</button>
@@ -522,24 +541,25 @@
                 </div>
             </div>
 
-            <!-- Password & Status -->
+            <!-- Credential workflow & Status -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">
-                        {{ editingUser.id ? 'Reset Password' : 'Password' }} <span *ngIf="!editingUser.id"
-                            class="text-red-500">*</span>
-                    </label>
+                    <ng-container *ngIf="!editingUser.id; else existingCredentialWorkflow">
+                    <label class="block text-sm font-medium text-gray-700">Temporary Password <span class="text-red-500">*</span></label>
                     <input [(ngModel)]="editingUser.password" type="password" placeholder="Set temporary password"
-                        #password="ngModel" [required]="!editingUser.id" minlength="4"
+                        #password="ngModel" [required]="!editingUser.id" minlength="6"
                         [class.border-red-500]="(password.invalid && (password.dirty || password.touched)) || (formSubmitted && !editingUser.id && !editingUser.password)"
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2">
-
                     <p *ngIf="password.invalid && (password.dirty || password.touched)"
                         class="text-xs text-red-500 mt-1">
-                        Min 4 characters required.
+                        Min 6 characters required.
                     </p>
-                    <p class="text-xs text-gray-500 mt-1" *ngIf="editingUser.password && editingUser.id">User will
-                        be forced to change this on next login.</p>
+                    </ng-container>
+                    <ng-template #existingCredentialWorkflow>
+                        <label class="block text-sm font-medium text-gray-700">Login Credential</label>
+                        <button *ngIf="editingUser.id !== currentUser?.id" (click)="openUserResetModal(editingUser)" type="button" class="btn btn-outline btn-sm mt-2">Reset via Dedicated Workflow</button>
+                        <p *ngIf="editingUser.id === currentUser?.id" class="text-xs text-gray-500 mt-2">Change your own password from the Security tab. Profile edits cannot change credentials.</p>
+                    </ng-template>
                 </div>
                 <div class="flex-1">
                     <label class="flex items-center gap-2 text-sm font-medium text-gray-700 mt-6 cursor-pointer">
@@ -558,6 +578,50 @@
             <button (click)="saveUser()" class="btn btn-primary">
                 {{ editingUser.id ? 'Save Changes' : 'Add User' }}
             </button>
+        </div>
+    </div>
+</div>
+
+<!-- LOGIN PASSWORD MODAL -->
+<div *ngIf="showLoginPasswordModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg p-6 w-full max-w-md">
+        <h3 class="text-xl font-bold mb-2">Change Administrator Login Password</h3>
+        <p class="text-sm text-gray-600 mb-4">This changes login authentication only. Vault key metadata is intentionally untouched.</p>
+        <input type="password" [(ngModel)]="currentLoginPassword" class="input input-bordered w-full mb-3" placeholder="Current login password">
+        <input type="password" [(ngModel)]="newLoginPassword" class="input input-bordered w-full mb-3" placeholder="New login password (minimum 6 characters)">
+        <input type="password" [(ngModel)]="confirmLoginPassword" class="input input-bordered w-full mb-4" placeholder="Confirm new login password">
+        <p *ngIf="confirmLoginPassword && newLoginPassword !== confirmLoginPassword" class="text-xs text-red-500 mb-3">Passwords do not match.</p>
+        <div class="flex justify-end gap-2">
+            <button (click)="showLoginPasswordModal = false" class="btn btn-ghost">Cancel</button>
+            <button (click)="changeLoginPassword()" class="btn btn-primary" [disabled]="!currentLoginPassword || newLoginPassword.length < 6 || newLoginPassword !== confirmLoginPassword || isLoading">Change Login Password</button>
+        </div>
+    </div>
+</div>
+
+<!-- USER PASSWORD RESET MODAL -->
+<div *ngIf="showUserResetModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg p-6 w-full max-w-md">
+        <h3 class="text-xl font-bold mb-2">Reset {{ resetTarget?.name }}'s Login Password</h3>
+        <p class="text-sm text-gray-600 mb-4">Confirm your administrator credential. The target user will be required to change the temporary password.</p>
+        <input type="password" [(ngModel)]="resetAdminPassword" class="input input-bordered w-full mb-3" placeholder="Your administrator password">
+        <input type="password" [(ngModel)]="resetTemporaryPassword" class="input input-bordered w-full mb-3" placeholder="Temporary password (minimum 6 characters)">
+        <input type="password" [(ngModel)]="resetConfirmPassword" class="input input-bordered w-full mb-4" placeholder="Confirm temporary password">
+        <div class="flex justify-end gap-2">
+            <button (click)="showUserResetModal = false" class="btn btn-ghost">Cancel</button>
+            <button (click)="resetUserPassword()" class="btn btn-primary" [disabled]="!resetAdminPassword || resetTemporaryPassword.length < 6 || resetTemporaryPassword !== resetConfirmPassword || isLoading">Set Temporary Password</button>
+        </div>
+    </div>
+</div>
+
+<!-- DEVICE ENVELOPE MODAL -->
+<div *ngIf="showDeviceRotationModal" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-lg p-6 w-full max-w-md">
+        <h3 class="text-xl font-bold mb-2">Rotate This Device Envelope</h3>
+        <p class="text-sm text-gray-600 mb-4">Confirm the administrator login password. The database key is re-protected for this device without changing it.</p>
+        <input type="password" [(ngModel)]="currentDevicePassword" class="input input-bordered w-full mb-4" placeholder="Administrator login password">
+        <div class="flex justify-end gap-2">
+            <button (click)="showDeviceRotationModal = false" class="btn btn-ghost">Cancel</button>
+            <button (click)="rotateDeviceEnvelope()" class="btn btn-primary" [disabled]="!currentDevicePassword || isLoading">Rotate Device Envelope</button>
         </div>
     </div>
 </div>
@@ -602,8 +666,9 @@
                 <button (click)="copyRecoveryCode()" class="btn btn-xs btn-outline mt-2">{{ isCopied ? 'Copied!' : 'Copy
                     to Clipboard' }}</button>
             </div>
+            <p class="text-xs text-gray-500 mb-3">Selecting Done activates this exact code and invalidates the old one. If you close the app first, the old code remains valid and this code will be shown again after the next administrator login.</p>
             <div class="flex justify-center"><button (click)="closeRecoveryModal()"
-                    class="btn btn-primary">Done</button></div>
+                    class="btn btn-primary" [disabled]="isLoading">{{ isLoading ? 'Confirming...' : 'Done' }}</button></div>
         </div>
     </div>
 </div>

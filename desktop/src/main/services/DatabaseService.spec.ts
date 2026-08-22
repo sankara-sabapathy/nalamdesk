@@ -96,6 +96,21 @@ describe('DatabaseService', () => {
             expect(mockStatement.run).toHaveBeenCalled();
         });
 
+        it.each(['admin', 'doctor'])('rejects generic password mutation for an existing %s', async username => {
+            mockStatement.get.mockReturnValue({ id: 1, username, role: username === 'admin' ? 'admin' : 'doctor' });
+            await expect(service.saveUser({
+                id: 1, username, role: username === 'admin' ? 'admin' : 'doctor', name: username,
+                password: 'malicious-change'
+            })).rejects.toThrow('GENERIC_PASSWORD_CHANGE_FORBIDDEN');
+            expect(mockDb.prepare).not.toHaveBeenCalledWith(expect.stringContaining('password = @password'));
+        });
+
+        it('does not overwrite an existing admin credential during provisioning retries', async () => {
+            mockStatement.get.mockReturnValue({ id: 1 });
+            await service.ensureAdminUser('different-password');
+            expect(mockStatement.run).not.toHaveBeenCalled();
+        });
+
         it('should validate user credentials correctly', async () => {
             mockStatement.get.mockReturnValue({
                 id: 1,

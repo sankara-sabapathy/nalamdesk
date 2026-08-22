@@ -271,5 +271,22 @@ export const MIGRATIONS = [
             console.log('Running Migration v6 (Cloud Backup Schedule)...');
             try { db.exec(`ALTER TABLE settings ADD COLUMN cloud_backup_schedule TEXT DEFAULT '13:00'`); } catch (e) { console.debug('[Migration] cloud_backup_schedule column might already exist.'); }
         }
+    },
+    {
+        version: 7,
+        up: (db: any) => {
+            console.log('Running Migration v7 (Credential Rotation Journal)...');
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS credential_rotation_journal (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    username TEXT NOT NULL,
+                    previous_hash TEXT NOT NULL,
+                    replacement_hash TEXT NOT NULL,
+                    previous_reset_required INTEGER NOT NULL DEFAULT 0,
+                    phase TEXT NOT NULL CHECK (phase IN ('prepared', 'applied')),
+                    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+            `);
+        }
     }
 ];

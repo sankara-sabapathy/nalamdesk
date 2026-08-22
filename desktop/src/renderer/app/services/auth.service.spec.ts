@@ -84,6 +84,28 @@ describe('AuthService', () => {
             expect((service.getUser() as any).password).toBeUndefined();
             expect(localStorage.getItem('nalamdesk_user')).not.toContain('$argon2id$hash');
         });
+
+        it('uses distinct IPC contracts for login, staff reset, device, and recovery rotation', async () => {
+            (window as any).electron = {
+                changeLoginPassword: vi.fn().mockResolvedValue({ success: true }),
+                resetUserPassword: vi.fn().mockResolvedValue({ success: true }),
+                rotateDeviceEnvelope: vi.fn().mockResolvedValue({ success: true }),
+                regenerateRecoveryCode: vi.fn().mockResolvedValue({ success: true, recoveryCode: 'CODE' })
+            };
+            await service.changeLoginPassword('current', 'replacement');
+            await service.resetUserPassword(2, 'admin-current', 'temporary');
+            await service.rotateDeviceEnvelope('admin-current');
+            await service.regenerateRecoveryCode('admin-current');
+
+            expect(window.electron.changeLoginPassword).toHaveBeenCalledWith({
+                currentPassword: 'current', newPassword: 'replacement'
+            });
+            expect(window.electron.resetUserPassword).toHaveBeenCalledWith({
+                targetUserId: 2, currentAdminPassword: 'admin-current', temporaryPassword: 'temporary'
+            });
+            expect(window.electron.rotateDeviceEnvelope).toHaveBeenCalledWith('admin-current');
+            expect(window.electron.regenerateRecoveryCode).toHaveBeenCalledWith('admin-current');
+        });
     });
 
     describe('login (Web Mode)', () => {

@@ -11,6 +11,9 @@ declare global {
             recover: (data: { recoveryCode: string }) => Promise<{ success: boolean; pendingRecoveryCode?: string; error?: string }>;
             acknowledgeRecoveryCode: (recoveryCode: string) => Promise<{ success: boolean }>;
             regenerateRecoveryCode: (password: string) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
+            rotateDeviceEnvelope: (currentPassword: string) => Promise<{ success: boolean; error?: string }>;
+            changeLoginPassword: (data: { currentPassword: string; newPassword: string }) => Promise<{ success: boolean; error?: string }>;
+            resetUserPassword: (data: { targetUserId: number; currentAdminPassword: string; temporaryPassword: string }) => Promise<{ success: boolean; error?: string }>;
             db: {
                 getPatients: (query: string) => Promise<any[]>;
                 savePatient: (patient: any) => Promise<any>;
@@ -29,7 +32,6 @@ declare global {
                 getUsers: () => Promise<any[]>;
                 saveUser: (user: any) => Promise<any>;
                 deleteUser: (id: number) => Promise<any>;
-                updateUserPassword: (data: any) => Promise<any>;
                 // Queue
                 getQueue: () => Promise<any[]>;
                 addToQueue: (data: { patientId: number, priority: number }) => Promise<any>;

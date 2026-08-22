@@ -79,13 +79,23 @@ export class AuthService {
         return { success: false, error: 'Not supported' };
     }
 
-    async updatePassword(username: string, newPassword: string): Promise<boolean> {
-        if (window.electron && window.electron.db) {
-            const result = await window.electron.db.updateUserPassword({ username, password: newPassword });
-            return result && result.changes > 0;
-        }
-        // TODO: Web implementation
-        return false;
+    async changeLoginPassword(currentPassword: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+        if (!window.electron) return { success: false, error: 'Not supported' };
+        return window.electron.changeLoginPassword({ currentPassword, newPassword });
+    }
+
+    async resetUserPassword(
+        targetUserId: number,
+        currentAdminPassword: string,
+        temporaryPassword: string
+    ): Promise<{ success: boolean; error?: string }> {
+        if (!window.electron) return { success: false, error: 'Not supported' };
+        return window.electron.resetUserPassword({ targetUserId, currentAdminPassword, temporaryPassword });
+    }
+
+    async rotateDeviceEnvelope(currentPassword: string): Promise<{ success: boolean; error?: string }> {
+        if (!window.electron) return { success: false, error: 'Not supported' };
+        return window.electron.rotateDeviceEnvelope(currentPassword);
     }
 
     logout() {

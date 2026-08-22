@@ -13,6 +13,9 @@ import { GoogleDriveService } from './services/GoogleDriveService';
 import { CloudSyncService } from './services/CloudSyncService';
 import { buildAuthenticatedLoginResult } from './services/AuthResult';
 import { ProvisioningService } from './services/ProvisioningService';
+import { CredentialRotationService } from './services/CredentialRotationService';
+import { verifyPersistedActiveAdmin } from './services/AdminCredentialVerifier';
+import { acknowledgeRecoveryCodeForActiveAdmin } from './services/RecoveryCodeAcknowledgement';
 import { ApiServer } from '../server/app';
 import {
     DEV_APP_NAME,
@@ -102,6 +105,7 @@ ipcMain.handle('utils:getRuntimeInfo', () => ({
 // Services
 const securityService = new SecurityService(new ElectronSafeStorageDeviceKeyStore());
 const databaseService = new DatabaseService();
+const credentialRotationService = new CredentialRotationService();
 const provisioningService = new ProvisioningService(securityService, databaseService);
 const googleDriveService = new GoogleDriveService();
 const cloudSyncService = new CloudSyncService(databaseService);
@@ -303,6 +307,8 @@ ipcMain.handle('auth:setup', async (event, { password, clinicDetails, adminDetai
         const recoveryCode = await provisioningService.provision(
             password, clinicDetails, dbPath, userDataPath
         );
+        credentialRotationService.setDb(securityService.getDb());
+        credentialRotationService.reconcileInterruptedRotation();
 
         console.log('[Auth] Setup Complete.');
         return { success: true, recoveryCode };
@@ -324,9 +330,12 @@ ipcMain.handle('auth:recover', async (event, { recoveryCode }) => {
         await securityService.recoverDevice(recoveryCode, userDataPath, dbPath);
 
         // 2. Set DB
-        databaseService.setDb(securityService.getDb());
+        const db = securityService.getDb();
+        databaseService.setDb(db);
 
         await databaseService.migrate();
+        credentialRotationService.setDb(db);
+        credentialRotationService.reconcileInterruptedRotation();
         return {
             success: true,
             pendingRecoveryCode: securityService.getPendingRecoveryCode() || undefined
@@ -340,10 +349,7 @@ ipcMain.handle('auth:recover', async (event, { recoveryCode }) => {
 ipcMain.handle('auth:regenerateRecoveryCode', async (event, { password }) => {
     try {
         const user = sessionService.getUser();
-        if (!user || user.role !== 'admin') throw new Error('Forbidden');
-        const argon2 = await import('argon2');
-        const admin = await databaseService.getUserByUsername('admin');
-        if (!admin || !password || !await argon2.verify(admin.password, password)) throw new Error('INVALID_CREDENTIALS');
+        if (!await verifyPersistedActiveAdmin(user, databaseService, password)) throw new Error('INVALID_CREDENTIALS');
 
         console.log('[Auth] Regenerating Recovery Code...');
         const recoveryCode = await securityService.regenerateRecoveryCode();
@@ -354,10 +360,47 @@ ipcMain.handle('auth:regenerateRecoveryCode', async (event, { password }) => {
     }
 });
 
-ipcMain.handle('auth:acknowledgeRecoveryCode', (_event, { recoveryCode }) => {
+ipcMain.handle('auth:rotateDeviceEnvelope', async (_event, { currentPassword }) => {
+    try {
+        const user = sessionService.getUser();
+        if (!await verifyPersistedActiveAdmin(user, databaseService, currentPassword)) {
+            throw new Error('INVALID_CREDENTIALS');
+        }
+        securityService.rotateDeviceEnvelope();
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('auth:changeLoginPassword', async (_event, { currentPassword, newPassword }) => {
+    try {
+        const user = sessionService.getUser();
+        if (!user) throw new Error('Unauthorized');
+        await credentialRotationService.changeOwnPassword(user.id, currentPassword, newPassword);
+        sessionService.setUser({ ...user, password_reset_required: 0 });
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('auth:resetUserPassword', async (_event, { targetUserId, currentAdminPassword, temporaryPassword }) => {
+    try {
+        const user = sessionService.getUser();
+        if (!user || user.role !== 'admin') throw new Error('Forbidden');
+        await credentialRotationService.resetUserPassword(
+            user.id, currentAdminPassword, targetUserId, temporaryPassword
+        );
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+});
+
+ipcMain.handle('auth:acknowledgeRecoveryCode', async (_event, { recoveryCode }) => {
     const user = sessionService.getUser();
-    if (!user || user.role !== 'admin') throw new Error('Forbidden');
-    securityService.acknowledgePendingRecoveryCode(recoveryCode);
+    acknowledgeRecoveryCodeForActiveAdmin(user, databaseService, securityService, recoveryCode);
     return { success: true };
 });
 
@@ -367,7 +410,13 @@ ipcMain.handle('clipboard:writeText', (event, text) => {
 });
 
 async function tryUnlockDatabase(legacySecret: string): Promise<{ error?: string; migrated?: boolean }> {
-    if (securityService.getDb()) return {};
+    if (securityService.getDb()) {
+        const openDb = securityService.getDb();
+        databaseService.setDb(openDb);
+        credentialRotationService.setDb(openDb);
+        credentialRotationService.reconcileInterruptedRotation();
+        return {};
+    }
 
     try {
         const userDataPath = app.getPath('userData');
@@ -383,10 +432,13 @@ async function tryUnlockDatabase(legacySecret: string): Promise<{ error?: string
             // migration. It is not part of the v3 device unlock contract.
             result = await securityService.migrateLegacy(legacySecret, dbPath, userDataPath);
         }
-        databaseService.setDb(securityService.getDb());
+        const db = securityService.getDb();
+        databaseService.setDb(db);
 
         // Ensure schema is up to date (safe idempotent)
         await databaseService.migrate();
+        credentialRotationService.setDb(db);
+        credentialRotationService.reconcileInterruptedRotation();
         return { migrated: result.migrated };
     } catch (e: any) {
         if (e.message === 'NOT_SETUP') return { error: 'SETUP_REQUIRED' };
@@ -553,7 +605,7 @@ ipcMain.handle('db:saveUser', (_, userData) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
-    return databaseService.saveUser(userData);
+    return databaseService.saveUser(userData, user.id);
 });
 ipcMain.handle('db:deleteUser', (_, id) => {
     const user = sessionService.getUser();

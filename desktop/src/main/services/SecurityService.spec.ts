@@ -153,6 +153,61 @@ describe('SecurityService v3', () => {
         expect(restarted.getPendingRecoveryCode()).toBeNull();
     });
 
+    it('keeps a regenerated recovery code device-encrypted until exact acknowledgement', async () => {
+        const service = new SecurityService(store);
+        const initialCode = await service.setup('admin-secret', dbPath, directory);
+        service.completeProvisioning();
+        service.acknowledgePendingRecoveryCode(initialCode);
+        const before = JSON.parse(fs.readFileSync(path.join(directory, 'security.json'), 'utf8'));
+        const rotatedCode = await service.regenerateRecoveryCode();
+        expect(service.getPendingRecoveryCode()).toBe(rotatedCode);
+        const pendingText = fs.readFileSync(path.join(directory, 'security.json'), 'utf8');
+        const pending = JSON.parse(pendingText);
+        expect(pendingText).not.toContain(rotatedCode);
+        expect(pending.recovery).toEqual(before.recovery);
+        expect(pending.pendingRecoveryAck.nextRecovery).toBeTruthy();
+        service.closeDb();
+
+        const restarted = new SecurityService(store);
+        await restarted.initializeDevice(dbPath, directory);
+        expect(restarted.getPendingRecoveryCode()).toBe(rotatedCode);
+        restarted.acknowledgePendingRecoveryCode(rotatedCode);
+        expect(restarted.getPendingRecoveryCode()).toBeNull();
+        expect(JSON.parse(fs.readFileSync(path.join(directory, 'security.json'), 'utf8')).recovery)
+            .not.toEqual(before.recovery);
+    });
+
+    it('preserves transition recovery until a proposed recovery rotation is activated', async () => {
+        const service = new SecurityService(store);
+        await service.setup('admin-secret', dbPath, directory);
+        service.completeProvisioning();
+        const configPath = path.join(directory, 'security.json');
+        const seeded = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        seeded.transitionRecovery = { ...seeded.recovery, purpose: 'legacy-transition' };
+        fs.writeFileSync(configPath, JSON.stringify(seeded));
+
+        const rotatedCode = await service.regenerateRecoveryCode();
+        expect(JSON.parse(fs.readFileSync(configPath, 'utf8')).transitionRecovery).toBeTruthy();
+        service.acknowledgePendingRecoveryCode(rotatedCode);
+        expect(JSON.parse(fs.readFileSync(configPath, 'utf8')).transitionRecovery).toBeUndefined();
+    });
+
+    it('preserves the old recovery and pending proposal if activation commit fails', async () => {
+        const service = new SecurityService(store);
+        await service.setup('admin-secret', dbPath, directory);
+        service.completeProvisioning();
+        const rotatedCode = await service.regenerateRecoveryCode();
+        const pendingText = fs.readFileSync(path.join(directory, 'security.json'), 'utf8');
+        vi.spyOn(service as any, 'saveConfigAtomic').mockImplementationOnce(() => {
+            throw new Error('forced activation commit failure');
+        });
+
+        expect(() => service.acknowledgePendingRecoveryCode(rotatedCode))
+            .toThrow('forced activation commit failure');
+        expect(fs.readFileSync(path.join(directory, 'security.json'), 'utf8')).toBe(pendingText);
+        expect(service.getPendingRecoveryCode()).toBe(rotatedCode);
+    });
+
     it('reconciles an already-complete provisioning journal after cleanup interruption', async () => {
         let failed = false;
         const service = new SecurityService(store, {
