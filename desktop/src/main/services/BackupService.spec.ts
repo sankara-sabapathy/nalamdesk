@@ -1,144 +1,321 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { BackupService } from './BackupService';
-import { DatabaseService } from './DatabaseService';
-import { GoogleDriveService } from './GoogleDriveService';
-import { SecurityService } from './SecurityService';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { BackupService, type BackupStep } from './BackupService';
+import { CronJob } from 'cron';
+import type { DatabaseService } from './DatabaseService';
+import type { GoogleDriveService } from './GoogleDriveService';
+import type { SecurityService, SecurityConfigV3 } from './SecurityService';
+import { MIGRATIONS } from '../schema/migrations';
 
-// Mock dependencies
-const mockDbService = {
-    logAudit: vi.fn(),
-    backupDatabase: vi.fn(),
-    getSettings: vi.fn()
-} as unknown as DatabaseService;
+const cron = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn() }));
+vi.mock('cron', () => ({ CronJob: vi.fn(function CronJob() { return { start: cron.start, stop: cron.stop }; }) }));
 
-const mockDriveService = {
-    isAuthenticated: vi.fn(),
-    uploadFile: vi.fn()
-} as unknown as GoogleDriveService;
-
-const mockSecurityService = {
-    getDbPath: vi.fn()
-} as unknown as SecurityService;
-
-// Define mocks for CronJob instance methods
-const mockStart = vi.fn();
-const mockStop = vi.fn();
-
-// Mock cron
-vi.mock('cron', () => {
-    return {
-        CronJob: vi.fn().mockImplementation(function (time, task) {
-            return {
-                start: mockStart,
-                stop: mockStop
-            };
-        })
-    };
+const envelope = {
+    algorithm: 'aes-256-gcm' as const, kdf: 'argon2id' as const,
+    kdfParams: { timeCost: 3, memoryCost: 65536, parallelism: 1, hashLength: 32 },
+    salt: '11'.repeat(16), iv: '22'.repeat(12), wrappedKey: '33'.repeat(48), aadVersion: 1 as const
+};
+const portable = { version: 3 as const, vaultId: 'vault-source', keyVersion: 1, recovery: envelope };
+const liveConfig = (): SecurityConfigV3 => ({
+    ...portable, device: { provider: 'test', protectedPayload: 'device-only' }
 });
 
-vi.mock('fs', () => ({
-    existsSync: vi.fn().mockReturnValue(true),
-    mkdirSync: vi.fn(),
-    readdirSync: vi.fn().mockReturnValue([]),
-    statSync: vi.fn().mockReturnValue({ mtimeMs: Date.now(), size: 1024 }),
-    unlinkSync: vi.fn(),
-    copyFileSync: vi.fn()
-}));
-
-// Import CronJob to check constructor calls if needed, OR just rely on instance method checks
-import { CronJob } from 'cron';
-
-describe('BackupService', () => {
-    let service: BackupService;
+describe('BackupService recoverable bundles', () => {
+    let root: string;
+    let sourceUserData: string;
+    let sourceDb: string;
+    let bundle: string;
 
     beforeEach(() => {
-        vi.clearAllMocks();
-        service = new BackupService(mockDbService, mockDriveService, mockSecurityService, '/mock/user/data');
+        root = fs.mkdtempSync(path.join(os.tmpdir(), 'nalamdesk-backup-'));
+        sourceUserData = path.join(root, 'source');
+        sourceDb = path.join(sourceUserData, 'nalamdesk-test.db');
+        bundle = path.join(root, 'portable.ndbackup');
+        fs.mkdirSync(sourceUserData, { recursive: true });
+        fs.writeFileSync(sourceDb, Buffer.from('encrypted-sqlcipher-source-data'));
+    });
+    afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
+
+    function drive(): GoogleDriveService {
+        return { isAuthenticated: vi.fn(() => false), uploadFile: vi.fn() } as unknown as GoogleDriveService;
+    }
+
+    it('preserves default scheduling and stops replaced jobs', () => {
+        const db = database(sourceDb);
+        (db.getSettings as any).mockReturnValue(null);
+        const service = new BackupService(db, drive(), sourceSecurity(), sourceUserData);
+        service.initAutomatedBackup();
+        expect(CronJob).toHaveBeenCalledWith('0 00 13 * * *', expect.any(Function));
+        expect(cron.start).toHaveBeenCalledTimes(2);
+        service.scheduleLocalBackup('14:00');
+        service.scheduleCloudBackup('15:00');
+        expect(cron.stop).toHaveBeenCalledTimes(2);
     });
 
-    describe('Scheduling', () => {
-        it('should schedule local and cloud backups on init', () => {
-            vi.mocked(mockDbService.getSettings).mockReturnValue({
-                backup_schedule: '14:00',
-                cloud_backup_schedule: '15:00'
-            } as any);
-
-            service.initAutomatedBackup();
-
-            // Check if CronJob constructor was called twice
-            expect(CronJob).toHaveBeenCalledTimes(2);
-            // Check if start was called twice
-            expect(mockStart).toHaveBeenCalledTimes(2);
-        });
-
-        it('should use default times if settings missing', () => {
-            vi.mocked(mockDbService.getSettings).mockReturnValue(null);
-
-            service.initAutomatedBackup();
-
-            expect(CronJob).toHaveBeenCalledTimes(2);
-            // Verify default cron patterns (13:00 -> 0 0 13 * * *)
-            // Note: convertToCron transforms '13:00' to '0 0 13 * * *'
-            // We can check the arguments passed to CronJob if we want to be strict, 
-            // but mocking behaviors is usually enough.
-        });
-
-        it('should stop existing local job before scheduling new one', () => {
-            service.scheduleLocalBackup('12:00');
-            service.scheduleLocalBackup('13:00');
-            expect(mockStop).toHaveBeenCalled();
-        });
-
-        it('should stop existing cloud job before scheduling new one', () => {
-            service.scheduleCloudBackup('12:00');
-            service.scheduleCloudBackup('13:00');
-            expect(mockStop).toHaveBeenCalled();
-        });
+    it('preserves configured local/cloud schedules', () => {
+        const db = database(sourceDb);
+        (db.getSettings as any).mockReturnValue({ backup_schedule: '02:30', cloud_backup_schedule: '03:45' });
+        new BackupService(db, drive(), sourceSecurity(), sourceUserData).initAutomatedBackup();
+        expect(CronJob).toHaveBeenCalledWith('0 30 02 * * *', expect.any(Function));
+        expect(CronJob).toHaveBeenCalledWith('0 45 03 * * *', expect.any(Function));
     });
 
-    describe('performBackup (Manual)', () => {
-        it('should run both local and cloud backups if configured', async () => {
-            // Mock Local Path
-            service.setLocalBackupPath('/mock/backups');
-            // Mock Drive Auth
-            vi.mocked(mockDriveService.isAuthenticated).mockReturnValue(true);
-            vi.mocked(mockSecurityService.getDbPath).mockReturnValue('/path/to/db.db');
-
-            await service.performBackup();
-
-            // Check Local Backup (DB Backup called)
-            expect(mockDbService.backupDatabase).toHaveBeenCalledWith(expect.stringContaining('nalamdesk-auto-backup'));
-
-            // Check Cloud Backup (Upload called)
-            expect(mockDriveService.uploadFile).toHaveBeenCalledWith('/path/to/db.db', expect.stringContaining('nalamdesk-cloud-backup'));
-        });
-
-        it('should skip cloud backup if not authenticated', async () => {
-            // Mock Local Path
-            service.setLocalBackupPath('/mock/backups');
-            // Mock Drive Auth False
-            vi.mocked(mockDriveService.isAuthenticated).mockReturnValue(false);
-
-            await service.performBackup();
-
-            // Check Local Backup
-            expect(mockDbService.backupDatabase).toHaveBeenCalled();
-            // Check Cloud Backup Skipped
-            expect(mockDriveService.uploadFile).not.toHaveBeenCalled();
-        });
+    it('uploads cloud independently when local bundle creation fails', async () => {
+        const db = database(sourceDb);
+        (db.backupDatabase as any).mockRejectedValue(new Error('local disk full'));
+        const cloud = { isAuthenticated: vi.fn(() => true), uploadFile: vi.fn(async () => undefined) } as unknown as GoogleDriveService;
+        const security = sourceSecurity();
+        const service = new BackupService(db, cloud, security, sourceUserData);
+        await expect(service.performBackup()).rejects.toThrow('local disk full');
+        expect(cloud.uploadFile).toHaveBeenCalledWith(sourceDb, expect.stringContaining('nalamdesk-cloud-backup-'));
     });
 
-    describe('performBackupOnQuit', () => {
-        it('should attempt both backups', async () => {
-            // Mock Local Path
-            service.setLocalBackupPath('/mock/backups');
-            vi.mocked(mockDriveService.isAuthenticated).mockReturnValue(true);
-            vi.mocked(mockSecurityService.getDbPath).mockReturnValue('/path/to/db.db');
-
-            await service.performBackupOnQuit();
-
-            expect(mockDbService.backupDatabase).toHaveBeenCalled();
-            expect(mockDriveService.uploadFile).toHaveBeenCalled();
+    it('skips cloud when unauthenticated and attempts it on quit when authenticated', async () => {
+        const db = database(sourceDb);
+        const cloud = { isAuthenticated: vi.fn(() => false), uploadFile: vi.fn(async () => undefined) } as unknown as GoogleDriveService;
+        const service = new BackupService(db, cloud, sourceSecurity(), sourceUserData);
+        await service.performBackup();
+        expect(cloud.uploadFile).not.toHaveBeenCalled();
+        (cloud.isAuthenticated as any).mockReturnValue(true);
+        await service.performBackupOnQuit();
+        expect(cloud.uploadFile).toHaveBeenCalledOnce();
+    });
+    function database(snapshotSource: string): DatabaseService {
+        return {
+            backupDatabase: vi.fn(async (destination: string) => fs.copyFileSync(snapshotSource, destination)),
+            logAudit: vi.fn(), getSettings: vi.fn(() => null), setDb: vi.fn()
+        } as unknown as DatabaseService;
+    }
+    function sourceSecurity(): SecurityService {
+        return {
+            getPortableVaultMetadata: vi.fn(() => portable),
+            getDb: vi.fn(() => ({ pragma: vi.fn(() => 6) })), getDbPath: vi.fn(() => sourceDb)
+        } as unknown as SecurityService;
+    }
+    function validator(expectedCode = 'correct-code', error?: string, schemaVersion = 6): SecurityService {
+        return {
+            installPortableVaultMetadata: vi.fn(async (metadata: any, code: string, _db: string, userData: string) => {
+                if (error || code !== expectedCode) throw new Error(error || 'INVALID_RECOVERY_CODE');
+                fs.writeFileSync(path.join(userData, 'security.json'), JSON.stringify({
+                    ...metadata, device: { provider: 'test', protectedPayload: 'new-device' }
+                }));
+            }), getDb: vi.fn(() => ({ pragma: vi.fn((name: string) => {
+                if (name === 'cipher_integrity_check') return [];
+                if (name === 'integrity_check') return [{ integrity_check: 'ok' }];
+                return schemaVersion;
+            }) })), closeDb: vi.fn()
+        } as unknown as SecurityService;
+    }
+    async function createBundle() {
+        const service = new BackupService(database(sourceDb), drive(), sourceSecurity(), sourceUserData, { appVersion: 'test' });
+        await service.createBackupBundle(bundle);
+    }
+    function targetService(options: { existing?: boolean; validatorError?: string; validatorSchema?: number; failAt?: BackupStep } = {}) {
+        const userData = path.join(root, 'target');
+        const dbPath = path.join(userData, 'nalamdesk-test.db');
+        fs.mkdirSync(userData, { recursive: true });
+        if (options.existing) {
+            fs.writeFileSync(dbPath, 'encrypted-old-live-data');
+            fs.writeFileSync(path.join(userData, 'security.json'), JSON.stringify(liveConfig()));
+        }
+        const live = {
+            getDbPath: vi.fn(() => dbPath), getDb: vi.fn(() => null), closeDb: vi.fn(),
+            initializeDevice: vi.fn(async () => ({}))
+        } as unknown as SecurityService;
+        const db = database(dbPath);
+        const committed = vi.fn();
+        const service = new BackupService(db, drive(), live, userData, {
+            createIsolatedSecurityService: () => validator('correct-code', options.validatorError, options.validatorSchema ?? 6),
+            onStep: step => { if (step === options.failAt) throw new Error(`INTERRUPTED_${step}`); },
+            onRestoreCommitted: committed
         });
+        return { service, userData, dbPath, live, db, committed };
+    }
+
+    it('writes a versioned bundle with encrypted DB, portable metadata, and no device or plaintext fields', async () => {
+        await createBundle();
+        const bytes = fs.readFileSync(bundle);
+        expect(bytes.subarray(0, 17).toString()).toBe('NALAMDESK-BACKUP\n');
+        const text = bytes.toString('utf8');
+        expect(text).toContain('nalamdesk-offline-backup');
+        expect(text).toContain('vault-source');
+        expect(text).not.toContain('device-only');
+        expect(text).not.toContain('password');
+        expect(text).not.toContain('recoveryCode');
+        expect(text).not.toContain('token');
+    });
+
+    it.each([
+        ['nested recovery secret', { ...portable, recovery: { ...envelope, recoveryCode: 'plaintext' } }],
+        ['device envelope', { ...portable, device: { protectedPayload: 'device' } }],
+        ['nested KDF plaintext', { ...portable, recovery: { ...envelope, kdfParams: { ...envelope.kdfParams, password: 'secret' } } }]
+    ])('refuses creation metadata containing a forbidden %s field', async (_label, injected) => {
+        const security = { ...sourceSecurity(), getPortableVaultMetadata: vi.fn(() => injected) } as unknown as SecurityService;
+        await expect(new BackupService(database(sourceDb), drive(), security, sourceUserData)
+            .createBackupBundle(bundle)).rejects.toThrow('BACKUP_CONTAINS_FORBIDDEN_METADATA');
+        expect(fs.existsSync(bundle)).toBe(false);
+    });
+
+    it('validates an optional transition envelope even when primary recovery metadata is valid', async () => {
+        const security = { ...sourceSecurity(), getPortableVaultMetadata: vi.fn(() => ({
+            ...portable, transitionRecovery: { ...envelope, purpose: 'wrong-purpose' }
+        })) } as unknown as SecurityService;
+        await expect(new BackupService(database(sourceDb), drive(), security, sourceUserData)
+            .createBackupBundle(bundle)).rejects.toThrow('INVALID_PORTABLE_RECOVERY_ENVELOPE');
+    });
+
+    it('restores onto a clean machine only after isolated recoverability validation', async () => {
+        await createBundle();
+        const { service, dbPath, userData, live, db, committed } = targetService();
+        const result = await service.restoreLocalBackup(bundle, 'correct-code');
+        expect(result).toMatchObject({ success: true, restartRequired: true });
+        expect(fs.readFileSync(dbPath).toString()).toBe('encrypted-sqlcipher-source-data');
+        expect(JSON.parse(fs.readFileSync(path.join(userData, 'security.json'), 'utf8')).device.protectedPayload).toBe('new-device');
+        expect(live.initializeDevice).toHaveBeenCalledOnce();
+        expect(db.setDb).toHaveBeenCalledOnce();
+        expect(committed).toHaveBeenCalledOnce();
+    });
+
+    it('rejects an incorrect recovery code without touching live files', async () => {
+        await createBundle();
+        const { service, dbPath, userData, live } = targetService({ existing: true });
+        const oldDb = fs.readFileSync(dbPath); const oldConfig = fs.readFileSync(path.join(userData, 'security.json'));
+        await expect(service.restoreLocalBackup(bundle, 'wrong')).rejects.toThrow('INVALID_RECOVERY_CODE');
+        expect(fs.readFileSync(dbPath)).toEqual(oldDb);
+        expect(fs.readFileSync(path.join(userData, 'security.json'))).toEqual(oldConfig);
+        expect(live.closeDb).not.toHaveBeenCalled();
+    });
+
+    it('rejects corruption before isolated SQLCipher validation or live mutation', async () => {
+        await createBundle();
+        const fd = fs.openSync(bundle, 'r+');
+        try { const last = fs.statSync(bundle).size - 1; fs.writeSync(fd, Buffer.from([0xff]), 0, 1, last); } finally { fs.closeSync(fd); }
+        const { service, dbPath, userData, live } = targetService({ existing: true });
+        const oldDb = fs.readFileSync(dbPath); const oldConfig = fs.readFileSync(path.join(userData, 'security.json'));
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('BACKUP_DATABASE_CHECKSUM_MISMATCH');
+        expect(fs.readFileSync(dbPath)).toEqual(oldDb); expect(fs.readFileSync(path.join(userData, 'security.json'))).toEqual(oldConfig);
+        expect(live.closeDb).not.toHaveBeenCalled();
+    });
+
+    it('rejects vault/key metadata mismatch before replacing the live pair', async () => {
+        await createBundle();
+        const { service, dbPath, userData } = targetService({ existing: true, validatorError: 'VAULT_BINDING_MISMATCH' });
+        const oldDb = fs.readFileSync(dbPath); const oldConfig = fs.readFileSync(path.join(userData, 'security.json'));
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('VAULT_BINDING_MISMATCH');
+        expect(fs.readFileSync(dbPath)).toEqual(oldDb); expect(fs.readFileSync(path.join(userData, 'security.json'))).toEqual(oldConfig);
+    });
+
+    it.each([
+        ['cipher_integrity_check', [{ cipher_integrity_check: 'HMAC verification failed' }], 'BACKUP_CIPHER_INTEGRITY_FAILED'],
+        ['integrity_check', [{ integrity_check: 'row missing' }], 'BACKUP_DATABASE_INTEGRITY_FAILED']
+    ])('rejects failed keyed %s before replacing live files', async (pragma, result, error) => {
+        await createBundle();
+        const { service, dbPath, userData, live } = targetService({ existing: true });
+        const isolated = validator();
+        (isolated.getDb as any).mockReturnValue({ pragma: vi.fn((name: string) =>
+            name === pragma ? result : name === 'cipher_integrity_check' ? [] :
+                name === 'integrity_check' ? [{ integrity_check: 'ok' }] : 6) });
+        (service as any).options.createIsolatedSecurityService = () => isolated;
+        const oldDb = fs.readFileSync(dbPath); const oldConfig = fs.readFileSync(path.join(userData, 'security.json'));
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow(error);
+        expect(fs.readFileSync(dbPath)).toEqual(oldDb); expect(fs.readFileSync(path.join(userData, 'security.json'))).toEqual(oldConfig);
+        expect(live.closeDb).not.toHaveBeenCalled();
+    });
+
+    it('rejects a manifest schema that disagrees with the unlocked staged database', async () => {
+        await createBundle();
+        const { service, dbPath, userData } = targetService({ existing: true, validatorSchema: 5 });
+        const oldDb = fs.readFileSync(dbPath); const oldConfig = fs.readFileSync(path.join(userData, 'security.json'));
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('BACKUP_DATABASE_SCHEMA_MISMATCH');
+        expect(fs.readFileSync(dbPath)).toEqual(oldDb); expect(fs.readFileSync(path.join(userData, 'security.json'))).toEqual(oldConfig);
+    });
+
+    it('rejects an unlocked database newer than this application supports', async () => {
+        const future = Math.max(...MIGRATIONS.map(item => item.version)) + 1;
+        const futureSecurity = { ...sourceSecurity(), getDb: vi.fn(() => ({ pragma: vi.fn(() => future) })) } as SecurityService;
+        await new BackupService(database(sourceDb), drive(), futureSecurity, sourceUserData).createBackupBundle(bundle);
+        const { service } = targetService({ validatorSchema: future });
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('BACKUP_SCHEMA_VERSION_UNSUPPORTED');
+    });
+
+    it.each(['restore-after-database-replace', 'restore-after-config-replace'] as BackupStep[])(
+        'rolls back the exact DB/config pair after interruption at %s', async failAt => {
+            await createBundle();
+            const { service, dbPath, userData } = targetService({ existing: true, failAt });
+            const oldDb = fs.readFileSync(dbPath); const oldConfig = fs.readFileSync(path.join(userData, 'security.json'));
+            await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('INTERRUPTED');
+            expect(fs.readFileSync(dbPath)).toEqual(oldDb); expect(fs.readFileSync(path.join(userData, 'security.json'))).toEqual(oldConfig);
+            const snapshots = fs.readdirSync(path.join(userData, 'backups')).filter(file => file.includes('pre-restore'));
+            expect(snapshots).toHaveLength(1);
+        }
+    );
+
+    it('removes a partially installed pair when clean-machine restore is interrupted', async () => {
+        await createBundle();
+        const { service, dbPath, userData } = targetService({ failAt: 'restore-after-config-replace' });
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('INTERRUPTED');
+        expect(fs.existsSync(dbPath)).toBe(false); expect(fs.existsSync(path.join(userData, 'security.json'))).toBe(false);
+    });
+
+    it('returns committed success and invalidates the old session when post-activation cleanup fails', async () => {
+        await createBundle();
+        const { service, dbPath, committed } = targetService({ existing: true, failAt: 'restore-after-activation' });
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).resolves.toMatchObject({ success: true, restartRequired: true });
+        expect(committed).toHaveBeenCalledOnce();
+        expect(fs.readFileSync(dbPath).toString()).toBe('encrypted-sqlcipher-source-data');
+    });
+
+    it('detects legacy database-only backups and reports why they are not recoverable', async () => {
+        const userData = path.join(root, 'legacy'); const backups = path.join(userData, 'backups');
+        fs.mkdirSync(backups, { recursive: true }); fs.writeFileSync(path.join(backups, 'nalamdesk-auto-backup-old.db'), 'legacy');
+        const service = new BackupService(database(sourceDb), drive(), sourceSecurity(), userData);
+        const listed = await service.listSystemBackups();
+        expect(listed[0]).toMatchObject({ format: 'legacy-database-only', recoverable: false });
+        expect(listed[0].warning).toContain('wrapped-key metadata');
+        await expect(service.restoreLocalBackup(listed[0].path, 'code')).rejects.toThrow('LEGACY_DATABASE_ONLY_BACKUP');
+    });
+
+    it('rejects a journal whose mutable JSON points outside userData', () => {
+        const userData = path.join(root, 'journal'); fs.mkdirSync(userData);
+        fs.writeFileSync(path.join(userData, 'backup-restore.json'), JSON.stringify({
+            version: 1, phase: 'live-files-replacing', stageDirectory: '/tmp/attacker',
+            targetDatabase: '/tmp/attacker.db', liveConfig: '/tmp/security.json',
+            databaseRollback: '/tmp/a', configRollback: '/tmp/b', hadDatabase: true, hadConfig: true
+        }));
+        expect(() => new BackupService(database(sourceDb), drive(), sourceSecurity(), userData)).toThrow('RESTORE_JOURNAL_PATH_MISMATCH');
+    });
+
+    it('propagates regular-file fsync failures so rollback copies are never assumed durable', () => {
+        const service = new BackupService(database(sourceDb), drive(), sourceSecurity(), sourceUserData, { fsync: () => {
+            const error: any = new Error('disk I/O failure'); error.code = 'EIO'; throw error;
+        } }) as any;
+        expect(() => service.copyDurable(sourceDb, path.join(root, 'copy.db'))).toThrow('disk I/O failure');
+    });
+
+    it('ignores only unsupported Windows directory fsync and propagates Windows EIO', () => {
+        const unsupported: any = new Error('unsupported'); unsupported.code = 'EPERM';
+        const unsupportedService = new BackupService(database(sourceDb), drive(), sourceSecurity(), sourceUserData, {
+            platform: 'win32', fsync: () => { throw unsupported; }
+        }) as any;
+        expect(() => unsupportedService.fsyncDirectory(sourceUserData)).not.toThrow();
+        const io: any = new Error('I/O'); io.code = 'EIO';
+        const ioService = new BackupService(database(sourceDb), drive(), sourceSecurity(), sourceUserData, {
+            platform: 'win32', fsync: () => { throw io; }
+        }) as any;
+        expect(() => ioService.fsyncDirectory(sourceUserData)).toThrow('I/O');
+    });
+
+    it('refuses to replace a closed legacy vault when no portable snapshot metadata exists', async () => {
+        await createBundle();
+        const { service, dbPath, userData, live } = targetService({ existing: true });
+        fs.writeFileSync(path.join(userData, 'security.json'), JSON.stringify({
+            version: 2, salt: '11'.repeat(16), iv: '22'.repeat(12), wrappedKey: '33'.repeat(48)
+        }));
+        const oldDb = fs.readFileSync(dbPath); const oldConfig = fs.readFileSync(path.join(userData, 'security.json'));
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('INVALID_BACKUP_MANIFEST');
+        expect(fs.readFileSync(dbPath)).toEqual(oldDb); expect(fs.readFileSync(path.join(userData, 'security.json'))).toEqual(oldConfig);
+        expect(live.closeDb).not.toHaveBeenCalled();
     });
 });

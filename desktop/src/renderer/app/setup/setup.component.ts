@@ -45,14 +45,27 @@ import { jsPDF } from 'jspdf';
                     </p>
                 </div>
 
+                <div class="mb-4">
+                    <button (click)="selectExternalBackup()"
+                        class="mb-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm">
+                        Choose Backup File…
+                    </button>
+                    <label class="block text-gray-300 text-sm mb-1">Recovery Code</label>
+                    <input type="password" [(ngModel)]="restoreRecoveryCode" autocomplete="off"
+                        placeholder="Required to validate and restore the encrypted vault"
+                        class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
+                    <p *ngIf="restoreError" class="text-red-400 text-sm mt-2">{{restoreError}}</p>
+                </div>
+
                 <div class="space-y-3 mb-8 max-h-60 overflow-y-auto pr-2">
                     <div *ngFor="let b of localBackups" class="flex items-center justify-between p-3 bg-gray-700 rounded border border-gray-600 hover:bg-gray-650 transition-colors">
                         <div>
                             <div class="font-medium text-white text-sm">{{b.name}}</div>
                             <div class="text-xs text-gray-400">{{b.createdTime | date:'medium'}} &bull; {{ (b.size / 1024 / 1024) | number:'1.1-2' }} MB</div>
+                            <div *ngIf="b.warning" class="text-xs text-amber-400 mt-1">{{b.warning}}</div>
                         </div>
                         <button (click)="restoreLocal(b.path)" 
-                            [disabled]="isRestoring"
+                            [disabled]="isRestoring || !restoreRecoveryCode || !b.recoverable"
                             class="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded font-medium disabled:opacity-50">
                             {{ isRestoring ? 'Restoring...' : 'Restore' }}
                         </button>
@@ -82,9 +95,14 @@ import { jsPDF } from 'jspdf';
                 <li>Configure your Clinic details.</li>
                 <li>Generate a Recovery Code for restoring the encrypted vault on a new device.</li>
                 </ul>
-                <button (click)="step = 2" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">
-                Get Started
-                </button>
+                <div class="flex gap-3">
+                  <button (click)="step = 2" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">
+                    Get Started
+                  </button>
+                  <button (click)="selectExternalBackup()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-white font-medium">
+                    Restore Backup File…
+                  </button>
+                </div>
             </ng-template>
           </div>
 
@@ -197,6 +215,8 @@ export class SetupComponent implements OnInit {
   showCloudRestore = false;
   localBackups: any[] = [];
   isRestoring = false;
+  restoreRecoveryCode = '';
+  restoreError = '';
 
   constructor(private authService: AuthService, private router: Router, private ngZone: NgZone) { }
 
@@ -222,17 +242,50 @@ export class SetupComponent implements OnInit {
   }
 
   async restoreLocal(path: string) {
-    if (!confirm('This will restore the selected database and restart the application. Continue?')) return;
+    if (!this.restoreRecoveryCode) {
+      this.restoreError = 'Enter the Recovery Code for this backup.';
+      return;
+    }
+    if (!confirm('The backup will be validated first. Your current vault will be snapshotted before replacement. Continue?')) return;
 
     this.isRestoring = true;
+    this.restoreError = '';
     try {
-      await (window as any).electron.restoreSystemBackup(path);
-      // App should restart, but if not:
-      this.isRestoring = false;
-    } catch (e) {
+      const result = await window.electron.restoreSystemBackup({ path, recoveryCode: this.restoreRecoveryCode });
+      this.restoreRecoveryCode = '';
+      if (!result.success) throw new Error(result.error || 'Restore failed');
+    } catch (e: any) {
       console.error(e);
       this.isRestoring = false;
-      alert('Restore Failed');
+      const code = e?.message || 'Restore failed';
+      this.restoreError = code === 'LEGACY_DATABASE_ONLY_BACKUP'
+        ? 'This legacy database-only backup is missing recovery metadata and cannot be restored on a clean device.'
+        : code === 'INVALID_RECOVERY_CODE'
+          ? 'The Recovery Code is incorrect for this backup.'
+          : `Restore failed: ${code}`;
+    }
+  }
+
+  async selectExternalBackup() {
+    try {
+      const selected = await window.electron.backup.selectRestoreBundle();
+      if (!selected) return;
+      const legacy = selected.name.toLowerCase().endsWith('.db');
+      this.localBackups = [{
+        name: selected.name,
+        path: selected.path,
+        createdTime: new Date(),
+        size: 0,
+        format: legacy ? 'legacy-database-only' : 'bundle-v1',
+        recoverable: !legacy,
+        warning: legacy
+          ? 'Legacy database-only backup: wrapped-key metadata is missing; clean-machine recovery is unavailable.'
+          : undefined
+      }, ...this.localBackups.filter(item => item.path !== selected.path)];
+      this.hasBackups = true;
+      if (legacy) this.restoreError = 'This legacy backup can be identified, but cannot recover a clean device.';
+    } catch (e: any) {
+      this.restoreError = e?.message || 'Unable to select the backup file.';
     }
   }
 

@@ -10,6 +10,7 @@ const result = spawnSync(electron, [
     'vitest.config.main.js',
     'src/main/services/SecurityService.integration.spec.ts',
     'src/main/services/CredentialRotationService.integration.spec.ts',
+    'src/main/services/BackupService.integration.spec.ts',
     '--reporter=default'
 ], {
     cwd: process.cwd(),
