@@ -6,6 +6,7 @@ import { describe, xdescribe, it, expect, vi, beforeEach } from 'vitest';
 import { NavbarComponent } from './navbar.component';
 import { DataService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { RuntimeService } from '../../services/runtime.service';
 
 // Mock inject/core
 vi.mock('@angular/core', async () => {
@@ -23,17 +24,23 @@ describe('NavbarComponent', () => {
     let mockNgZone: any;
     let mockDataService: any;
     let mockAuthService: any;
+    let mockRuntimeService: any;
 
     beforeEach(() => {
         mockRouter = { navigate: vi.fn() };
         mockNgZone = { run: vi.fn((fn) => fn()) };
         mockDataService = { invoke: vi.fn().mockReturnValue(Promise.resolve({ clinic_name: 'Test Clinic' })) };
         mockAuthService = { getUser: vi.fn().mockReturnValue({ name: 'Dr. Test', role: 'doctor' }), logout: vi.fn() };
+        mockRuntimeService = {
+            init: vi.fn().mockResolvedValue(undefined),
+            lanAccessUrl: '',
+        };
 
         // Mock inject implementation
         vi.mocked(inject).mockImplementation((token: any) => {
             if (token === DataService) return mockDataService;
             if (token === AuthService) return mockAuthService;
+            if (token === RuntimeService) return mockRuntimeService;
             return null;
         });
 

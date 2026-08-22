@@ -11,6 +11,7 @@ describe('LoginComponent', () => {
     let mockRouter: any;
     let mockNgZone: any;
     let mockAuthService: any;
+    let mockRuntimeService: any;
 
     beforeEach(() => {
         // Mock window.electron
@@ -28,8 +29,12 @@ describe('LoginComponent', () => {
             getUser: vi.fn(),
             checkSetup: vi.fn().mockResolvedValue({ isSetup: true }) // Default to setup complete
         };
+        mockRuntimeService = {
+            init: vi.fn().mockResolvedValue(undefined),
+            lanAccessUrl: '',
+        };
 
-        component = new LoginComponent(mockRouter, mockNgZone, mockAuthService);
+        component = new LoginComponent(mockRouter, mockNgZone, mockAuthService, mockRuntimeService);
     });
 
     it('should redirect to /setup if application is not setup', async () => {

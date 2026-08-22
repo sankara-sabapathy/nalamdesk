@@ -11,12 +11,30 @@ import { DatabaseService } from './services/DatabaseService';
 import { GoogleDriveService } from './services/GoogleDriveService';
 import { CloudSyncService } from './services/CloudSyncService';
 import { ApiServer } from '../server/app';
-
-
+import {
+    DEV_APP_NAME,
+    getApiPort,
+    getDatabasePath,
+    getDevUiProxyUrl,
+    getDevUserDataPath,
+    isDevRuntime,
+} from '../shared/runtime-config';
 
 import { session } from 'electron';
 
-// ... (logging config)
+// Dev isolation: separate userData dir and API port from installed NalamDesk (Mac/Windows).
+const isDev = isDevRuntime(app.isPackaged);
+if (isDev) {
+    app.setName(DEV_APP_NAME);
+    app.setPath('userData', getDevUserDataPath(app.getPath('appData')));
+}
+
+const userDataPath = app.getPath('userData');
+const apiPort = getApiPort(app.isPackaged);
+
+if (isDev) {
+    console.log(`[Dev] Isolated from installed app — API :${apiPort}, data: ${userDataPath}`);
+}
 
 // Initialize Crash Service immediately to catch early errors
 const crashService = new CrashService();
@@ -24,7 +42,7 @@ const crashService = new CrashService();
 // Disable Hardware Acceleration to prevent input freezing/rendering glitches
 app.disableHardwareAcceleration();
 
-// Single Instance Lock
+// Single Instance Lock (dev uses NalamDesk Dev identity — separate from installed app)
 const gotTheLock = app.requestSingleInstanceLock();
 
 if (!gotTheLock) {
@@ -51,37 +69,40 @@ ipcMain.handle('utils:openExternal', async (_, url) => {
     await shell.openExternal(url);
 });
 
-ipcMain.handle('utils:getLocalIp', () => {
+function resolveLocalIp(): string {
     try {
         const os = require('os');
         const nets = os.networkInterfaces();
-        console.log('[Main] Network Interfaces:', Object.keys(nets));
         for (const name of Object.keys(nets)) {
             for (const net of nets[name] || []) {
-                // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
                 if (net.family === 'IPv4' && !net.internal) {
-                    console.log('[Main] Found IP:', net.address);
                     return net.address;
                 }
             }
         }
-        console.log('[Main] IP not found, returning localhost');
         return 'localhost';
     } catch (e) {
-        console.error('[Main] getLocalIp error:', e);
+        console.error('[Main] resolveLocalIp error:', e);
         return 'localhost';
     }
-});
+}
+
+ipcMain.handle('utils:getLocalIp', () => resolveLocalIp());
+
+ipcMain.handle('utils:getRuntimeInfo', () => ({
+    localIp: resolveLocalIp(),
+    apiPort,
+    isDev,
+    appName: app.getName(),
+}));
 
 // Services
-const userDataPath = app.getPath('userData');
 const securityService = new SecurityService();
 const databaseService = new DatabaseService();
 const googleDriveService = new GoogleDriveService();
 const cloudSyncService = new CloudSyncService(databaseService);
 
 // Determine Static Path for ApiServer
-const isDev = !app.isPackaged;
 const staticPath = isDev
     ? path.join(__dirname, '../../dist/nalamdesk/browser')
     : path.join(app.getAppPath(), 'dist/nalamdesk/browser');
@@ -93,7 +114,11 @@ if (!fs.existsSync(staticPath)) {
     fs.mkdirSync(staticPath, { recursive: true });
 }
 
-const apiServer = new ApiServer(databaseService, staticPath);
+const apiServer = new ApiServer(
+    databaseService,
+    staticPath,
+    isDev ? getDevUiProxyUrl() : undefined
+);
 const sessionService = new SessionService();
 const backupService = new BackupService(databaseService, googleDriveService, securityService, userDataPath);
 
@@ -102,7 +127,7 @@ const backupService = new BackupService(databaseService, googleDriveService, sec
 // ... (cloud sync init logic)
 console.log('[Main] Starting ApiServer...');
 try {
-    apiServer.start(); // Fire and forget (it logs its own success)
+    apiServer.start(apiPort); // Fire and forget (it logs its own success)
     console.log('[Main] ApiServer start command issued.');
 } catch (e) {
     console.error('[Main] ApiServer failed to start immediately:', e);
@@ -119,24 +144,33 @@ async function createWindow() {
         mainWindow = new BrowserWindow({
             width: 1280,
             height: 800,
+            title: isDev ? `${DEV_APP_NAME} (API :${apiPort})` : 'NalamDesk',
             icon: isDev
                 ? path.join(__dirname, '../../build/icon.png')
                 : path.join(app.getAppPath(), 'build/icon.png'),
+            show: !isDev,
             webPreferences: {
-                nodeIntegration: true,
+                nodeIntegration: false,
                 contextIsolation: true,
                 preload: path.join(__dirname, 'preload.js'),
             },
         });
+
+        if (isDev) {
+            mainWindow.once('ready-to-show', () => {
+                mainWindow?.showInactive();
+            });
+        }
 
         // Remove default menu bar completely
         mainWindow.setMenu(null);
         console.log('[Main] BrowserWindow created');
 
         if (isDev) {
-            console.log('[Main] Loading URL: http://localhost:4200');
-            await mainWindow.loadURL('http://localhost:4200');
-            mainWindow.webContents.openDevTools();
+            const devUiUrl = getDevUiProxyUrl();
+            console.log(`[Main] Loading URL: ${devUiUrl}`);
+            await mainWindow.loadURL(devUiUrl);
+            mainWindow.webContents.openDevTools({ mode: 'right', activate: false });
             console.log('[Main] URL loaded');
         } else {
             console.log(`[Main] Loading File: ${path.join(staticPath, 'index.html')}`);
@@ -156,12 +190,12 @@ function initializeApp() {
             // Skip external origins
             try {
                 const url = new URL(details.url);
-                if (url.protocol !== 'file:' && url.hostname !== 'localhost') {
+                if (url.protocol !== 'file:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
                     return callback({});
                 }
             } catch { return callback({}); }
 
-            const devCSP = "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; connect-src 'self' http://localhost:3000 https://www.googleapis.com https://accounts.google.com; img-src 'self' data: https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;";
+            const devCSP = `default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline'; connect-src 'self' http://localhost:${apiPort} https://www.googleapis.com https://accounts.google.com; img-src 'self' data: https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;`;
             const prodCSP = "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-inline'; connect-src 'self' https://www.googleapis.com https://accounts.google.com; img-src 'self' data: https://lh3.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:;";
 
             callback({
@@ -194,7 +228,7 @@ function initializeApp() {
             }
 
             // Allow DevTools, File, and Localhost
-            if (urlObj.protocol === 'devtools:' || urlObj.protocol === 'file:' || urlObj.hostname === 'localhost') {
+            if (urlObj.protocol === 'devtools:' || urlObj.protocol === 'file:' || urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
                 return callback({ cancel: false });
             }
 
@@ -256,9 +290,7 @@ ipcMain.handle('auth:setup', async (event, { password, clinicDetails, adminDetai
         console.log('[Auth] Starting Setup...');
         const userDataPath = app.getPath('userData');
         const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
-        const dbPath = app.isPackaged
-            ? path.join(userDataPath, dbName)
-            : path.join(__dirname, '../../', dbName);
+        const dbPath = getDatabasePath(userDataPath, dbName);
 
         // 1. Setup Security (Generates DEK + Recovery Code)
         const recoveryCode = await securityService.setup(password, dbPath, userDataPath);
@@ -290,9 +322,7 @@ ipcMain.handle('auth:recover', async (event, { recoveryCode, newPassword }) => {
         console.log('[Auth] Starting Recovery...');
         const userDataPath = app.getPath('userData');
         const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
-        const dbPath = app.isPackaged
-            ? path.join(userDataPath, dbName)
-            : path.join(__dirname, '../../', dbName);
+        const dbPath = getDatabasePath(userDataPath, dbName);
 
         // 1. Recover Vault
         const newRecoveryCode = await securityService.recover(recoveryCode, newPassword, userDataPath, dbPath);
@@ -338,9 +368,7 @@ async function tryUnlockDatabase(password: string): Promise<string | null> {
     try {
         const userDataPath = app.getPath('userData');
         const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
-        const dbPath = app.isPackaged
-            ? path.join(userDataPath, dbName)
-            : path.join(__dirname, '../../', dbName);
+        const dbPath = getDatabasePath(userDataPath, dbName);
 
         // This handles Unlock OR V1->V2 Migration
         await securityService.initialize(password, dbPath, userDataPath);
@@ -662,7 +690,7 @@ ipcMain.handle('drive:authenticate', async (_, { clientId, clientSecret }) => {
         // Configure credentials first
         googleDriveService.configureCredentials(clientId, clientSecret);
 
-        await googleDriveService.authenticate(mainWindow);
+        await googleDriveService.authenticate(mainWindow, (state) => apiServer.waitForOAuthCallback(state));
         const tokens = googleDriveService.getCredentials();
 
         // Save everything to settings

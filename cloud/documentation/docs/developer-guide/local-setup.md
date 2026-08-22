@@ -40,11 +40,25 @@ This guide describes how to set up the NalamDesk development environment.
     npm run postinstall
     ```
 
+## Local development ports
+
+Default ports are defined in the repo-root [`.env.development`](https://github.com/sankara-sabapathy/nalamdesk/blob/main/.env.development). Override locally with `.env.local` (gitignored).
+
+| Port | Service |
+|------|---------|
+| 3000 | Installed desktop local API (production Electron app) |
+| 3001 | Cloud API (`cloud/api`) — cloud/web and desktop cloud sync |
+| 3002 | Desktop dev local API (`cd desktop && npm start`) |
+| 4200 | Desktop Angular dev server |
+
+Dev and installed apps use separate data directories (`NalamDesk-Dev` vs `NalamDesk`) and can run alongside each other.
+
 ## Running the Application
 
-To start the application in development mode:
+To start the desktop application in development mode:
 
 ```bash
+cd desktop
 npm start
 ```
 

@@ -89,6 +89,7 @@ contextBridge.exposeInMainWorld('electron', {
 
     utils: {
         openExternal: (url: string) => ipcRenderer.invoke('utils:openExternal', url),
-        getLocalIp: () => ipcRenderer.invoke('utils:getLocalIp')
+        getLocalIp: () => ipcRenderer.invoke('utils:getLocalIp'),
+        getRuntimeInfo: () => ipcRenderer.invoke('utils:getRuntimeInfo')
     }
 });

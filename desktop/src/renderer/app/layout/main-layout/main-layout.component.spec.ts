@@ -6,6 +6,8 @@ describe('MainLayoutComponent', () => {
     let mockAuthService: any;
     let mockRouter: any;
     let mockDialogService: any;
+    let mockNgZone: any;
+    let mockRuntimeService: any;
 
     beforeEach(() => {
         mockAuthService = {
@@ -25,7 +27,19 @@ describe('MainLayoutComponent', () => {
             confirm: vi.fn()
         };
 
-        component = new MainLayoutComponent(mockRouter, mockDialogService, mockAuthService);
+        mockNgZone = { run: vi.fn((fn) => fn()) };
+        mockRuntimeService = {
+            init: vi.fn().mockResolvedValue(undefined),
+            lanAccessUrl: '',
+        };
+
+        component = new MainLayoutComponent(
+            mockRouter,
+            mockDialogService,
+            mockAuthService,
+            mockNgZone,
+            mockRuntimeService
+        );
     });
 
     it('should create', () => {
