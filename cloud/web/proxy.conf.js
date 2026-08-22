@@ -20,10 +20,10 @@ function loadEnvFile(filePath, override) {
     }
 }
 
-const rawPort = process.env.NALAMDESK_CLOUD_API_PORT;
+const rawPort = process.env.PORT || process.env.NALAMDESK_CLOUD_API_PORT;
 const port = Number(rawPort || 3001);
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`Invalid NALAMDESK_CLOUD_API_PORT: ${rawPort}`);
+    throw new Error(`Invalid PORT: ${rawPort}`);
 }
 
 module.exports = {
