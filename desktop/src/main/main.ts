@@ -5,6 +5,8 @@ import log from 'electron-log';
 
 import { SessionService } from './services/SessionService';
 import { BackupService } from './services/BackupService';
+import { selectRestoreBundle } from './services/BackupFileSelection';
+import { requireExistingRestoreAuthorization } from './services/RestoreAuthorization';
 import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
 import { ElectronSafeStorageDeviceKeyStore } from './services/DeviceKeyStore';
@@ -124,7 +126,13 @@ const apiServer = new ApiServer(
     isDev ? getDevUiProxyUrl() : undefined
 );
 const sessionService = new SessionService();
-const backupService = new BackupService(databaseService, googleDriveService, securityService, userDataPath);
+const backupService = new BackupService(databaseService, googleDriveService, securityService, userDataPath, {
+    appVersion: app.getVersion(),
+    // Restore validation must not reconfigure or close the live vault.
+    createIsolatedSecurityService: () => new SecurityService(new ElectronSafeStorageDeviceKeyStore()),
+    onRestoreCommitted: () => sessionService.clearSession()
+});
+const authorizedRestorePaths = new Set<string>();
 
 // ... (cloud sync init logic)
 // DB init happens via IPC. ApiServer will report 503 if DB not ready (guarded in handler).
@@ -794,6 +802,21 @@ ipcMain.handle('backup:selectPath', async () => {
     return result.filePaths[0];
 });
 
+ipcMain.handle('backup:selectRestoreBundle', async () => {
+    if (!mainWindow) return null;
+    const selected = await selectRestoreBundle(() => dialog.showOpenDialog(mainWindow!, {
+        properties: ['openFile'],
+        title: 'Select NalamDesk Backup',
+        buttonLabel: 'Select Backup',
+        filters: [
+            { name: 'NalamDesk recoverable backup', extensions: ['ndbackup'] },
+            { name: 'Legacy database backup', extensions: ['db'] }
+        ]
+    }));
+    if (selected) authorizedRestorePaths.add(path.resolve(selected.path));
+    return selected;
+});
+
 ipcMain.handle('backup:useDefaultPath', async () => {
     const defaultPath = path.join(app.getPath('userData'), 'backups');
     // Ensure it exists?
@@ -823,6 +846,7 @@ ipcMain.handle('auth:getRecoveryStatus', async () => {
 
     if (!isSetup) {
         backups = await backupService.listSystemBackups();
+        for (const backup of backups) authorizedRestorePaths.add(path.resolve(backup.path));
         hasBackups = backups.length > 0;
     }
 
@@ -834,18 +858,30 @@ ipcMain.handle('auth:getRecoveryStatus', async () => {
     };
 });
 
-ipcMain.handle('auth:restoreSystemBackup', async (_, backupPath) => {
+ipcMain.handle('auth:restoreSystemBackup', async (_, request: {
+    path: string; recoveryCode: string; currentAdminPassword?: string
+}) => {
     try {
-        console.log('[Main] System Restore Triggered for:', backupPath);
-        await backupService.restoreLocalBackup(backupPath);
-
-        // After restore, we should probably restart the app to ensure clean state?
-        // Or just return success and let the frontend reload?
-        // Ideally, relaunch to reload DB connection fresh.
-        app.relaunch();
-        app.exit(0);
-
-        return { success: true };
+        if (!request || typeof request.path !== 'string' ||
+            !authorizedRestorePaths.has(path.resolve(request.path))) throw new Error('BACKUP_PATH_NOT_AUTHORIZED');
+        const liveDbPath = getDatabasePath(userDataPath,
+            process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db');
+        const hasDatabase = fs.existsSync(liveDbPath);
+        const hasConfig = fs.existsSync(path.join(userDataPath, 'security.json'));
+        await requireExistingRestoreAuthorization({
+            hasDatabase,
+            hasConfig,
+            databaseOpen: !!securityService.getDb(),
+            sessionUser: sessionService.getUser(),
+            persistedAdmin: securityService.getDb()
+                ? await databaseService.getUserByUsername('admin')
+                : null,
+            currentAdminPassword: request.currentAdminPassword
+        });
+        const result = await backupService.restoreLocalBackup(request.path, request.recoveryCode);
+        authorizedRestorePaths.delete(path.resolve(request.path));
+        setTimeout(() => { app.relaunch(); app.exit(0); }, 500);
+        return result;
     } catch (e: any) {
         console.error('[Main] System Restore Failed:', e);
         return { success: false, error: e.message };

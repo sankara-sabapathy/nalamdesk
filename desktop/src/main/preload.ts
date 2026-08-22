@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld('electron', {
     login: (password: string) => ipcRenderer.invoke('auth:login', password),
     checkSetup: () => ipcRenderer.invoke('auth:checkSetup'),
     getRecoveryStatus: () => ipcRenderer.invoke('auth:getRecoveryStatus'),
-    restoreSystemBackup: (path: string) => ipcRenderer.invoke('auth:restoreSystemBackup', path),
+    restoreSystemBackup: (request: { path: string; recoveryCode: string; currentAdminPassword?: string }) => ipcRenderer.invoke('auth:restoreSystemBackup', request),
     setup: (data: any) => ipcRenderer.invoke('auth:setup', data),
     recover: (data: any) => ipcRenderer.invoke('auth:recover', data),
     acknowledgeRecoveryCode: (recoveryCode: string) => ipcRenderer.invoke('auth:acknowledgeRecoveryCode', { recoveryCode }),
@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electron', {
     // ...
     backup: {
         selectPath: () => ipcRenderer.invoke('backup:selectPath'),
+        selectRestoreBundle: () => ipcRenderer.invoke('backup:selectRestoreBundle'),
         useDefaultPath: () => ipcRenderer.invoke('backup:useDefaultPath'),
         runNow: () => ipcRenderer.invoke('backup:runNow'),
         listSystemBackups: () => ipcRenderer.invoke('backup:listSystemBackups')
