@@ -39,4 +39,21 @@ describe('SessionService', () => {
         expect(service.getUser()).toBeNull();
         expect(service.isAuthenticated()).toBe(false);
     });
+
+    it('allowlists session fields and never retains a password hash', () => {
+        service.setUser({
+            id: 1,
+            username: 'admin',
+            role: 'admin',
+            name: 'Administrator',
+            password_reset_required: 0,
+            password: '$argon2id$secret-hash'
+        } as any);
+        const session = service.getUser() as any;
+        expect(session.password).toBeUndefined();
+        expect(session.password_reset_required).toBe(0);
+        expect(Object.keys(session).sort()).toEqual([
+            'id', 'name', 'password_reset_required', 'role', 'sessionId', 'username'
+        ]);
+    });
 });

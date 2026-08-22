@@ -3,12 +3,13 @@ export { };
 declare global {
     interface Window {
         electron: {
-            login: (credentials: { username: string, password: string }) => Promise<{ success: boolean; user?: any; error?: string }>;
-            checkSetup: () => Promise<{ isSetup: boolean; hasRecovery: boolean }>;
+            login: (credentials: { username: string, password: string }) => Promise<{ success: boolean; user?: any; error?: string; pendingRecoveryCode?: string }>;
+            checkSetup: () => Promise<{ isSetup: boolean; hasRecovery: boolean; vaultState?: string; configVersion?: number }>;
             getRecoveryStatus: () => Promise<{ isSetup: boolean; hasRecovery: boolean; hasBackups: boolean; backups?: any[] }>;
             restoreSystemBackup: (path: string) => Promise<void>;
             setup: (data: any) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
-            recover: (data: any) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
+            recover: (data: { recoveryCode: string }) => Promise<{ success: boolean; pendingRecoveryCode?: string; error?: string }>;
+            acknowledgeRecoveryCode: (recoveryCode: string) => Promise<{ success: boolean }>;
             regenerateRecoveryCode: (password: string) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
             db: {
                 getPatients: (query: string) => Promise<any[]>;

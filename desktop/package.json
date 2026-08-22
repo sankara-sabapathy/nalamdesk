@@ -24,6 +24,7 @@
     "watch": "ng build --watch --configuration development",
     "test": "npm run test:main && npm run test:renderer",
     "test:main": "vitest run -c vitest.config.main.js",
+    "test:security:electron": "node scripts/run-security-integration.js",
     "test:renderer": "vitest run -c vitest.config.renderer.mjs",
     "test:coverage": "vitest run -c vitest.config.main.js --coverage && vitest run -c vitest.config.renderer.mjs --coverage",
     "e2e": "playwright test",
