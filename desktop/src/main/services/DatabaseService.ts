@@ -93,15 +93,15 @@ export class DatabaseService {
     }
 
     async ensureAdminUser(password: string) {
-        const hash = await import('argon2').then(a => a.hash(password));
         const admin = this.db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
         if (!admin) {
+            const hash = await import('argon2').then(a => a.hash(password));
             this.db.prepare('INSERT INTO users (username, password, role, name) VALUES (?, ?, ?, ?)').run('admin', hash, 'admin', 'Administrator');
             console.log('Default admin user created.');
         } else {
-            // Update admin password to match current DB key - ensures they are always in sync
-            this.db.prepare('UPDATE users SET password = ? WHERE username = ?').run(hash, 'admin');
-            console.log('Admin password synced with DB key.');
+            // Existing login credentials are never changed by provisioning or
+            // database-key operations. CredentialRotationService owns changes.
+            console.log('Administrator already provisioned; login password preserved.');
         }
 
         // Migration: Add doctor fields to users if missing
@@ -159,29 +159,20 @@ export class DatabaseService {
         };
 
         const result = user.id
-            ? await this.updateExistingUser(safeUser, user, argon2, actingUserId)
+            ? await this.updateExistingUser(safeUser, user, actingUserId)
             : await this.insertNewUser(safeUser, argon2, actingUserId);
 
         return result;
     }
 
-    private async updateExistingUser(safeUser: any, user: any, argon2: any, actingUserId?: number) {
+    private async updateExistingUser(safeUser: any, user: any, actingUserId?: number) {
         const existing = this.db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
         if (!existing) throw new Error('User not found');
-
-        const includePassword = !!user.password;
-        const forceReset = includePassword && (
-            (actingUserId && actingUserId !== user.id) || user.force_reset
-        );
-
-        if (includePassword) {
-            safeUser.password = await argon2.hash(user.password);
-        }
-        if (forceReset) {
-            safeUser.password_reset_required = 1;
+        if (Object.prototype.hasOwnProperty.call(user, 'password')) {
+            throw new Error('GENERIC_PASSWORD_CHANGE_FORBIDDEN');
         }
 
-        const query = this.buildUpdateQuery(includePassword, forceReset);
+        const query = this.buildUpdateQuery();
         const result = this.db.prepare(query).run(safeUser);
 
         if (actingUserId) {
@@ -190,18 +181,12 @@ export class DatabaseService {
         return result;
     }
 
-    private buildUpdateQuery(includePassword: boolean, forceReset: boolean): string {
+    private buildUpdateQuery(): string {
         const baseCols = `role = @role, name = @name, active = @active, specialty = @specialty, license_number = @license_number,
             mobile = @mobile, email = @email, designation = @designation, joining_date = @joining_date,
             address = @address, emergency_contact_name = @emergency_contact_name, emergency_contact_phone = @emergency_contact_phone`;
 
-        if (!includePassword) {
-            return `UPDATE users SET ${baseCols} WHERE id = @id`;
-        }
-        if (forceReset) {
-            return `UPDATE users SET ${baseCols}, password = @password, password_reset_required = 1 WHERE id = @id`;
-        }
-        return `UPDATE users SET ${baseCols}, password = @password WHERE id = @id`;
+        return `UPDATE users SET ${baseCols} WHERE id = @id`;
     }
 
     private async insertNewUser(safeUser: any, argon2: any, actingUserId?: number) {
@@ -253,13 +238,6 @@ export class DatabaseService {
             this.logAudit('USER_DELETE', 'users', id, actingUserId, `Deleted user ${id}`);
         }
         return result;
-    }
-
-    async updateUserPassword(username: string, newPassword: string) {
-        const argon2 = await import('argon2');
-        const hash = await argon2.hash(newPassword);
-        // This is self-service password change, so we clear the reset_required flag
-        return this.db.prepare('UPDATE users SET password = ?, password_reset_required = 0 WHERE username = ?').run(hash, username);
     }
 
     // ... existing methods ...

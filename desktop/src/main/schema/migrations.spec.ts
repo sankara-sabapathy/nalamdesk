@@ -33,8 +33,21 @@ describe('Database Migrations', () => {
             });
         });
 
-        it('should have 7 migrations total', () => {
-            expect(MIGRATIONS).toHaveLength(7);
+        it('should have 8 migrations total', () => {
+            expect(MIGRATIONS).toHaveLength(8);
+        });
+    });
+
+    describe('Migration v8 (Credential Rotation Journal)', () => {
+        it('stores only hashes and constrains the recoverable phases', () => {
+            MIGRATIONS[7].up(mockDb);
+            const sql = executedSql.join('\n');
+            expect(sql).toContain('credential_rotation_journal');
+            expect(sql).toContain("phase IN ('prepared', 'applied')");
+            expect(sql).toContain('previous_hash');
+            expect(sql).toContain('replacement_hash');
+            expect(sql).not.toContain('current_password');
+            expect(sql).not.toContain('new_password');
         });
     });
 

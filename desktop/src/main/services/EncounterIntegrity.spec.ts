@@ -344,7 +344,7 @@ describe('migration v7 compatibility', () => {
             expect(migrated.status).toBe('finished');
             expect(migrated.started_at).toBeTruthy();
             expect(migrated.completed_at).toBeTruthy();
-            expect(db.pragma('user_version', { simple: true })).toBe(7);
+            expect(db.pragma('user_version', { simple: true })).toBe(8);
         } finally {
             db.close();
         }
@@ -377,7 +377,7 @@ describe('migration v7 compatibility', () => {
 
             await expect(service.migrate()).resolves.toBeUndefined();
             expect(db.prepare('SELECT count(*) count FROM encounter_requests').get().count).toBe(0);
-            expect(db.pragma('user_version', { simple: true })).toBe(7);
+            expect(db.pragma('user_version', { simple: true })).toBe(8);
         } finally {
             db.close();
         }

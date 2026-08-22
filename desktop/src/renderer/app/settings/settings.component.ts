@@ -60,7 +60,18 @@ export class SettingsComponent implements OnInit {
 
   // Security / Backup
   showRecoveryModal = false;
+  showLoginPasswordModal = false;
+  showDeviceRotationModal = false;
+  showUserResetModal = false;
   confirmPassword = '';
+  currentLoginPassword = '';
+  newLoginPassword = '';
+  confirmLoginPassword = '';
+  currentDevicePassword = '';
+  resetTarget: any = null;
+  resetAdminPassword = '';
+  resetTemporaryPassword = '';
+  resetConfirmPassword = '';
   newRecoveryCode: string | null = null;
   isCopied = false;
   isLoading = false;
@@ -347,8 +358,8 @@ export class SettingsComponent implements OnInit {
       errors.push('Invalid email format.');
     }
 
-    if (!user.id && (!user.password || user.password.length < 4)) {
-      errors.push('Password must be at least 4 characters.');
+    if (!user.id && (!user.password || user.password.length < 6)) {
+      errors.push('Password must be at least 6 characters.');
     }
 
     return errors;
@@ -378,6 +389,88 @@ export class SettingsComponent implements OnInit {
       } else {
         alert('Error saving user: ' + msg);
       }
+    }
+  }
+
+  openLoginPasswordModal() {
+    this.currentLoginPassword = '';
+    this.newLoginPassword = '';
+    this.confirmLoginPassword = '';
+    this.showLoginPasswordModal = true;
+  }
+
+  async changeLoginPassword() {
+    if (!this.currentLoginPassword || this.newLoginPassword.length < 6 ||
+      this.newLoginPassword !== this.confirmLoginPassword) return;
+    this.isLoading = true;
+    try {
+      const result = await this.authService.changeLoginPassword(
+        this.currentLoginPassword, this.newLoginPassword
+      );
+      if (result.success) {
+        this.showLoginPasswordModal = false;
+        alert('Administrator login password changed. Vault and recovery keys were not changed.');
+      } else alert(result.error || 'Failed to change login password');
+    } catch (error: any) {
+      alert(error?.message || 'Failed to change login password');
+    } finally {
+      this.currentLoginPassword = '';
+      this.newLoginPassword = '';
+      this.confirmLoginPassword = '';
+      this.isLoading = false;
+    }
+  }
+
+  openUserResetModal(user: any) {
+    this.resetTarget = user;
+    this.resetAdminPassword = '';
+    this.resetTemporaryPassword = '';
+    this.resetConfirmPassword = '';
+    this.showUserResetModal = true;
+  }
+
+  async resetUserPassword() {
+    if (!this.resetTarget || !this.resetAdminPassword || this.resetTemporaryPassword.length < 6 ||
+      this.resetTemporaryPassword !== this.resetConfirmPassword) return;
+    this.isLoading = true;
+    try {
+      const result = await this.authService.resetUserPassword(
+        this.resetTarget.id, this.resetAdminPassword, this.resetTemporaryPassword
+      );
+      if (result.success) {
+        this.showUserResetModal = false;
+        this.editingUser = null;
+        alert('Temporary login password set. The user must change it after signing in.');
+      } else alert(result.error || 'Failed to reset login password');
+    } catch (error: any) {
+      alert(error?.message || 'Failed to reset login password');
+    } finally {
+      this.resetAdminPassword = '';
+      this.resetTemporaryPassword = '';
+      this.resetConfirmPassword = '';
+      this.isLoading = false;
+    }
+  }
+
+  openDeviceRotationModal() {
+    this.currentDevicePassword = '';
+    this.showDeviceRotationModal = true;
+  }
+
+  async rotateDeviceEnvelope() {
+    if (!this.currentDevicePassword) return;
+    this.isLoading = true;
+    try {
+      const result = await this.authService.rotateDeviceEnvelope(this.currentDevicePassword);
+      if (result.success) {
+        this.showDeviceRotationModal = false;
+        alert('This device key envelope was rotated. Login passwords and recovery code were not changed.');
+      } else alert(result.error || 'Failed to rotate this device key envelope');
+    } catch (error: any) {
+      alert(error?.message || 'Failed to rotate this device key envelope');
+    } finally {
+      this.currentDevicePassword = '';
+      this.isLoading = false;
     }
   }
 
@@ -423,8 +516,21 @@ export class SettingsComponent implements OnInit {
     this.newRecoveryCode = null;
     this.showRecoveryModal = true;
   }
-  closeRecoveryModal() {
-    this.showRecoveryModal = false;
+  async closeRecoveryModal() {
+    if (!this.newRecoveryCode) {
+      this.showRecoveryModal = false;
+      return;
+    }
+    this.isLoading = true;
+    try {
+      await this.authService.acknowledgeRecoveryCode(this.newRecoveryCode);
+      this.newRecoveryCode = null;
+      this.showRecoveryModal = false;
+    } catch (error: any) {
+      alert(error?.message || 'Could not confirm the recovery code. It will be shown again after the next administrator login.');
+    } finally {
+      this.isLoading = false;
+    }
   }
   async generateRecoveryCode() {
     if (!this.confirmPassword) return;
@@ -432,11 +538,15 @@ export class SettingsComponent implements OnInit {
     try {
       const res = await this.authService.regenerateRecoveryCode(this.confirmPassword) as any;
       this.ngZone.run(() => {
-        this.isLoading = false;
         if (res.success && res.recoveryCode) this.newRecoveryCode = res.recoveryCode;
         else alert(res.error || 'Failed');
       });
-    } catch { this.isLoading = false; }
+    } catch (error: any) {
+      alert(error?.message || 'Failed to rotate recovery code');
+    } finally {
+      this.confirmPassword = '';
+      this.isLoading = false;
+    }
   }
   async copyRecoveryCode() {
     if (this.newRecoveryCode) {
