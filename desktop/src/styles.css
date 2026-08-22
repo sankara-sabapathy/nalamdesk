@@ -12704,6 +12704,10 @@ html:has(.drawer-toggle:checked) {
   white-space: pre-line;
 }
 
+.break-all {
+  word-break: break-all;
+}
+
 .rounded {
   border-radius: 0.25rem;
 }
@@ -12782,6 +12786,11 @@ html:has(.drawer-toggle:checked) {
 .border-amber-300 {
   --tw-border-opacity: 1;
   border-color: rgb(252 211 77 / var(--tw-border-opacity, 1));
+}
+
+.border-amber-500 {
+  --tw-border-opacity: 1;
+  border-color: rgb(245 158 11 / var(--tw-border-opacity, 1));
 }
 
 .border-base-200 {
@@ -12926,9 +12935,19 @@ html:has(.drawer-toggle:checked) {
   background-color: rgb(255 251 235 / var(--tw-bg-opacity, 1));
 }
 
+.bg-amber-600 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(217 119 6 / var(--tw-bg-opacity, 1));
+}
+
 .bg-amber-700 {
   --tw-bg-opacity: 1;
   background-color: rgb(180 83 9 / var(--tw-bg-opacity, 1));
+}
+
+.bg-amber-950 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(69 26 3 / var(--tw-bg-opacity, 1));
 }
 
 .bg-base-100 {
@@ -12999,6 +13018,10 @@ html:has(.drawer-toggle:checked) {
   background-color: rgb(30 58 138 / 0.3);
 }
 
+.bg-blue-950\/60 {
+  background-color: rgb(23 37 84 / 0.6);
+}
+
 .bg-current {
   background-color: currentColor;
 }
@@ -13057,6 +13080,11 @@ html:has(.drawer-toggle:checked) {
 .bg-gray-900 {
   --tw-bg-opacity: 1;
   background-color: rgb(17 24 39 / var(--tw-bg-opacity, 1));
+}
+
+.bg-gray-950 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(3 7 18 / var(--tw-bg-opacity, 1));
 }
 
 .bg-green-100 {
@@ -13516,6 +13544,16 @@ html:has(.drawer-toggle:checked) {
   color: rgb(255 255 255 / var(--tw-text-opacity, 1)) !important;
 }
 
+.text-amber-100 {
+  --tw-text-opacity: 1;
+  color: rgb(254 243 199 / var(--tw-text-opacity, 1));
+}
+
+.text-amber-300 {
+  --tw-text-opacity: 1;
+  color: rgb(252 211 77 / var(--tw-text-opacity, 1));
+}
+
 .text-amber-900 {
   --tw-text-opacity: 1;
   color: rgb(120 53 15 / var(--tw-text-opacity, 1));
@@ -13702,6 +13740,11 @@ html:has(.drawer-toggle:checked) {
 .text-red-600 {
   --tw-text-opacity: 1;
   color: rgb(220 38 38 / var(--tw-text-opacity, 1));
+}
+
+.text-red-700 {
+  --tw-text-opacity: 1;
+  color: rgb(185 28 28 / var(--tw-text-opacity, 1));
 }
 
 .text-secondary {
@@ -14201,6 +14244,11 @@ h6 {
 
 .hover\:border-sky-500\/20:hover {
   border-color: rgb(14 165 233 / 0.2);
+}
+
+.hover\:bg-amber-700:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(180 83 9 / var(--tw-bg-opacity, 1));
 }
 
 .hover\:bg-amber-800:hover {

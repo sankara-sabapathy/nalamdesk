@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electron', {
     restoreSystemBackup: (path: string) => ipcRenderer.invoke('auth:restoreSystemBackup', path),
     setup: (data: any) => ipcRenderer.invoke('auth:setup', data),
     recover: (data: any) => ipcRenderer.invoke('auth:recover', data),
+    acknowledgeRecoveryCode: (recoveryCode: string) => ipcRenderer.invoke('auth:acknowledgeRecoveryCode', { recoveryCode }),
     regenerateRecoveryCode: (password: string) => ipcRenderer.invoke('auth:regenerateRecoveryCode', { password }),
     // ...
     backup: {

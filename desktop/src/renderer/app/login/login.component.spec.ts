@@ -27,6 +27,7 @@ describe('LoginComponent', () => {
         mockAuthService = {
             login: vi.fn(),
             getUser: vi.fn(),
+            acknowledgeRecoveryCode: vi.fn().mockResolvedValue(undefined),
             checkSetup: vi.fn().mockResolvedValue({ isSetup: true }) // Default to setup complete
         };
         mockRuntimeService = {
@@ -47,6 +48,18 @@ describe('LoginComponent', () => {
         mockAuthService.checkSetup.mockResolvedValue({ isSetup: true });
         await component.ngOnInit();
         expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('explains when a legacy administrator migration is required', async () => {
+        mockAuthService.checkSetup.mockResolvedValue({ isSetup: true, vaultState: 'legacy-migration-required' });
+        await component.ngOnInit();
+        expect(component.vaultNotice).toContain('administrator must sign in once');
+    });
+
+    it('directs the user to device recovery when the OS key is unavailable', async () => {
+        mockAuthService.checkSetup.mockResolvedValue({ isSetup: true, vaultState: 'recovery-required' });
+        await component.ngOnInit();
+        expect(component.vaultNotice).toContain('Recover Device');
     });
 
     it('should initialize with default values', () => {
@@ -81,6 +94,20 @@ describe('LoginComponent', () => {
 
         expect(component.isLoading).toBe(false);
         expect(component.error).toBe('');
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/dashboard']);
+    });
+
+    it('requires acknowledgement of the new recovery code after legacy migration', async () => {
+        component.username = 'admin';
+        component.password = 'legacy-password';
+        mockAuthService.login.mockResolvedValue({ success: true, pendingRecoveryCode: 'AAAA-BBBB-CCCC-DDDD' });
+
+        await component.onLogin();
+
+        expect(component.pendingRecoveryCode).toBe('AAAA-BBBB-CCCC-DDDD');
+        expect(mockRouter.navigate).not.toHaveBeenCalled();
+        await component.acknowledgeMigration();
+        expect(mockAuthService.acknowledgeRecoveryCode).toHaveBeenCalledWith('AAAA-BBBB-CCCC-DDDD');
         expect(mockRouter.navigate).toHaveBeenCalledWith(['/dashboard']);
     });
 

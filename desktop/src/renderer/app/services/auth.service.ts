@@ -9,13 +9,13 @@ export class AuthService {
 
     constructor() { }
 
-    async login(username: string, password: string): Promise<{ success: boolean; error?: string }> {
+    async login(username: string, password: string): Promise<{ success: boolean; error?: string; pendingRecoveryCode?: string }> {
         if (window.electron) {
             try {
                 const result = await window.electron.login({ username, password });
                 if (result.success) {
                     this.setUser(result.user);
-                    return { success: true };
+                    return { success: true, pendingRecoveryCode: result.pendingRecoveryCode };
                 } else {
                     return { success: false, error: result.error };
                 }
@@ -43,7 +43,7 @@ export class AuthService {
         }
     }
 
-    async checkSetup(): Promise<{ isSetup: boolean, hasRecovery: boolean }> {
+    async checkSetup(): Promise<{ isSetup: boolean, hasRecovery: boolean, vaultState?: string, configVersion?: number }> {
         if (window.electron) {
             return await window.electron.checkSetup();
         } else {
@@ -60,11 +60,16 @@ export class AuthService {
         return { success: false, error: 'Web setup not supported yet' };
     }
 
-    async recover(data: any): Promise<{ success: boolean, recoveryCode?: string, error?: string }> {
+    async recover(data: { recoveryCode: string }): Promise<{ success: boolean, pendingRecoveryCode?: string, error?: string }> {
         if (window.electron) {
             return await window.electron.recover(data);
         }
         return { success: false, error: 'Web recovery not supported yet' };
+    }
+
+    async acknowledgeRecoveryCode(recoveryCode: string): Promise<void> {
+        if (!window.electron) return;
+        await window.electron.acknowledgeRecoveryCode(recoveryCode);
     }
 
     async regenerateRecoveryCode(password: string): Promise<{ success: boolean, recoveryCode?: string, error?: string }> {
@@ -99,7 +104,18 @@ export class AuthService {
     }
 
     private setUser(user: any) {
-        localStorage.setItem(this.userKey, JSON.stringify(user));
+        const safeUser = {
+            id: user?.id,
+            username: user?.username,
+            role: user?.role,
+            name: user?.name,
+            ...(user?.specialty ? { specialty: user.specialty } : {}),
+            ...(user?.license_number ? { license_number: user.license_number } : {}),
+            ...(user?.password_reset_required !== undefined
+                ? { password_reset_required: user.password_reset_required }
+                : {})
+        };
+        localStorage.setItem(this.userKey, JSON.stringify(safeUser));
     }
 
     private setToken(token: string) {
