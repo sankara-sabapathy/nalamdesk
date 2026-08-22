@@ -3,6 +3,10 @@ name: Automated Release
 on:
   workflow_dispatch:
 
+concurrency:
+  group: automated-release
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
