@@ -33,7 +33,9 @@ server.get('/health', async (request, reply) => {
 
 const start = async () => {
     try {
-        const rawPort = process.env.NALAMDESK_CLOUD_API_PORT || process.env.PORT || '3001';
+        // PORT is the conventional deployment override used by containers and PaaS.
+        // The NalamDesk-specific value supplies the local-development default only.
+        const rawPort = process.env.PORT || process.env.NALAMDESK_CLOUD_API_PORT || '3001';
         const port = parseInt(rawPort, 10);
 
         if (Number.isNaN(port) || port <= 0 || port > 65535) {

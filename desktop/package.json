@@ -10,8 +10,9 @@
   "scripts": {
     "ng": "ng",
     "dev": "npm start",
-    "start": "npm run build:main && npm run build:css && concurrently \"npm run watch:css\" \"npm run start:renderer\" \"npm run watch:main\" \"wait-on dist/main/main.js http://localhost:4200 && npm run start:electron:watch\"",
-    "start:renderer": "ng serve --open=false",
+    "start": "npm run build:main && npm run build:css && concurrently \"npm run watch:css\" \"npm run start:renderer\" \"npm run watch:main\" \"npm run wait:renderer && npm run start:electron:watch\"",
+    "start:renderer": "node scripts/start-renderer.js",
+    "wait:renderer": "node scripts/wait-renderer.js",
     "start:electron": "tsc -p tsconfig.main.json && node scripts/run-electron.js",
     "start:electron:watch": "nodemon --watch dist/main --exec \"node scripts/run-electron.js\"",
     "watch:main": "tsc -p tsconfig.main.json --watch",
