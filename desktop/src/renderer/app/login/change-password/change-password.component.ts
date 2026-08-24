@@ -18,6 +18,11 @@ import { AuthService } from '../../services/auth.service';
 
         <form (ngSubmit)="onSubmit()" class="space-y-4">
           <div>
+            <label class="block text-sm font-medium text-gray-700">Current Password</label>
+            <input type="password" [(ngModel)]="currentPassword" name="currentPassword" required
+                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+          </div>
+          <div>
             <label class="block text-sm font-medium text-gray-700">New Password</label>
             <input type="password" [(ngModel)]="password" name="password" required minlength="6"
                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
@@ -46,6 +51,7 @@ import { AuthService } from '../../services/auth.service';
   `
 })
 export class ChangePasswordComponent {
+    currentPassword = '';
     password = '';
     confirmPassword = '';
     isLoading = false;
@@ -55,7 +61,7 @@ export class ChangePasswordComponent {
     private router = inject(Router);
 
     isValid() {
-        return this.password.length >= 6 && this.password === this.confirmPassword;
+        return !!this.currentPassword && this.password.length >= 6 && this.password === this.confirmPassword;
     }
 
     async onSubmit() {
@@ -70,8 +76,8 @@ export class ChangePasswordComponent {
                 return;
             }
 
-            const success = await this.auth.updatePassword(user.username, this.password);
-            if (success) {
+            const result = await this.auth.changeLoginPassword(this.currentPassword, this.password);
+            if (result.success) {
                 // Update local user state to reflect reset is no longer required
                 const updatedUser = { ...user, password_reset_required: 0 };
 
@@ -81,11 +87,14 @@ export class ChangePasswordComponent {
                 // Navigate to dashboard
                 this.router.navigate(['/dashboard']);
             } else {
-                this.error = 'Failed to update password';
+                this.error = result.error || 'Failed to update password';
             }
         } catch (e: any) {
             this.error = e.message || 'An error occurred';
         } finally {
+            this.currentPassword = '';
+            this.password = '';
+            this.confirmPassword = '';
             this.isLoading = false;
         }
     }

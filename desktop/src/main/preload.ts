@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 console.log('Preload script loaded!');
 contextBridge.exposeInMainWorld('electron', {
-    login: (password: string) => ipcRenderer.invoke('auth:login', password),
+    login: (credentials: { username: string; password: string }) => ipcRenderer.invoke('auth:login', credentials),
     checkSetup: () => ipcRenderer.invoke('auth:checkSetup'),
     getRecoveryStatus: () => ipcRenderer.invoke('auth:getRecoveryStatus'),
     restoreSystemBackup: (path: string) => ipcRenderer.invoke('auth:restoreSystemBackup', path),
@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld('electron', {
     recover: (data: any) => ipcRenderer.invoke('auth:recover', data),
     acknowledgeRecoveryCode: (recoveryCode: string) => ipcRenderer.invoke('auth:acknowledgeRecoveryCode', { recoveryCode }),
     regenerateRecoveryCode: (password: string) => ipcRenderer.invoke('auth:regenerateRecoveryCode', { password }),
+    rotateDeviceEnvelope: (currentPassword: string) => ipcRenderer.invoke('auth:rotateDeviceEnvelope', { currentPassword }),
+    changeLoginPassword: (data: { currentPassword: string; newPassword: string }) => ipcRenderer.invoke('auth:changeLoginPassword', data),
+    resetUserPassword: (data: { targetUserId: number; currentAdminPassword: string; temporaryPassword: string }) => ipcRenderer.invoke('auth:resetUserPassword', data),
     // ...
     backup: {
         selectPath: () => ipcRenderer.invoke('backup:selectPath'),
@@ -44,7 +47,6 @@ contextBridge.exposeInMainWorld('electron', {
         getUsers: () => ipcRenderer.invoke('db:getUsers'),
         saveUser: (user: any) => ipcRenderer.invoke('db:saveUser', user),
         deleteUser: (id: number) => ipcRenderer.invoke('db:deleteUser', id),
-        updateUserPassword: (data: any) => ipcRenderer.invoke('db:updateUserPassword', data),
         // Queue
         getQueue: () => ipcRenderer.invoke('db:getQueue'),
         addToQueue: (data: { patientId: number, priority: number }) => ipcRenderer.invoke('db:addToQueue', data),
