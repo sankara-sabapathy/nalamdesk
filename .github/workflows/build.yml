@@ -1,9 +1,11 @@
 name: Automated Release
 
 on:
-  push:
-    branches:
-      - master
+  workflow_dispatch:
+
+concurrency:
+  group: automated-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -16,6 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: master
           fetch-depth: 0
 
       - name: Setup Node.js
