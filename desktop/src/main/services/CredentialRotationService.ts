@@ -1,6 +1,6 @@
 import * as argon2 from 'argon2';
 
-export type CredentialRotationStep = 'after-prepare' | 'after-apply' | 'after-complete';
+export type CredentialRotationStep = 'after-hash' | 'after-prepare' | 'after-apply' | 'after-complete';
 
 export interface CredentialRotationHooks {
     onStep?: (step: CredentialRotationStep) => void;
@@ -104,10 +104,14 @@ export class CredentialRotationService {
         }
 
         const replacementHash = await argon2.hash(newPassword);
+        this.step('after-hash');
         if (expectedAuthorizer) {
-            const currentAuthorizer = this.db.prepare('SELECT password FROM users WHERE id = ?')
+            const currentAuthorizer = this.db.prepare('SELECT password, role, active FROM users WHERE id = ?')
                 .get(expectedAuthorizer.id);
-            if (!currentAuthorizer || currentAuthorizer.password !== expectedAuthorizer.password) {
+            if (!currentAuthorizer
+                || currentAuthorizer.password !== expectedAuthorizer.password
+                || currentAuthorizer.role !== 'admin'
+                || currentAuthorizer.active !== 1) {
                 throw new Error('CREDENTIAL_CHANGED_CONCURRENTLY');
             }
         }

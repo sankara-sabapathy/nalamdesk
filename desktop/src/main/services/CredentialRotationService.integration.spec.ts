@@ -137,6 +137,26 @@ describe.skipIf(!process.versions.electron)('CredentialRotationService SQLCipher
         });
     });
 
+    it.each([
+        ['demoted', "UPDATE users SET role = 'doctor' WHERE id = 1"],
+        ['deactivated', 'UPDATE users SET active = 0 WHERE id = 1']
+    ])('rejects a staff reset when the administrator is %s during password hashing', async (_state, sql) => {
+        const doctor = database.getUserByUsername('doctor');
+        const rotations = new CredentialRotationService({
+            onStep: step => {
+                if (step === 'after-hash') security.getDb().prepare(sql).run();
+            }
+        });
+        rotations.setDb(security.getDb());
+
+        await expect(rotations.resetUserPassword(1, 'admin-current', doctor.id, 'doctor-temporary'))
+            .rejects.toThrow('CREDENTIAL_CHANGED_CONCURRENTLY');
+        expect(await database.validateUser('doctor', 'doctor-current')).toMatchObject({ success: true });
+        expect(await database.validateUser('doctor', 'doctor-temporary')).toMatchObject({ success: false });
+        expect(security.getDb().prepare('SELECT COUNT(*) AS count FROM credential_rotation_journal').get())
+            .toEqual({ count: 0 });
+    });
+
     it('lets a forced-reset user change their own temporary credential and clears the reset flag', async () => {
         const doctor = database.getUserByUsername('doctor');
         const rotations = new CredentialRotationService();
