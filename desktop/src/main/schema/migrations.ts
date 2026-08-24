@@ -271,5 +271,122 @@ export const MIGRATIONS = [
             console.log('Running Migration v6 (Cloud Backup Schedule)...');
             try { db.exec(`ALTER TABLE settings ADD COLUMN cloud_backup_schedule TEXT DEFAULT '13:00'`); } catch (e) { console.debug('[Migration] cloud_backup_schedule column might already exist.'); }
         }
+    },
+    {
+        version: 7,
+        up: (db: any) => {
+            console.log('Running Migration v7 (Encounter integrity)...');
+
+            const visitCols = [
+                "status TEXT DEFAULT 'finished'",
+                'started_at DATETIME',
+                'completed_at DATETIME',
+                'updated_at DATETIME',
+                'queue_entry_id INTEGER',
+                'start_request_id TEXT',
+                'start_operation TEXT',
+                'start_actor_id INTEGER'
+            ];
+            visitCols.forEach(col => {
+                try { db.exec(`ALTER TABLE visits ADD COLUMN ${col}`); } catch (e) { console.debug(`[Migration] visits.${col.split(' ')[0]} might already exist.`); }
+            });
+
+            // All records created by earlier versions were persisted as completed history.
+            db.exec(`
+                UPDATE visits
+                SET status = CASE WHEN status = 'in-progress' THEN status ELSE 'finished' END,
+                    started_at = COALESCE(started_at, date),
+                    completed_at = CASE WHEN status = 'in-progress' THEN completed_at ELSE COALESCE(completed_at, date) END,
+                    updated_at = COALESCE(updated_at, date)
+                ;
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_visits_queue_entry
+                    ON visits(queue_entry_id) WHERE queue_entry_id IS NOT NULL;
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_visits_start_request
+                    ON visits(start_request_id) WHERE start_request_id IS NOT NULL;
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_visits_one_active_patient
+                    ON visits(patient_id) WHERE status = 'in-progress';
+                CREATE INDEX IF NOT EXISTS idx_visits_status_updated
+                    ON visits(status, updated_at);
+
+                CREATE TABLE IF NOT EXISTS encounter_requests (
+                    request_id TEXT PRIMARY KEY,
+                    operation TEXT NOT NULL,
+                    encounter_id INTEGER NOT NULL,
+                    patient_id INTEGER NOT NULL,
+                    queue_entry_id INTEGER NOT NULL,
+                    actor_id INTEGER NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(encounter_id) REFERENCES visits(id) ON DELETE CASCADE,
+                    FOREIGN KEY(patient_id) REFERENCES patients(id),
+                    FOREIGN KEY(queue_entry_id) REFERENCES patient_queue(id),
+                    FOREIGN KEY(actor_id) REFERENCES users(id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_encounter_requests_encounter
+                    ON encounter_requests(encounter_id);
+
+                CREATE TRIGGER IF NOT EXISTS trg_visits_queue_link_insert
+                BEFORE INSERT ON visits WHEN NEW.queue_entry_id IS NOT NULL
+                BEGIN
+                    SELECT CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM patient_queue q
+                        WHERE q.id = NEW.queue_entry_id AND q.patient_id = NEW.patient_id
+                    ) THEN RAISE(ABORT, 'Encounter queue entry does not match patient') END;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_visits_queue_link_update
+                BEFORE UPDATE OF queue_entry_id, patient_id ON visits WHEN NEW.queue_entry_id IS NOT NULL
+                BEGIN
+                    SELECT CASE WHEN NOT EXISTS (
+                        SELECT 1 FROM patient_queue q
+                        WHERE q.id = NEW.queue_entry_id AND q.patient_id = NEW.patient_id
+                    ) THEN RAISE(ABORT, 'Encounter queue entry does not match patient') END;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_visits_status_insert
+                BEFORE INSERT ON visits
+                WHEN NEW.status IS NULL OR NEW.status NOT IN ('in-progress', 'finished')
+                BEGIN SELECT RAISE(ABORT, 'Invalid encounter status'); END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_visits_status_update
+                BEFORE UPDATE OF status ON visits
+                WHEN NEW.status IS NULL OR NEW.status NOT IN ('in-progress', 'finished')
+                BEGIN SELECT RAISE(ABORT, 'Invalid encounter status'); END;
+            `);
+
+            // Backfill any encounter created by a pre-release v7 build.
+            db.exec(`
+                INSERT OR IGNORE INTO encounter_requests (
+                    request_id, operation, encounter_id, patient_id, queue_entry_id, actor_id
+                )
+                SELECT start_request_id, COALESCE(start_operation, 'begin'), id,
+                       patient_id, queue_entry_id, COALESCE(start_actor_id, doctor_id)
+                FROM visits
+                WHERE start_request_id IS NOT NULL AND queue_entry_id IS NOT NULL
+                  AND COALESCE(start_actor_id, doctor_id) IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1 FROM patient_queue q
+                      WHERE q.id = visits.queue_entry_id AND q.patient_id = visits.patient_id
+                  )
+                  AND EXISTS (SELECT 1 FROM patients p WHERE p.id = visits.patient_id)
+                  AND EXISTS (
+                      SELECT 1 FROM users u
+                      WHERE u.id = COALESCE(visits.start_actor_id, visits.doctor_id)
+                  );
+            `);
+
+            // LAN/offline doctors use the same explicit encounter commands as Electron.
+            const doctor = db.prepare('SELECT permissions FROM roles WHERE name = ?').get('doctor');
+            if (doctor?.permissions) {
+                const permissions = new Set<string>(JSON.parse(doctor.permissions));
+                [
+                    'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress',
+                    'completeConsultation', 'postponeConsultation', 'resumeConsultation',
+                    'beginNextConsultation'
+                ].forEach(permission => permissions.add(permission));
+                db.prepare('UPDATE roles SET permissions = ? WHERE name = ?')
+                    .run(JSON.stringify([...permissions]), 'doctor');
+            }
+        }
     }
 ];

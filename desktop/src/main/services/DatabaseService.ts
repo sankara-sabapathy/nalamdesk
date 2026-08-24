@@ -339,7 +339,7 @@ export class DatabaseService {
         const totalPatients = this.db.prepare('SELECT count(*) as count FROM patients').get().count;
         // Today's visits: date >= start of day
         const today = new Date().toISOString().split('T')[0];
-        const todayVisits = this.db.prepare('SELECT count(*) as count FROM visits WHERE date(date) = ?').get(today).count;
+        const todayVisits = this.db.prepare("SELECT count(*) as count FROM visits WHERE date(date) = ? AND status = 'finished'").get(today).count;
         return { totalPatients, todayVisits };
     }
 
@@ -419,9 +419,13 @@ export class DatabaseService {
 
     // Delete Patient (and their visits)
     deletePatient(id: number) {
-        // Transaction manually
-        this.db.prepare('DELETE FROM visits WHERE patient_id = ?').run(id);
-        return this.db.prepare('DELETE FROM patients WHERE id = ?').run(id);
+        const remove = this.db.transaction(() => {
+            const active = this.db.prepare("SELECT id FROM visits WHERE patient_id = ? AND status = 'in-progress'").get(id);
+            if (active) throw new Error('Cannot delete a patient with an active encounter');
+            this.db.prepare('DELETE FROM visits WHERE patient_id = ?').run(id);
+            return this.db.prepare('DELETE FROM patients WHERE id = ?').run(id);
+        });
+        return remove();
     }
 
     // Visits
@@ -446,7 +450,7 @@ export class DatabaseService {
             FROM visits v 
             LEFT JOIN users d ON v.doctor_id = d.id 
             LEFT JOIN vitals vit ON vit.visit_id = v.id
-            WHERE v.patient_id = ?
+            WHERE v.patient_id = ? AND v.status = 'finished'
             ORDER BY v.date DESC
         `).all(patientId);
 
@@ -472,6 +476,7 @@ export class DatabaseService {
             FROM visits v 
             JOIN patients p ON v.patient_id = p.id
             LEFT JOIN users d ON v.doctor_id = d.id 
+            WHERE v.status = 'finished'
             ORDER BY v.date DESC
             LIMIT ?
         `).all(limit);
@@ -482,43 +487,338 @@ export class DatabaseService {
     }
 
     deleteVisit(id: number) {
+        const existing = this.db.prepare('SELECT status FROM visits WHERE id = ?').get(id);
+        if (existing?.status === 'in-progress') throw new Error('Active encounters cannot be deleted');
         return this.db.prepare('DELETE FROM visits WHERE id = ?').run(id);
     }
 
     saveVisit(visit: any) {
+        if (!visit.id) {
+            throw new Error('New encounters must be created with beginConsultation');
+        }
         const data = {
-            ...visit,
-            prescription_json: JSON.stringify(visit.prescription || [])
+            id: Number(visit.id),
+            diagnosis: visit.diagnosis ?? '',
+            prescription_json: JSON.stringify(visit.prescription || []),
+            amount_paid: Number(visit.amount_paid || 0),
+            symptoms: visit.symptoms ?? '',
+            examination_notes: visit.examination_notes ?? '',
+            diagnosis_type: visit.diagnosis_type ?? ''
         };
 
-        const result = (() => {
-            if (visit.id) {
-                return this.db.prepare(`
+        const existing = this.db.prepare('SELECT status FROM visits WHERE id = ?').get(visit.id);
+        if (existing?.status === 'in-progress') throw new Error('Use consultation progress commands for active encounters');
+        return this.db.prepare(`
             UPDATE visits SET
                 diagnosis = @diagnosis,
                 prescription_json = @prescription_json,
                 amount_paid = @amount_paid,
-                doctor_id = @doctor_id,
                 symptoms = @symptoms,
                 examination_notes = @examination_notes,
                 diagnosis_type = @diagnosis_type
             WHERE id = @id
             `).run(data);
-            } else {
-                return this.db.prepare(`
-            INSERT INTO visits(
-                patient_id, doctor_id, diagnosis, prescription_json, amount_paid, 
-                symptoms, examination_notes, diagnosis_type
-            )
-            VALUES(
-                @patient_id, @doctor_id, @diagnosis, @prescription_json, @amount_paid,
-                @symptoms, @examination_notes, @diagnosis_type
-            )
-            `).run(data);
-            }
-        })();
+    }
 
-        return result;
+    /**
+     * Starts (or resumes) exactly one encounter for an exact queue episode.
+     * startRequestId makes a lost-response retry return the original encounter.
+     */
+    beginConsultation(input: any, actingUserId: number) {
+        const patientId = Number(input?.patientId);
+        const queueEntryId = Number(input?.queueEntryId);
+        const startRequestId = String(input?.startRequestId || '').trim();
+        if (!Number.isInteger(patientId) || patientId <= 0 || !Number.isInteger(queueEntryId) || queueEntryId <= 0 || !startRequestId) {
+            throw new Error('patientId, queueEntryId, and startRequestId are required');
+        }
+
+        const begin = this.db.transaction(() => {
+            const retried = this.getStartRequest(startRequestId);
+            if (retried) {
+                return this.validateStartRetry(retried, {
+                    operation: 'begin', patientId, queueEntryId, actingUserId
+                });
+            }
+
+            const queue = this.db.prepare('SELECT * FROM patient_queue WHERE id = ?').get(queueEntryId);
+
+            if (!queue || queue.patient_id !== patientId || !['waiting', 'in-consult'].includes(queue.status)) {
+                throw new Error('Patient does not have an active queue entry');
+            }
+
+            const active = this.db.prepare("SELECT * FROM visits WHERE patient_id = ? AND status = 'in-progress'").get(patientId);
+            if (active) {
+                if (active.queue_entry_id !== queue.id) throw new Error('Patient already has an active encounter for another queue entry');
+                this.assertResponsiblePractitioner(active, actingUserId);
+                if (queue.status === 'waiting') throw new Error('Active encounter must be resumed explicitly');
+                this.recordStartRequest(startRequestId, 'begin', active.id, patientId, queue.id, actingUserId);
+                return this.hydrateVisit(active);
+            }
+
+            const queueUpdate = this.db.prepare(`
+                UPDATE patient_queue SET status = 'in-consult'
+                WHERE id = ? AND patient_id = ? AND status = 'waiting'
+            `).run(queue.id, patientId);
+            if (queue.status === 'waiting' && queueUpdate.changes !== 1) throw new Error('Queue entry is no longer available');
+
+            const result = this.db.prepare(`
+                INSERT INTO visits (
+                    patient_id, doctor_id, diagnosis, prescription_json, amount_paid,
+                    symptoms, examination_notes, diagnosis_type, status,
+                    started_at, updated_at, queue_entry_id, start_request_id,
+                    start_operation, start_actor_id
+                ) VALUES (?, ?, '', '[]', 0, '', '', '', 'in-progress', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, 'begin', ?)
+            `).run(patientId, actingUserId, queue.id, startRequestId, actingUserId);
+            this.recordStartRequest(startRequestId, 'begin', Number(result.lastInsertRowid), patientId, queue.id, actingUserId);
+            this.logAudit('ENCOUNTER_START', 'visits', result.lastInsertRowid, actingUserId, `Started encounter for queue entry ${queue.id}`);
+            return this.getEncounterById(Number(result.lastInsertRowid));
+        });
+
+        return begin.immediate();
+    }
+
+    getActiveConsultation(patientId: number, actingUserId: number) {
+        const row = this.db.prepare(`
+            SELECT * FROM visits WHERE patient_id = ? AND status = 'in-progress'
+            ORDER BY started_at DESC, id DESC LIMIT 1
+        `).get(Number(patientId));
+        if (row) this.assertResponsiblePractitioner(row, actingUserId);
+        return row ? this.hydrateVisit(row) : null;
+    }
+
+    resumeConsultation(input: any, actingUserId: number) {
+        const encounterId = Number(input?.encounterId);
+        if (!Number.isInteger(encounterId) || encounterId <= 0) throw new Error('encounterId is required');
+
+        const resume = this.db.transaction(() => {
+            const encounter = this.db.prepare('SELECT * FROM visits WHERE id = ?').get(encounterId);
+            if (!encounter || encounter.status !== 'in-progress' || !encounter.queue_entry_id) {
+                throw new Error('Active encounter not found');
+            }
+            this.assertResponsiblePractitioner(encounter, actingUserId);
+            const queue = this.getExactEncounterQueue(encounter, ['waiting', 'in-consult'], 'Encounter queue entry cannot be resumed');
+            if (queue.status === 'waiting') {
+                const claimed = this.db.prepare(`
+                    UPDATE patient_queue SET status = 'in-consult'
+                    WHERE id = ? AND patient_id = ? AND status = 'waiting'
+                `).run(queue.id, encounter.patient_id);
+                if (claimed.changes !== 1) throw new Error('Queue entry is no longer available');
+                this.logAudit('ENCOUNTER_RESUME', 'visits', encounterId, actingUserId, `Resumed queue entry ${queue.id}`);
+            }
+            return this.getEncounterById(encounterId);
+        });
+        return resume.immediate();
+    }
+
+    saveConsultationProgress(input: any, actingUserId: number) {
+        const encounterId = Number(input?.encounterId);
+        if (!Number.isInteger(encounterId) || encounterId <= 0) throw new Error('encounterId is required');
+
+        const save = this.db.transaction(() => {
+            const encounter = this.db.prepare('SELECT * FROM visits WHERE id = ?').get(encounterId);
+            if (!encounter) throw new Error('Encounter not found');
+            if (encounter.status !== 'in-progress') throw new Error('Completed encounters cannot be changed as progress');
+            this.assertResponsiblePractitioner(encounter, actingUserId);
+            this.getExactEncounterQueue(encounter, ['in-consult'], 'Encounter queue entry is not in consultation');
+            this.updateEncounterClinicalData(encounterId, input.visit);
+            this.logAudit('ENCOUNTER_PROGRESS', 'visits', encounterId, actingUserId, 'Saved consultation progress');
+            return this.getEncounterById(encounterId);
+        });
+        return save.immediate();
+    }
+
+    completeConsultation(input: any, actingUserId: number) {
+        const encounterId = Number(input?.encounterId);
+        if (!Number.isInteger(encounterId) || encounterId <= 0) throw new Error('encounterId is required');
+        if (!input?.visit) throw new Error('visit is required to complete an encounter');
+
+        const complete = this.db.transaction(() => {
+            const encounter = this.db.prepare('SELECT * FROM visits WHERE id = ?').get(encounterId);
+            if (!encounter) throw new Error('Encounter not found');
+            this.assertResponsiblePractitioner(encounter, actingUserId);
+            // A repeated Finish after response loss is a successful no-op.
+            if (encounter.status === 'finished') {
+                this.getExactEncounterQueue(encounter, ['completed'], 'Completed encounter queue entry is inconsistent');
+                return this.hydrateVisit(encounter);
+            }
+            if (encounter.status !== 'in-progress' || !encounter.queue_entry_id) throw new Error('Encounter is not completable');
+            this.getExactEncounterQueue(encounter, ['in-consult'], 'Queue entry is not in consultation');
+
+            const queueUpdate = this.db.prepare(`
+                UPDATE patient_queue SET status = 'completed'
+                WHERE id = ? AND patient_id = ? AND status = 'in-consult'
+            `).run(encounter.queue_entry_id, encounter.patient_id);
+            if (queueUpdate.changes !== 1) throw new Error('Queue entry is not in consultation');
+
+            this.updateEncounterClinicalData(encounterId, input.visit);
+            this.db.prepare(`
+                UPDATE visits SET status = 'finished', completed_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'in-progress'
+            `).run(encounterId);
+            this.logAudit('ENCOUNTER_COMPLETE', 'visits', encounterId, actingUserId, `Completed queue entry ${encounter.queue_entry_id}`);
+            return this.getEncounterById(encounterId);
+        });
+        return complete.immediate();
+    }
+
+    postponeConsultation(input: any, actingUserId: number) {
+        const encounterId = Number(input?.encounterId);
+        if (!Number.isInteger(encounterId) || encounterId <= 0) throw new Error('encounterId is required');
+
+        const postpone = this.db.transaction(() => {
+            const encounter = this.db.prepare('SELECT * FROM visits WHERE id = ?').get(encounterId);
+            if (!encounter || encounter.status !== 'in-progress' || !encounter.queue_entry_id) throw new Error('Active encounter not found');
+            this.assertResponsiblePractitioner(encounter, actingUserId);
+            this.getExactEncounterQueue(encounter, ['in-consult'], 'Queue entry is not in consultation');
+            if (input.visit) this.updateEncounterClinicalData(encounterId, input.visit);
+            const result = this.db.prepare(`
+                UPDATE patient_queue SET status = 'waiting'
+                WHERE id = ? AND patient_id = ? AND status = 'in-consult'
+            `).run(encounter.queue_entry_id, encounter.patient_id);
+            if (result.changes !== 1) throw new Error('Queue entry is not in consultation');
+            this.logAudit('ENCOUNTER_POSTPONE', 'visits', encounterId, actingUserId, `Postponed queue entry ${encounter.queue_entry_id}`);
+            return this.getEncounterById(encounterId);
+        });
+        return postpone.immediate();
+    }
+
+    beginNextConsultation(input: any, actingUserId: number) {
+        const startRequestId = String(input?.startRequestId || '').trim();
+        if (!startRequestId) throw new Error('startRequestId is required');
+
+        const beginNext = this.db.transaction(() => {
+            const retried = this.getStartRequest(startRequestId);
+            if (retried) {
+                return this.validateStartRetry(retried, {
+                    operation: 'next', actingUserId
+                });
+            }
+
+            const queue = this.db.prepare(`
+                SELECT q.*
+                FROM patient_queue q
+                LEFT JOIN visits active
+                    ON active.queue_entry_id = q.id AND active.status = 'in-progress'
+                WHERE q.status = 'waiting'
+                  AND (active.id IS NULL OR active.doctor_id = ?)
+                ORDER BY q.priority DESC, q.check_in_time ASC, q.id ASC
+                LIMIT 1
+            `).get(actingUserId);
+            if (!queue) return null;
+
+            const active = this.db.prepare("SELECT * FROM visits WHERE patient_id = ? AND status = 'in-progress'").get(queue.patient_id);
+            if (active) {
+                if (active.queue_entry_id !== queue.id) throw new Error('Next patient has another active encounter');
+                this.assertResponsiblePractitioner(active, actingUserId);
+                this.db.prepare("UPDATE patient_queue SET status = 'in-consult' WHERE id = ? AND status = 'waiting'").run(queue.id);
+                this.recordStartRequest(startRequestId, 'next', active.id, queue.patient_id, queue.id, actingUserId);
+                return this.hydrateVisit(active);
+            }
+
+            const claimed = this.db.prepare("UPDATE patient_queue SET status = 'in-consult' WHERE id = ? AND status = 'waiting'").run(queue.id);
+            if (claimed.changes !== 1) throw new Error('Next queue entry was already claimed');
+            const result = this.db.prepare(`
+                INSERT INTO visits (
+                    patient_id, doctor_id, diagnosis, prescription_json, amount_paid,
+                    symptoms, examination_notes, diagnosis_type, status,
+                    started_at, updated_at, queue_entry_id, start_request_id,
+                    start_operation, start_actor_id
+                ) VALUES (?, ?, '', '[]', 0, '', '', '', 'in-progress', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, 'next', ?)
+            `).run(queue.patient_id, actingUserId, queue.id, startRequestId, actingUserId);
+            this.recordStartRequest(startRequestId, 'next', Number(result.lastInsertRowid), queue.patient_id, queue.id, actingUserId);
+            this.logAudit('ENCOUNTER_START', 'visits', result.lastInsertRowid, actingUserId, `Started next encounter for queue entry ${queue.id}`);
+            return this.getEncounterById(Number(result.lastInsertRowid));
+        });
+        return beginNext.immediate();
+    }
+
+    private updateEncounterClinicalData(encounterId: number, visit: any) {
+        if (!visit) return;
+        const data = {
+            id: encounterId,
+            diagnosis: visit.diagnosis ?? '',
+            prescription_json: JSON.stringify(visit.prescription || []),
+            amount_paid: Number(visit.amount_paid || 0),
+            symptoms: visit.symptoms ?? '',
+            examination_notes: visit.examination_notes ?? '',
+            diagnosis_type: visit.diagnosis_type ?? ''
+        };
+        this.db.prepare(`
+            UPDATE visits SET diagnosis = @diagnosis, prescription_json = @prescription_json,
+                amount_paid = @amount_paid, symptoms = @symptoms,
+                examination_notes = @examination_notes, diagnosis_type = @diagnosis_type,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = @id AND status = 'in-progress'
+        `).run(data);
+    }
+
+    private validateStartRetry(encounter: any, expected: {
+        operation: 'begin' | 'next'; actingUserId: number; patientId?: number; queueEntryId?: number;
+    }) {
+        if (encounter.request_operation !== expected.operation || encounter.request_actor_id !== expected.actingUserId) {
+            throw new Error('Start request key was already used by another operation or actor');
+        }
+        this.assertResponsiblePractitioner(encounter, expected.actingUserId);
+        if (expected.patientId != null && encounter.request_patient_id !== expected.patientId) {
+            throw new Error('Start request key belongs to another patient');
+        }
+        if (expected.queueEntryId != null && encounter.request_queue_entry_id !== expected.queueEntryId) {
+            throw new Error('Start request key belongs to another queue entry');
+        }
+        const queue = this.db.prepare('SELECT * FROM patient_queue WHERE id = ?').get(encounter.queue_entry_id);
+        if (encounter.status !== 'in-progress' || !queue || queue.patient_id !== encounter.patient_id || queue.status !== 'in-consult') {
+            throw new Error('Start request key is stale');
+        }
+        return this.hydrateVisit(encounter);
+    }
+
+    private assertResponsiblePractitioner(encounter: any, actingUserId: number) {
+        if (Number(encounter.doctor_id) !== Number(actingUserId)) {
+            throw new Error('Only the responsible practitioner can access this encounter');
+        }
+    }
+
+    private getExactEncounterQueue(encounter: any, allowedStatuses: string[], errorMessage: string) {
+        const queue = encounter.queue_entry_id
+            ? this.db.prepare('SELECT * FROM patient_queue WHERE id = ?').get(encounter.queue_entry_id)
+            : null;
+        if (!queue || queue.patient_id !== encounter.patient_id || !allowedStatuses.includes(queue.status)) {
+            throw new Error(errorMessage);
+        }
+        return queue;
+    }
+
+    private getStartRequest(requestId: string) {
+        return this.db.prepare(`
+            SELECT r.operation AS request_operation, r.actor_id AS request_actor_id,
+                   r.patient_id AS request_patient_id, r.queue_entry_id AS request_queue_entry_id,
+                   v.*
+            FROM encounter_requests r
+            JOIN visits v ON v.id = r.encounter_id
+            WHERE r.request_id = ?
+        `).get(requestId);
+    }
+
+    private recordStartRequest(requestId: string, operation: 'begin' | 'next', encounterId: number,
+        patientId: number, queueEntryId: number, actingUserId: number) {
+        this.db.prepare(`
+            INSERT INTO encounter_requests (
+                request_id, operation, encounter_id, patient_id, queue_entry_id, actor_id
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        `).run(requestId, operation, encounterId, patientId, queueEntryId, actingUserId);
+    }
+
+    private getEncounterById(id: number) {
+        const row = this.db.prepare('SELECT * FROM visits WHERE id = ?').get(id);
+        if (!row) throw new Error('Encounter not found');
+        return this.hydrateVisit(row);
+    }
+
+    private hydrateVisit(row: any) {
+        return {
+            ...row,
+            prescription: row.prescription_json ? JSON.parse(row.prescription_json) : []
+        };
     }
 
 
@@ -564,10 +864,12 @@ export class DatabaseService {
     // Queue Management
     getQueue() {
         return this.db.prepare(`
-            SELECT q.id, q.patient_id, q.status, q.priority, q.check_in_time, 
-                   p.name as patient_name, p.gender, p.age, p.mobile 
+            SELECT q.id, q.patient_id, q.status, q.priority, q.check_in_time,
+                   p.name as patient_name, p.gender, p.age, p.mobile,
+                   active.id as active_encounter_id
             FROM patient_queue q
             JOIN patients p ON q.patient_id = p.id
+            LEFT JOIN visits active ON active.queue_entry_id = q.id AND active.status = 'in-progress'
             WHERE q.status != 'completed'
             ORDER BY q.priority DESC, q.check_in_time ASC
         `).all();
@@ -584,12 +886,18 @@ export class DatabaseService {
     }
 
     updateQueueStatus(id: number, status: string, actingUserId: number) {
+        if (status === 'in-consult' || status === 'completed') {
+            throw new Error('Consultation queue transitions require an encounter command');
+        }
         const result = this.db.prepare('UPDATE patient_queue SET status = ? WHERE id = ?').run(status, id);
         this.logAudit('UPDATE', 'patient_queue', id, actingUserId, `Updated status to ${status} `);
         return result;
     }
 
     updateQueueStatusByPatientId(patientId: number, status: string, actingUserId: number) {
+        if (status === 'in-consult' || status === 'completed') {
+            throw new Error('Consultation queue transitions require an encounter command');
+        }
         // Update the most recent non-completed queue entry for this patient
         // Fetch ID first for audit
         const existing = this.db.prepare(`SELECT id FROM patient_queue WHERE patient_id = ? AND status != 'completed' ORDER BY check_in_time DESC LIMIT 1`).get(patientId);
@@ -609,6 +917,8 @@ export class DatabaseService {
     }
 
     removeFromQueue(id: number, actingUserId: number) {
+        const active = this.db.prepare("SELECT id FROM visits WHERE queue_entry_id = ? AND status = 'in-progress'").get(id);
+        if (active) throw new Error('Cannot remove a queue entry with an active encounter');
         const result = this.db.prepare('DELETE FROM patient_queue WHERE id = ?').run(id);
         this.logAudit('DELETE', 'patient_queue', id, actingUserId, 'Removed from queue');
         return result;
@@ -698,4 +1008,3 @@ export class DatabaseService {
         }
     }
 }
-

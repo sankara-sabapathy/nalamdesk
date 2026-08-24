@@ -19,11 +19,16 @@ describe('DatabaseService', () => {
             run: vi.fn().mockReturnValue({ lastInsertRowid: 1, changes: 1 })
         };
 
+        const transaction = vi.fn((fn: any) => {
+            console.log('[Test] db.transaction called');
+            fn.immediate = fn;
+            return fn;
+        });
         mockDb = {
             exec: vi.fn((sql) => console.log('[Test] db.exec called:', sql ? sql.substring(0, 50) : 'null')),
             prepare: vi.fn().mockReturnValue(mockStatement),
             pragma: vi.fn(() => { console.log('[Test] db.pragma called'); return 0; }),
-            transaction: vi.fn((fn) => { console.log('[Test] db.transaction called'); return fn; }),
+            transaction,
             backup: vi.fn(),
             name: ':memory:'
         };
@@ -172,9 +177,20 @@ describe('DatabaseService', () => {
         });
 
         it('should log audit when updating queue status', () => {
-            service.updateQueueStatus(1, 'in-consult', 999);
+            service.updateQueueStatus(1, 'waiting', 999);
             // Check for Audit Log Insert
             expect(mockDb.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO audit_logs'));
+        });
+
+        it('should reject encounter lifecycle transitions outside encounter commands', () => {
+            expect(() => service.updateQueueStatus(1, 'completed', 999))
+                .toThrow('Consultation queue transitions require an encounter command');
+        });
+    });
+    describe('Visit Management', () => {
+        it('should reject legacy insert paths that bypass encounter identity', () => {
+            expect(() => service.saveVisit({ patient_id: 1, diagnosis: 'Test' }))
+                .toThrow('New encounters must be created with beginConsultation');
         });
     });
     describe('RBAC', () => {

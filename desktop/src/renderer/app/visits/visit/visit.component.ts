@@ -7,6 +7,7 @@ import { PdfService } from '../../services/pdf.service';
 import { PrescriptionComponent } from '../../visits/prescription/prescription.component';
 import { AuthService } from '../../services/auth.service';
 import { DataService } from '../../services/api.service';
+import { newRequestId } from '../../services/request-id';
 
 interface PrescriptionItem {
   medicine: string;
@@ -82,7 +83,7 @@ interface Visit {
               </div>
 
               <!-- COPY ACTION -->
-              <button (click)="copyLastVisit()" class="w-full py-1.5 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded hover:bg-blue-100 hover:text-blue-900 transition flex items-center justify-center gap-2 shadow-sm">
+              <button *ngIf="!activeEncounterReadOnly" (click)="copyLastVisit()" class="w-full py-1.5 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded hover:bg-blue-100 hover:text-blue-900 transition flex items-center justify-center gap-2 shadow-sm">
                 <span>📋</span> Copy to Current
               </button>
            </div>
@@ -94,8 +95,10 @@ interface Visit {
            <div *ngIf="history.length > 1" class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-4 mb-2 px-1">Older History</div>
 
            <!-- Older items -->
-           <div *ngFor="let visit of history | slice:1" (click)="editVisit(visit)" 
-                class="bg-white border hover:border-blue-400 rounded p-3 cursor-pointer transition shadow-sm"
+           <div *ngFor="let visit of history | slice:1" (click)="editVisit(visit)"
+                class="bg-white border rounded p-3 transition shadow-sm"
+                [class.hover:border-blue-400]="!isConsulting && !activeEncounterReadOnly" [class.cursor-pointer]="!isConsulting && !activeEncounterReadOnly"
+                [class.opacity-60]="isConsulting || activeEncounterReadOnly"
                 [class.ring-2]="editingVisitId === visit.id" [class.ring-blue-500]="editingVisitId === visit.id">
               <p class="text-xs text-gray-500 mb-1">{{ visit.date | date:'mediumDate' }}</p>
               <p class="text-sm font-medium text-gray-800 truncate">{{ visit.diagnosis }}</p>
@@ -105,6 +108,10 @@ interface Visit {
 
       <!-- Main Panel: The "Chart" (Vertical Document) -->
       <div class="flex-1 flex flex-col h-full bg-white relative overflow-hidden">
+        <div *ngIf="consultationLoadError" class="m-3 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-center justify-between gap-3">
+          <span>{{ consultationLoadError }}</span>
+          <button type="button" (click)="retryConsultationLoad()" class="rounded bg-amber-700 px-3 py-1.5 font-semibold text-white hover:bg-amber-800">Retry</button>
+        </div>
         
         <!-- Header / Toolbar -->
         <div class="min-h-16 py-2 border-b flex flex-col md:flex-row md:items-center justify-between px-4 md:px-8 bg-white z-20 sticky top-0 gap-2">
@@ -229,17 +236,17 @@ interface Visit {
             <div class="flex flex-col md:flex-row gap-3 items-center w-full md:w-auto">
                <ng-container *ngIf="isConsulting || editingVisitId; else noConsult">
                   <!-- Classic Save -->
-                   <button type="submit" (click)="saveVisit()" [disabled]="!visitForm.valid" class="hidden md:block px-4 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition disabled:opacity-50 font-medium">
+                   <button type="submit" (click)="saveVisit()" [disabled]="!visitForm.valid || actionInFlight" class="hidden md:block px-4 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition disabled:opacity-50 font-medium">
                      Save Progress
                    </button>
                    
                    <!-- Finish & Exit -->
-                   <button *ngIf="isConsulting" type="button" (click)="endConsult()" [disabled]="!visitForm.valid" class="hidden md:block px-4 py-2 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 transition disabled:opacity-50 font-medium">
+                   <button *ngIf="isConsulting" type="button" (click)="endConsult()" [disabled]="!visitForm.valid || actionInFlight" class="hidden md:block px-4 py-2 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 transition disabled:opacity-50 font-medium">
                      Finish & Exit
                    </button>
 
                    <!-- HERO ACTION: FINISH & NEXT -->
-                   <button *ngIf="isConsulting" type="button" (click)="finishAndNext()" [disabled]="!visitForm.valid" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2">
+                   <button *ngIf="isConsulting" type="button" (click)="finishAndNext()" [disabled]="!visitForm.valid || actionInFlight" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2">
                      <span>✓ Finish & Next</span> 
                    </button>
                    
@@ -265,7 +272,14 @@ export class VisitComponent implements OnInit {
   history: Visit[] = [];
   visitForm: FormGroup;
   editingVisitId: number | null = null;
+  encounterId: number | null = null;
   isConsulting = false;
+  activeEncounterReadOnly = false;
+  consultationLoadError: string | null = null;
+  actionInFlight = false;
+  private consultationStartPending = false;
+  private startRequestId: string | null = null;
+  private nextStartRequestId: string | null = null;
   currentUser: any;
   patientVitals: any;
   showMobileHistory = false;
@@ -285,6 +299,9 @@ export class VisitComponent implements OnInit {
     const nav = this.router.getCurrentNavigation();
     if (nav?.extras?.state?.['isConsulting']) {
       this.isConsulting = true;
+    }
+    if (nav?.extras?.state?.['encounterId']) {
+      this.encounterId = Number(nav.extras.state['encounterId']);
     }
 
     this.visitForm = this.fb.group({
@@ -306,6 +323,8 @@ export class VisitComponent implements OnInit {
   }
 
   editVisit(visit: any) {
+    // Historical editing and active completion are deliberately separate modes.
+    if (this.isConsulting || this.encounterId || this.activeEncounterReadOnly) return;
     this.editingVisitId = visit.id;
     this.visitForm.patchValue({
       symptoms: visit.symptoms,
@@ -335,19 +354,68 @@ export class VisitComponent implements OnInit {
   }
 
   async loadData() {
+    this.consultationLoadError = null;
     try {
-      const visits = await this.dataService.invoke<any>('getVisits', this.patientId);
-      const allPatients = await this.dataService.invoke<any>('getPatients', '');
-      const p = allPatients.find((p: any) => p.id === this.patientId);
-      const vitals = await this.dataService.invoke<any>('getVitals', this.patientId);
+      this.visitForm.disable();
+      let activeEncounterReadDenied = false;
+      const activeEncounterRequest = this.dataService.invoke<any>('getActiveConsultation', this.patientId)
+        .catch(error => {
+          if (this.isAuthorizationError(error)) {
+            activeEncounterReadDenied = true;
+            return null;
+          }
+          throw error;
+        });
+      const [visits, allPatients, vitals, activeEncounter] = await Promise.all([
+        this.dataService.invoke<any[]>('getVisits', this.patientId),
+        this.dataService.invoke<any[]>('getPatients', ''),
+        this.dataService.invoke<any>('getVitals', this.patientId),
+        activeEncounterRequest
+      ]);
+      const p = allPatients.find((patient: any) => patient.id === this.patientId);
+      let resumedEncounter: any = null;
+      let resumeDenied = false;
+      if (activeEncounter) {
+        try {
+          resumedEncounter = await this.dataService.invoke<any>('resumeConsultation', { encounterId: activeEncounter.id });
+        } catch (e) {
+          resumeDenied = this.isAuthorizationError(e);
+          if (!resumeDenied) {
+            this.consultationLoadError = 'Could not resume this consultation. Retry when the connection is available.';
+          }
+          console.warn(resumeDenied ? 'Active encounter is read-only for this user' : 'Could not resume active encounter', e);
+        }
+      }
 
       this.ngZone.run(() => {
         this.patient = p;
-        this.history = visits;
+        this.history = visits.filter((visit: any) => visit.status !== 'in-progress');
         this.patientVitals = vitals;
 
-        // Auto-Enable if state passed
-        if (this.isConsulting) {
+        if (resumedEncounter) {
+          this.consultationStartPending = false;
+          this.startRequestId = null;
+          this.activeEncounterReadOnly = false;
+          this.encounterId = resumedEncounter.id;
+          this.isConsulting = true;
+          this.editingVisitId = null;
+          this.patchEncounter(resumedEncounter);
+        } else if ((activeEncounter && resumeDenied) || activeEncounterReadDenied) {
+          this.activeEncounterReadOnly = true;
+          this.encounterId = null;
+          this.isConsulting = false;
+          this.editingVisitId = null;
+        } else if (activeEncounter && this.consultationLoadError) {
+          this.activeEncounterReadOnly = false;
+          this.encounterId = null;
+          this.isConsulting = false;
+          this.editingVisitId = null;
+        } else {
+          this.activeEncounterReadOnly = false;
+        }
+
+        // Enable only after the exact linked queue entry has been reclaimed.
+        if (resumedEncounter) {
           this.visitForm.enable();
 
           // Auto-Fill Vitals into Objective if empty
@@ -358,26 +426,44 @@ export class VisitComponent implements OnInit {
         }
       });
 
-      // Double Check Queue Status (Fallback for direct URL access)
-      if (!this.isConsulting) {
-        const queue = await this.dataService.invoke<any>('getQueue');
-        const queueItem = queue.find((q: any) => q.patient_id == this.patientId && q.status === 'in-consult');
-
-        this.ngZone.run(() => {
-          if (queueItem) {
-            this.isConsulting = true;
-            this.visitForm.enable();
-          } else if (!this.editingVisitId) {
-            // FORCE ENABLE FOR DEBUGGING
-            this.visitForm.enable();
-            // this.visitForm.disable(); // DISABLED FOR DEBUGGING
-            console.warn('DEBUG: Unresponsive Fix - Would have disabled form, but forced enabled.');
-          }
+      if (this.isConsulting && !activeEncounter && !activeEncounterReadDenied) {
+        const queue = await this.dataService.invoke<any[]>('getQueue');
+        const queueEntry = queue.find(item => item.patient_id === this.patientId && item.status === 'waiting');
+        if (!queueEntry) throw new Error('Patient does not have a waiting queue entry');
+        this.startRequestId ||= newRequestId();
+        const encounter = await this.dataService.invoke<any>('beginConsultation', {
+          patientId: this.patientId,
+          queueEntryId: queueEntry.id,
+          startRequestId: this.startRequestId
         });
+        this.consultationStartPending = false;
+        this.startRequestId = null;
+        this.ngZone.run(() => {
+          this.encounterId = encounter.id;
+          this.patchEncounter(encounter);
+          this.visitForm.enable();
+        });
+      } else if (!resumedEncounter && !this.editingVisitId) {
+        this.visitForm.disable();
       }
     } catch (e) {
       console.error(e);
+      this.ngZone.run(() => {
+        if (this.isConsulting && !this.encounterId) {
+          this.consultationStartPending = true;
+          this.isConsulting = false;
+          this.consultationLoadError = 'Could not start this consultation. Open the patient from the queue or retry.';
+        } else {
+          this.consultationLoadError = 'Could not load the consultation. Retry when the connection is available.';
+        }
+        this.visitForm.disable();
+      });
     }
+  }
+
+  retryConsultationLoad(): Promise<void> {
+    if (this.consultationStartPending) this.isConsulting = true;
+    return this.loadData();
   }
 
   updatePrescription(items: any[]) {
@@ -390,18 +476,18 @@ export class VisitComponent implements OnInit {
       return false;
     }
 
-    const currentUser = this.authService.getUser();
-    const doctorId = currentUser?.id;
-
-    const visitData = {
-      id: this.editingVisitId,
-      patient_id: this.patientId,
-      doctor_id: doctorId ? +doctorId : null,
-      ...this.visitForm.value
-    };
+    const visitData = this.currentVisitData();
 
     try {
-      await this.dataService.invoke('saveVisit', visitData);
+      if (this.editingVisitId) {
+        await this.dataService.invoke('saveVisit', { id: this.editingVisitId, ...visitData });
+      } else {
+        if (!this.encounterId) throw new Error('No active encounter');
+        await this.dataService.invoke('saveConsultationProgress', {
+          encounterId: this.encounterId,
+          visit: visitData
+        });
+      }
       this.ngZone.run(() => {
         if (this.editingVisitId) {
           this.resetForm();
@@ -409,7 +495,8 @@ export class VisitComponent implements OnInit {
           // Actually for classic flow, saving progress shouldn't clear form until Done.
         }
         // Reload history
-        this.dataService.invoke<any>('getVisits', this.patientId).then(v => this.history = v);
+        this.dataService.invoke<any[]>('getVisits', this.patientId)
+          .then(visits => this.history = visits.filter(visit => visit.status !== 'in-progress'));
       });
       return true;
     } catch (e) {
@@ -464,75 +551,64 @@ export class VisitComponent implements OnInit {
   }
 
   async finishAndNext() {
-    // 1. Complete current
-    if (await this.completeConsult()) {
-      // 2. Find next patient
-      const nextPatient = await this.findNextInQueue();
-      if (nextPatient) {
-        // 3. Navigate to next
-        this.ngZone.run(() => {
-          this.patientId = nextPatient.patient_id;
-          this.editingVisitId = null;
-          this.visitForm.reset({ amount_paid: 0, prescription: [] });
-          this.currentPrescription = [];
-          this.isConsulting = true;
-          this.router.navigate(['/visit', nextPatient.patient_id], {
-            state: { isConsulting: true }
-          });
-          // Force reload since we are on same route component
-          this.loadData();
+    if (this.actionInFlight) return;
+    this.actionInFlight = true;
+    try {
+      if (await this.completeConsult(false)) {
+        this.nextStartRequestId ||= newRequestId();
+        const nextEncounter = await this.dataService.invoke<any>('beginNextConsultation', {
+          startRequestId: this.nextStartRequestId
         });
-        // Note: Angular doesn't always reload same route. 
-        // We might need to handle RouteReuseStrategy or just manually reset.
-      } else {
-        alert('Queue is empty! Great job.');
-        this.router.navigate(['/queue']);
+        this.nextStartRequestId = null;
+        if (nextEncounter) {
+          this.ngZone.run(() => {
+            this.patientId = nextEncounter.patient_id;
+            this.encounterId = nextEncounter.id;
+            this.editingVisitId = null;
+            this.visitForm.reset({ amount_paid: 0, prescription: [] });
+            this.currentPrescription = [];
+            this.isConsulting = true;
+            this.router.navigate(['/visit', nextEncounter.patient_id], {
+              state: { isConsulting: true, encounterId: nextEncounter.id }
+            });
+          });
+        } else {
+          this.isConsulting = false;
+          alert('Queue is empty! Great job.');
+          this.router.navigate(['/queue']);
+        }
       }
+    } catch (e) {
+      console.error('Failed to start the next consultation', e);
+      alert('The current consultation is finished, but the next patient could not be opened. Retry to resume safely.');
+    } finally {
+      this.actionInFlight = false;
     }
   }
 
-  async completeConsult(): Promise<boolean> {
+  async completeConsult(manageActionLock = true): Promise<boolean> {
     if (this.visitForm.invalid) {
       this.visitForm.markAllAsTouched();
       alert('Please complete diagnosis.');
       return false;
     }
 
-    const saved = await this.saveVisit();
-    if (!saved) return false;
+    if (!this.encounterId || (manageActionLock && this.actionInFlight)) return false;
 
     try {
-      await this.dataService.invoke('updateQueueStatusByPatientId', { patientId: this.patientId, status: 'completed' });
+      if (manageActionLock) this.actionInFlight = true;
+      await this.dataService.invoke('completeConsultation', {
+        encounterId: this.encounterId,
+        visit: this.currentVisitData()
+      });
+      if (manageActionLock) this.isConsulting = false;
       return true;
     } catch (e) {
       console.error('Failed to end consult', e);
-      alert('Failed to update queue status.');
+      alert('Failed to finish consultation. Your encounter remains open.');
       return false;
-    }
-  }
-
-  async findNextInQueue(): Promise<any> {
-    try {
-      const queue = await this.dataService.invoke<any[]>('getQueue');
-      // Filter for waiting
-      const waiting = queue.filter(q => q.status === 'waiting');
-      // Sort: Priority 2 (Emergency) > Priority 1 
-      // Then by check_in_time (asc)
-      waiting.sort((a, b) => {
-        if (a.priority !== b.priority) return b.priority - a.priority; // 2 - 1
-        return new Date(a.check_in_time).getTime() - new Date(b.check_in_time).getTime();
-      });
-
-      if (waiting.length > 0) {
-        // Mark as in-consult
-        const next = waiting[0];
-        await this.dataService.invoke('updateQueueStatus', { id: next.id, status: 'in-consult' });
-        return next;
-      }
-      return null;
-    } catch (e) {
-      console.error(e);
-      return null;
+    } finally {
+      if (manageActionLock) this.actionInFlight = false;
     }
   }
 
@@ -550,15 +626,41 @@ export class VisitComponent implements OnInit {
   }
 
   async postponeConsult() {
-    if (this.visitForm.dirty && this.visitForm.valid) {
-      await this.saveVisit();
-    }
+    if (!this.encounterId || this.actionInFlight) return;
     try {
-      await this.dataService.invoke('updateQueueStatusByPatientId', { patientId: this.patientId, status: 'waiting' });
+      this.actionInFlight = true;
+      await this.dataService.invoke('postponeConsultation', {
+        encounterId: this.encounterId,
+        visit: this.visitForm.valid ? this.currentVisitData() : undefined
+      });
       this.router.navigate(['/queue']);
     } catch (e) {
       console.error(e);
+      alert('Failed to postpone consultation.');
+    } finally {
+      this.actionInFlight = false;
     }
+  }
+
+  private currentVisitData() {
+    return { ...this.visitForm.value };
+  }
+
+  private patchEncounter(encounter: any) {
+    this.visitForm.patchValue({
+      symptoms: encounter.symptoms || '',
+      examination_notes: encounter.examination_notes || '',
+      diagnosis: encounter.diagnosis || '',
+      diagnosis_type: encounter.diagnosis_type || '',
+      prescription: encounter.prescription || [],
+      amount_paid: encounter.amount_paid || 0
+    });
+    this.currentPrescription = encounter.prescription || [];
+  }
+
+  private isAuthorizationError(error: unknown): boolean {
+    const message = String((error as Error)?.message ?? error ?? '');
+    return /responsible practitioner|forbidden|unauthorized/i.test(message);
   }
 
   goBack() {

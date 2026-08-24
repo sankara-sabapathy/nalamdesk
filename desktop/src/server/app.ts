@@ -27,6 +27,8 @@ const ALLOWED_IPC_METHODS = [
     'getDashboardStats',
     'getPatients', 'getPatientById', 'savePatient', 'deletePatient',
     'getVisits', 'getAllVisits', 'saveVisit', 'deleteVisit',
+    'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress',
+    'completeConsultation', 'postponeConsultation', 'resumeConsultation', 'beginNextConsultation',
     'getVitals', 'saveVitals',
     'getSettings', 'getPublicSettings', 'saveSettings',
     'getDoctors',
@@ -337,7 +339,13 @@ export class ApiServer {
         // 3. Execution using Allowlist
         if (typeof dbAny[method] === 'function') {
             try {
-                const result = await dbAny[method](...args);
+                const encounterCommands = new Set([
+                    'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress', 'completeConsultation',
+                    'postponeConsultation', 'resumeConsultation', 'beginNextConsultation'
+                ]);
+                const result = encounterCommands.has(method)
+                    ? await dbAny[method](...args, user.id)
+                    : await dbAny[method](...args);
                 return result;
             } catch (e: any) {
                 console.error(`[IPC Error] method: ${method}`, e);

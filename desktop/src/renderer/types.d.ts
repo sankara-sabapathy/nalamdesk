@@ -17,6 +17,13 @@ declare global {
                 getVisits: (patientId: number) => Promise<any[]>;
                 getAllVisits: (limit: number) => Promise<any[]>;
                 saveVisit: (visit: any) => Promise<any>;
+                beginConsultation: (input: any) => Promise<any>;
+                getActiveConsultation: (patientId: number) => Promise<any>;
+                saveConsultationProgress: (input: any) => Promise<any>;
+                completeConsultation: (input: any) => Promise<any>;
+                postponeConsultation: (input: any) => Promise<any>;
+                resumeConsultation: (input: any) => Promise<any>;
+                beginNextConsultation: (input: any) => Promise<any>;
                 deleteVisit: (id: number) => Promise<any>;
                 getSettings: () => Promise<any>;
                 saveSettings: (settings: any) => Promise<any>;

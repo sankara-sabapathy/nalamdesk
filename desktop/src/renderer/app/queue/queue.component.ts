@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { DataService } from '../services/api.service';
 import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
+import { newRequestId } from '../services/request-id';
 
 @Component({
   // ... (omitted for brevity, keeping same template)
@@ -97,21 +98,21 @@ import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
                           Vitals
                         </button>
                         <button *ngIf="item.status === 'waiting'" 
-                                (click)="updateStatus(item.id, 'in-consult')"
+                                (click)="startConsult(item)"
                                 class="btn btn-primary btn-sm join-item">
-                          Start Consult
+                          {{ item.active_encounter_id ? 'Resume Consult' : 'Start Consult' }}
                         </button>
-                        <button *ngIf="item.status === 'in-consult'" 
-                                (click)="updateStatus(item.id, 'completed')" 
-                                class="btn btn-success btn-sm join-item">
-                          Complete
+                        <button *ngIf="item.status === 'in-consult'"
+                                (click)="startConsult(item)"
+                                class="btn btn-primary btn-sm join-item">
+                          Resume Consult
                         </button>
-                        <button (click)="remove(item.id)" class="btn btn-error btn-outline btn-sm join-item">
+                        <button *ngIf="item.status === 'waiting'" (click)="remove(item.id)" class="btn btn-error btn-outline btn-sm join-item">
                           Remove
                         </button>
                       </div>
                       <!-- Mobile fallback or always visible action if hover isn't reliable -->
-                      <button *ngIf="item.status === 'waiting'" (click)="updateStatus(item.id, 'in-consult')" class="btn btn-circle btn-sm btn-primary md:hidden">
+                      <button (click)="startConsult(item)" class="btn btn-circle btn-sm btn-primary md:hidden">
                         ▶
                       </button>
                     </td>
@@ -146,6 +147,7 @@ import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
 export class QueueComponent implements OnInit, OnDestroy {
   queue = signal<any[]>([]);
   refreshIntervalId: any;
+  private readonly startRequestIds = new Map<number, string>();
 
   constructor(
     private router: Router,
@@ -175,20 +177,28 @@ export class QueueComponent implements OnInit, OnDestroy {
     }
   }
 
-  async updateStatus(id: number, status: string) {
+  async startConsult(item: any) {
     try {
-      const item = this.queue().find(x => x.id === id);
-      await this.dataService.invoke<any>('updateQueueStatus', { id, status });
-      this.refreshQueue();
-
-      if (status === 'in-consult' && item) {
-        this.router.navigate(['/visit', item.patient_id], {
-          state: { isConsulting: true, patientName: item.patient_name }
+      let encounter: any;
+      if (item.active_encounter_id) {
+        encounter = await this.dataService.invoke<any>('resumeConsultation', { encounterId: item.active_encounter_id });
+      } else {
+        const startRequestId = this.startRequestIds.get(item.id) || newRequestId();
+        this.startRequestIds.set(item.id, startRequestId);
+        encounter = await this.dataService.invoke<any>('beginConsultation', {
+          patientId: item.patient_id,
+          queueEntryId: item.id,
+          startRequestId
         });
+        this.startRequestIds.delete(item.id);
       }
+      await this.refreshQueue();
+      this.router.navigate(['/visit', item.patient_id], {
+        state: { isConsulting: true, encounterId: encounter.id, patientName: item.patient_name }
+      });
     } catch (e) {
-      console.error('Update failed', e);
-      alert('Failed to update status');
+      console.error('Could not start consultation', e);
+      alert('Failed to start consultation');
     }
   }
 

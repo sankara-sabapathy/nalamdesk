@@ -25,6 +25,8 @@ describe('PatientDetailsComponent', () => {
                 if (endpoint === 'getVisits') return Promise.resolve([{ id: 1, date: '2025-01-01', diagnosis: 'Test Dx' }]);
                 if (endpoint === 'getVitals') return Promise.resolve({ pulse: 80 });
                 if (endpoint === 'deleteVisit') return Promise.resolve(true);
+                if (endpoint === 'getQueue') return Promise.resolve([{ id: 50, patient_id: 123, status: 'waiting' }]);
+                if (endpoint === 'beginConsultation') return Promise.resolve({ id: 70, patient_id: 123 });
                 return Promise.resolve(null);
             })
         };
@@ -73,10 +75,17 @@ describe('PatientDetailsComponent', () => {
         expect(component.showVisitModal).toBe(false);
     });
 
-    it('should navigate to consult on start', () => {
+    it('should create the encounter before navigating to consult', async () => {
         component.patientId = 123;
-        component.startConsult();
-        expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 123], { state: { isConsulting: true } });
+        await component.startConsult();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('beginConsultation', expect.objectContaining({
+            patientId: 123,
+            queueEntryId: 50,
+            startRequestId: expect.any(String)
+        }));
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 123], {
+            state: { isConsulting: true, encounterId: 70 }
+        });
     });
 
     it('should open and close modal', () => {

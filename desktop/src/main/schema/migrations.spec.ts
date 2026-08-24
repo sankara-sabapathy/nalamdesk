@@ -33,8 +33,8 @@ describe('Database Migrations', () => {
             });
         });
 
-        it('should have 6 migrations total', () => {
-            expect(MIGRATIONS).toHaveLength(6);
+        it('should have 7 migrations total', () => {
+            expect(MIGRATIONS).toHaveLength(7);
         });
     });
 
@@ -200,6 +200,44 @@ describe('Database Migrations', () => {
 
         it('should add cloud_backup_schedule column with default', () => {
             expect(executedSql.some(sql => sql.includes('cloud_backup_schedule') && sql.includes("DEFAULT '13:00'"))).toBe(true);
+        });
+    });
+
+    describe('Migration v7 (Encounter integrity)', () => {
+        beforeEach(() => {
+            MIGRATIONS[6].up(mockDb);
+        });
+
+        it('adds durable encounter lifecycle and idempotency fields', () => {
+            expect(executedSql.some(sql => sql.includes('ALTER TABLE visits ADD COLUMN status'))).toBe(true);
+            expect(executedSql.some(sql => sql.includes('queue_entry_id'))).toBe(true);
+            expect(executedSql.some(sql => sql.includes('start_request_id'))).toBe(true);
+        });
+
+        it('creates unique indexes for queue, request, and active patient identity', () => {
+            const sql = executedSql.join('\n');
+            expect(sql).toContain('idx_visits_queue_entry');
+            expect(sql).toContain('idx_visits_start_request');
+            expect(sql).toContain('idx_visits_one_active_patient');
+            expect(sql).toContain('CREATE TABLE IF NOT EXISTS encounter_requests');
+        });
+
+        it('adds consultation permissions without dropping existing doctor permissions', () => {
+            const run = vi.fn();
+            mockDb.prepare = vi.fn().mockReturnValue({
+                run,
+                get: vi.fn().mockReturnValue({ permissions: JSON.stringify(['saveVisit']) }),
+                all: vi.fn()
+            });
+
+            MIGRATIONS[6].up(mockDb);
+
+            const [serializedPermissions, role] = run.mock.calls[0];
+            const permissions = JSON.parse(serializedPermissions);
+            expect(role).toBe('doctor');
+            expect(permissions).toContain('saveVisit');
+            expect(permissions).toContain('beginConsultation');
+            expect(permissions).toContain('beginNextConsultation');
         });
     });
 
