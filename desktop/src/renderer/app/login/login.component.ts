@@ -111,10 +111,8 @@ export class LoginComponent implements OnInit {
     const status = await this.authService.checkSetup();
     if (!status.isSetup) {
       this.router.navigate(['/setup']);
-    } else if (status.vaultState === 'legacy-migration-required') {
-      this.vaultNotice = 'Security upgrade required: the administrator must sign in once. A new recovery code will be shown.';
-    } else if (status.vaultState === 'recovery-required') {
-      this.vaultNotice = 'This device cannot access its protected vault key. Use Recover Device below.';
+    } else if (status.vaultState && !['ready', 'not-setup'].includes(status.vaultState)) {
+      this.vaultNotice = 'Additional security verification may be required. Sign in or use Recover Device if access is unavailable.';
     }
 
     if (this.isElectron) {
@@ -146,29 +144,31 @@ export class LoginComponent implements OnInit {
           }
         } else {
           this.password = ''; // Clear sensitive data on failure too
-          this.error = result.error || 'Login failed';
-
-          if (this.error === 'SYSTEM_LOCKED') {
-            this.error = 'System Locked. Please login as Administrator to unlock.';
-          } else if (this.error === 'RECOVERY_REQUIRED') {
-            this.error = 'Device recovery is required before anyone can sign in.';
-          } else if (this.error === 'VAULT_BINDING_MISMATCH') {
-            this.error = 'The database and security metadata do not belong to the same vault.';
-          }
+          this.error = 'Sign-in failed. Check your credentials or use Recover Device if access is unavailable.';
         }
       });
     } catch (e) {
       this.ngZone.run(() => {
         this.isLoading = false;
-        this.error = 'Login Error';
+        this.error = 'Sign-in failed. Check your credentials or use Recover Device if access is unavailable.';
         console.error(e);
       });
     }
   }
 
   async acknowledgeMigration() {
-    await this.authService.acknowledgeRecoveryCode(this.pendingRecoveryCode);
-    this.pendingRecoveryCode = '';
-    this.router.navigate([this.pendingRoute]);
+    this.error = '';
+    try {
+      const result = await this.authService.acknowledgeRecoveryCode(this.pendingRecoveryCode);
+      if (!result.success) {
+        this.error = 'Could not confirm the recovery code. Please try again.';
+        return;
+      }
+      this.pendingRecoveryCode = '';
+      this.router.navigate([this.pendingRoute]);
+    } catch (error) {
+      this.error = 'Could not confirm the recovery code. Please try again.';
+      console.error(error);
+    }
   }
 }

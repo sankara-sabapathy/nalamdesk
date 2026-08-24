@@ -48,9 +48,15 @@ describe('AuthService', () => {
             (window as any).electron = {
                 acknowledgeRecoveryCode: vi.fn().mockResolvedValue({ success: true })
             };
-            await service.acknowledgeRecoveryCode('AAAA-BBBB-CCCC-DDDD');
+            await expect(service.acknowledgeRecoveryCode('AAAA-BBBB-CCCC-DDDD'))
+                .resolves.toEqual({ success: true });
             expect(window.electron.acknowledgeRecoveryCode)
                 .toHaveBeenCalledWith('AAAA-BBBB-CCCC-DDDD');
+        });
+
+        it('fails closed when recovery acknowledgement IPC is unavailable', async () => {
+            await expect(service.acknowledgeRecoveryCode('AAAA-BBBB-CCCC-DDDD'))
+                .resolves.toEqual({ success: false });
         });
 
         it('should handle login failure', async () => {

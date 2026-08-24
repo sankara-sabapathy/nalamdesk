@@ -302,8 +302,17 @@ export class SetupComponent implements OnInit {
     // Auto-login attempt
     const res = await this.authService.login('admin', this.password);
     if (res.success) {
-      await this.authService.acknowledgeRecoveryCode(this.recoveryCode);
-      this.router.navigate(['/dashboard']);
+      try {
+        const acknowledgement = await this.authService.acknowledgeRecoveryCode(this.recoveryCode);
+        if (acknowledgement.success) {
+          this.router.navigate(['/dashboard']);
+        } else {
+          alert('Could not confirm the recovery code. Please try again.');
+        }
+      } catch (error) {
+        console.error(error);
+        alert('Could not confirm the recovery code. Please try again.');
+      }
     } else {
       this.router.navigate(['/login']);
     }

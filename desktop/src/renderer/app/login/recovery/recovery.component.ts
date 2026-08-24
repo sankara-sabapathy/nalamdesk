@@ -28,8 +28,8 @@ import { AuthService } from '../../services/auth.service';
             <button (click)="copyCode()" class="mt-2 text-sm text-blue-600 font-bold">{{ isCopied ? 'Copied!' : 'Copy' }}</button>
           </div>
           <div class="flex justify-center">
-              <button (click)="finish()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded">
-                  {{ newRecoveryCode ? 'I have saved this code' : 'Return to Login' }}
+              <button (click)="finish()" [disabled]="isLoading" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded disabled:opacity-50 disabled:cursor-not-allowed">
+                  {{ isLoading ? 'Confirming...' : (newRecoveryCode ? 'I have saved this code' : 'Return to Login') }}
               </button>
           </div>
         </div>
@@ -114,7 +114,27 @@ export class RecoveryComponent {
     this.isCopied = true;
   }
 
-  finish() {
-    this.router.navigate(['/login']);
+  async finish() {
+    if (!this.newRecoveryCode) {
+      this.router.navigate(['/login']);
+      return;
+    }
+
+    this.isLoading = true;
+    this.error = '';
+    try {
+      const result = await this.authService.acknowledgeRecoveryCode(this.newRecoveryCode);
+      if (!result.success) {
+        this.error = 'Could not confirm the recovery code. Please try again.';
+        return;
+      }
+      this.newRecoveryCode = '';
+      this.router.navigate(['/login']);
+    } catch (error) {
+      this.error = 'Could not confirm the recovery code. Please try again.';
+      console.error(error);
+    } finally {
+      this.isLoading = false;
+    }
   }
 }

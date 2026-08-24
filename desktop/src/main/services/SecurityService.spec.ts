@@ -384,6 +384,24 @@ describe('SecurityService v3', () => {
         expect(fs.existsSync(path.join(directory, 'salt.bin.migrated'))).toBe(true);
     });
 
+    it('retires transitional recovery artifacts when regenerating the primary code', async () => {
+        fs.writeFileSync(path.join(directory, 'salt.bin'), crypto.randomBytes(16));
+        const service = new SecurityService(store);
+        await service.migrateLegacy('legacy-master', dbPath, directory);
+        const migratedConfig = JSON.parse(fs.readFileSync(path.join(directory, 'security.json'), 'utf8'));
+
+        expect(migratedConfig.pendingRecoveryAck).toBeTruthy();
+        expect(migratedConfig.transitionRecovery).toBeTruthy();
+
+        const replacementCode = await service.regenerateRecoveryCode();
+        const updatedConfig = JSON.parse(fs.readFileSync(path.join(directory, 'security.json'), 'utf8'));
+
+        expect(replacementCode).toMatch(/^[A-F0-9]{8}(?:-[A-F0-9]{8}){3}$/);
+        expect(updatedConfig.pendingRecoveryAck).toBeUndefined();
+        expect(updatedConfig.transitionRecovery).toBeUndefined();
+        expect(service.getPendingRecoveryCode()).toBeNull();
+    });
+
     it('rolls the database back when migration fails after the snapshot', async () => {
         const legacyBuilder = new SecurityService(store) as any;
         const salt = crypto.randomBytes(16);

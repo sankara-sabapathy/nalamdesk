@@ -11,11 +11,10 @@ async function testSecurity() {
     if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath);
     if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
 
-    let protectedKey: Buffer | null = null;
     const deviceStore: DeviceKeyStore = {
         status: () => ({ available: true, provider: 'verification-memory-store' }),
-        protect: (value) => { protectedKey = Buffer.from(value); return Buffer.from(value); },
-        unprotect: () => { if (!protectedKey) throw new Error('missing key'); return Buffer.from(protectedKey); }
+        protect: (value) => Buffer.from(value),
+        unprotect: (value) => Buffer.from(value)
     };
     const security = new SecurityService(deviceStore);
     const password = 'adminLoginPassword';

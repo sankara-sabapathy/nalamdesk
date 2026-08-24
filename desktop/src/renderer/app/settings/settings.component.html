@@ -587,7 +587,8 @@
         <h3 class="text-xl font-bold mb-4">Generate Recovery Code</h3>
         <div *ngIf="!newRecoveryCode">
             <p class="text-sm text-gray-600 mb-4">Enter the administrator login password to confirm.</p>
-            <input type="password" [(ngModel)]="confirmPassword" class="input input-bordered w-full mb-4"
+            <label for="recovery-admin-password" class="block text-sm font-medium text-gray-700 mb-1">Administrator Password</label>
+            <input id="recovery-admin-password" type="password" [(ngModel)]="confirmPassword" class="input input-bordered w-full mb-4"
                 placeholder="Administrator Password">
             <div class="flex justify-end gap-2">
                 <button (click)="showRecoveryModal = false" class="btn btn-ghost">Cancel</button>

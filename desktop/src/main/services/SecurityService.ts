@@ -310,6 +310,8 @@ export class SecurityService {
         const config = this.loadConfigV3();
         const recoveryCode = this.generateRecoveryCodeString();
         config.recovery = await this.createRecoveryEnvelope(this.dek, recoveryCode, config.vaultId, config.keyVersion);
+        delete config.pendingRecoveryAck;
+        delete config.transitionRecovery;
         this.saveConfigAtomic(config);
         return recoveryCode;
     }

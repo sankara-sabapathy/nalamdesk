@@ -67,9 +67,9 @@ export class AuthService {
         return { success: false, error: 'Web recovery not supported yet' };
     }
 
-    async acknowledgeRecoveryCode(recoveryCode: string): Promise<void> {
-        if (!window.electron) return;
-        await window.electron.acknowledgeRecoveryCode(recoveryCode);
+    async acknowledgeRecoveryCode(recoveryCode: string): Promise<{ success: boolean }> {
+        if (!window.electron) return { success: false };
+        return await window.electron.acknowledgeRecoveryCode(recoveryCode);
     }
 
     async regenerateRecoveryCode(password: string): Promise<{ success: boolean, recoveryCode?: string, error?: string }> {
