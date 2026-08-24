@@ -157,6 +157,26 @@ describe.skipIf(!process.versions.electron)('CredentialRotationService SQLCipher
             .toEqual({ count: 0 });
     });
 
+    it('rejects a self-service rotation when the user is deactivated during password hashing', async () => {
+        const doctor = database.getUserByUsername('doctor');
+        const rotations = new CredentialRotationService({
+            onStep: step => {
+                if (step === 'after-hash') {
+                    security.getDb().prepare('UPDATE users SET active = 0 WHERE id = ?').run(doctor.id);
+                }
+            }
+        });
+        rotations.setDb(security.getDb());
+
+        await expect(rotations.changeOwnPassword(doctor.id, 'doctor-current', 'doctor-replacement'))
+            .rejects.toThrow('CREDENTIAL_CHANGED_CONCURRENTLY');
+        const stored = security.getDb().prepare('SELECT password FROM users WHERE id = ?').get(doctor.id);
+        expect(await argon2.verify(stored.password, 'doctor-current')).toBe(true);
+        expect(await argon2.verify(stored.password, 'doctor-replacement')).toBe(false);
+        expect(security.getDb().prepare('SELECT COUNT(*) AS count FROM credential_rotation_journal').get())
+            .toEqual({ count: 0 });
+    });
+
     it('lets a forced-reset user change their own temporary credential and clears the reset flag', async () => {
         const doctor = database.getUserByUsername('doctor');
         const rotations = new CredentialRotationService();

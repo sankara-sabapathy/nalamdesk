@@ -122,16 +122,21 @@ export class CredentialRotationService {
         `).run(target.username, target.password, replacementHash, target.password_reset_required ?? 0);
         this.step('after-prepare');
 
-        this.db.transaction(() => {
-            const result = this.db.prepare(`
-                UPDATE users SET password = ?, password_reset_required = ?
-                WHERE id = ? AND password = ?
-            `).run(replacementHash, forceReset ? 1 : 0, target.id, target.password);
-            if (result.changes !== 1) throw new Error('CREDENTIAL_CHANGED_CONCURRENTLY');
-            this.db.prepare(`
-                UPDATE credential_rotation_journal SET phase = 'applied' WHERE id = 1
-            `).run();
-        })();
+        try {
+            this.db.transaction(() => {
+                const result = this.db.prepare(`
+                    UPDATE users SET password = ?, password_reset_required = ?
+                    WHERE id = ? AND password = ? AND active = 1
+                `).run(replacementHash, forceReset ? 1 : 0, target.id, target.password);
+                if (result.changes !== 1) throw new Error('CREDENTIAL_CHANGED_CONCURRENTLY');
+                this.db.prepare(`
+                    UPDATE credential_rotation_journal SET phase = 'applied' WHERE id = 1
+                `).run();
+            })();
+        } catch (error) {
+            this.reconcileInterruptedRotation();
+            throw error;
+        }
         this.step('after-apply');
 
         try {
