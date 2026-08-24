@@ -36,6 +36,7 @@ export interface SystemBackupInfo {
 }
 export interface RestoreResult { success: true; restartRequired: true; preRestoreSnapshot?: string }
 export type BackupStep = 'restore-after-stage-validation' | 'restore-after-snapshot' |
+    'restore-before-live-close' |
     'restore-after-journal' | 'restore-after-database-replace' |
     'restore-after-config-replace' | 'restore-after-activation';
 export interface BackupServiceOptions {
@@ -225,6 +226,7 @@ export class BackupService {
         };
         fs.mkdirSync(stageDirectory, { recursive: true });
         let validator: SecurityService | undefined;
+        let liveDatabaseClosed = false;
         try {
             const manifest = this.extractAndValidate(backupPath, stagedDatabase);
             validator = this.options.createIsolatedSecurityService();
@@ -256,21 +258,16 @@ export class BackupService {
                     );
                 }
             }
-            journal.phase = 'snapshot-created'; this.saveJournal(journal); this.step('restore-after-snapshot');
-            if (journal.hadDatabase) {
-                if (this.securityService.getDb()) {
-                    // The base file alone may lag committed WAL transactions.
-                    // Ask SQLite for a consistent encrypted snapshot while the
-                    // live connection is still open, then make it durable before
-                    // recording the replacement phase in the journal.
-                    await this.dbService.backupDatabase(journal.databaseRollback);
-                    this.fsyncFile(journal.databaseRollback);
-                } else {
-                    // A closed vault is quiescent, so copying its base file is
-                    // sufficient after startup reconciliation has completed.
-                    this.copyDurable(targetDatabase, journal.databaseRollback);
-                }
+            // From this point until activation, no live write may commit outside
+            // the rollback snapshot. Closing checkpoints WAL data into the base
+            // file and makes the following durable copy transactionally final.
+            this.step('restore-before-live-close');
+            if (this.securityService.getDb()) {
+                this.securityService.closeDb();
+                liveDatabaseClosed = true;
             }
+            journal.phase = 'snapshot-created'; this.saveJournal(journal); this.step('restore-after-snapshot');
+            if (journal.hadDatabase) this.copyDurable(targetDatabase, journal.databaseRollback);
             if (journal.hadConfig) this.copyDurable(liveConfig, journal.configRollback);
             this.fsyncDirectory(stageDirectory);
             journal.phase = 'live-files-replacing'; this.saveJournal(journal); this.step('restore-after-journal');
@@ -293,6 +290,10 @@ export class BackupService {
             if (persisted && ['live-files-replacing', 'live-files-replaced'].includes(persisted.phase)) await this.rollback(persisted);
             else if (persisted) this.cleanup(persisted);
             else this.cleanupStage(stageDirectory);
+            if (liveDatabaseClosed && !this.securityService.getDb() && journal.hadDatabase && journal.hadConfig) {
+                await this.securityService.initializeDevice(targetDatabase, this.userDataPath);
+                this.dbService.setDb(this.securityService.getDb());
+            }
             throw error;
         }
     }

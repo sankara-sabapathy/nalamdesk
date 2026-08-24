@@ -194,4 +194,43 @@ describe.skipIf(!process.versions.electron)('BackupService SQLCipher integration
             .toEqual([{ value: 'base-row' }, { value: 'committed-in-wal' }]);
         current.security.closeDb();
     });
+
+    it('includes a final write committed immediately before the live vault closes', async () => {
+        const incoming = await vault(path.join(root, 'incoming-close'), new BackupIntegrationStore(0x66), 'incoming');
+        await makeBundle(incoming); incoming.security.closeDb();
+        const targetStore = new BackupIntegrationStore(0x67);
+        const current = await vault(path.join(root, 'target-close'), targetStore, 'base-row');
+        const service = new BackupService(current.database, drive, current.security, current.directory, {
+            createIsolatedSecurityService: () => new SecurityService(targetStore),
+            onRestoreCommitted: vi.fn(),
+            onStep: step => {
+                if (step === 'restore-before-live-close') {
+                    current.security.getDb().prepare('INSERT INTO clinical_backup_test (value) VALUES (?)').run('last-write');
+                }
+                if (step === 'restore-after-config-replace') throw new Error('forced close-boundary interruption');
+            }
+        });
+        await expect(service.restoreLocalBackup(bundle, incoming.recoveryCode))
+            .rejects.toThrow('forced close-boundary interruption');
+        expect(current.security.getDb().prepare('SELECT value FROM clinical_backup_test ORDER BY rowid').all())
+            .toEqual([{ value: 'base-row' }, { value: 'last-write' }]);
+        current.security.closeDb();
+    });
+
+    it('reopens the untouched live vault when restore fails after the quiescent close', async () => {
+        const incoming = await vault(path.join(root, 'incoming-reopen'), new BackupIntegrationStore(0x68), 'incoming');
+        await makeBundle(incoming); incoming.security.closeDb();
+        const targetStore = new BackupIntegrationStore(0x69);
+        const current = await vault(path.join(root, 'target-reopen'), targetStore, 'still-live');
+        const service = new BackupService(current.database, drive, current.security, current.directory, {
+            createIsolatedSecurityService: () => new SecurityService(targetStore),
+            onRestoreCommitted: vi.fn(),
+            onStep: step => { if (step === 'restore-after-snapshot') throw new Error('forced pre-replacement failure'); }
+        });
+        await expect(service.restoreLocalBackup(bundle, incoming.recoveryCode))
+            .rejects.toThrow('forced pre-replacement failure');
+        expect(current.security.getDb().prepare('SELECT value FROM clinical_backup_test').get())
+            .toEqual({ value: 'still-live' });
+        current.security.closeDb();
+    });
 });
