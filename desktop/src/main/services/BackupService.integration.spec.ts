@@ -214,7 +214,20 @@ describe.skipIf(!process.versions.electron)('BackupService SQLCipher integration
             .rejects.toThrow('forced close-boundary interruption');
         expect(current.security.getDb().prepare('SELECT value FROM clinical_backup_test ORDER BY rowid').all())
             .toEqual([{ value: 'base-row' }, { value: 'last-write' }]);
+        const snapshots = fs.readdirSync(path.join(current.directory, 'backups'))
+            .filter(name => name.includes('pre-restore'));
+        expect(snapshots).toHaveLength(1);
         current.security.closeDb();
+
+        const recoveryDirectory = path.join(root, 'close-boundary-recovery'); fs.mkdirSync(recoveryDirectory);
+        const recoveryStore = new BackupIntegrationStore(0x70);
+        const recoverySecurity = new SecurityService(recoveryStore);
+        await new BackupService(new DatabaseService(), drive, recoverySecurity, recoveryDirectory, {
+            createIsolatedSecurityService: () => new SecurityService(recoveryStore), onRestoreCommitted: vi.fn()
+        }).restoreLocalBackup(path.join(current.directory, 'backups', snapshots[0]), current.recoveryCode);
+        expect(recoverySecurity.getDb().prepare('SELECT value FROM clinical_backup_test ORDER BY rowid').all())
+            .toEqual([{ value: 'base-row' }, { value: 'last-write' }]);
+        recoverySecurity.closeDb();
     });
 
     it('reopens the untouched live vault when restore fails after the quiescent close', async () => {

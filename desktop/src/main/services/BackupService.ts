@@ -227,6 +227,9 @@ export class BackupService {
         fs.mkdirSync(stageDirectory, { recursive: true });
         let validator: SecurityService | undefined;
         let liveDatabaseClosed = false;
+        let preRestoreSnapshot: {
+            destination: string; metadata: PortableMetadata; schemaVersion: number;
+        } | undefined;
         try {
             const manifest = this.extractAndValidate(backupPath, stagedDatabase);
             validator = this.options.createIsolatedSecurityService();
@@ -247,16 +250,14 @@ export class BackupService {
             if (journal.hadDatabase && journal.hadConfig) {
                 fs.mkdirSync(this.localBackupPath, { recursive: true });
                 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-                const snapshot = path.join(this.localBackupPath, `nalamdesk-pre-restore-${stamp}.ndbackup`);
-                if (this.securityService.getDb()) {
-                    journal.preRestoreSnapshot = await this.createBackupBundle(snapshot);
-                } else {
-                    // A closed vault is quiescent. Snapshot the encrypted bytes
-                    // with a strictly sanitized copy of its portable metadata.
-                    journal.preRestoreSnapshot = this.writePortableBundle(
-                        snapshot, targetDatabase, this.readPortableMetadata(liveConfig), 0
-                    );
-                }
+                const liveDb = this.securityService.getDb();
+                preRestoreSnapshot = {
+                    destination: path.join(this.localBackupPath, `nalamdesk-pre-restore-${stamp}.ndbackup`),
+                    metadata: liveDb
+                        ? this.securityService.getPortableVaultMetadata()
+                        : this.readPortableMetadata(liveConfig),
+                    schemaVersion: liveDb ? Number(liveDb.pragma('user_version', { simple: true }) || 0) : 0
+                };
             }
             // From this point until activation, no live write may commit outside
             // the rollback snapshot. Closing checkpoints WAL data into the base
@@ -266,8 +267,17 @@ export class BackupService {
                 this.securityService.closeDb();
                 liveDatabaseClosed = true;
             }
-            journal.phase = 'snapshot-created'; this.saveJournal(journal); this.step('restore-after-snapshot');
             if (journal.hadDatabase) this.copyDurable(targetDatabase, journal.databaseRollback);
+            if (preRestoreSnapshot) {
+                // Build the durable disaster-recovery bundle from the same
+                // quiescent bytes used for rollback. This includes every write
+                // committed before close, including WAL and boundary writes.
+                journal.preRestoreSnapshot = this.writePortableBundle(
+                    preRestoreSnapshot.destination, journal.databaseRollback,
+                    preRestoreSnapshot.metadata, preRestoreSnapshot.schemaVersion
+                );
+            }
+            journal.phase = 'snapshot-created'; this.saveJournal(journal); this.step('restore-after-snapshot');
             if (journal.hadConfig) this.copyDurable(liveConfig, journal.configRollback);
             this.fsyncDirectory(stageDirectory);
             journal.phase = 'live-files-replacing'; this.saveJournal(journal); this.step('restore-after-journal');
