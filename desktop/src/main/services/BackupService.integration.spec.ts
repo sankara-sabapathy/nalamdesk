@@ -172,4 +172,26 @@ describe.skipIf(!process.versions.electron)('BackupService SQLCipher integration
         expect(recoverySecurity.getDb().prepare('SELECT value FROM clinical_backup_test').get()).toEqual({ value: 'current' });
         recoverySecurity.closeDb();
     });
+
+    it('preserves committed WAL data when an interrupted restore rolls back', async () => {
+        const incoming = await vault(path.join(root, 'incoming-wal'), new BackupIntegrationStore(0x64), 'incoming');
+        await makeBundle(incoming); incoming.security.closeDb();
+        const targetStore = new BackupIntegrationStore(0x65);
+        const current = await vault(path.join(root, 'target-wal'), targetStore, 'base-row');
+        const liveDb = current.security.getDb();
+        liveDb.pragma('journal_mode = WAL');
+        liveDb.pragma('wal_autocheckpoint = 0');
+        liveDb.prepare('INSERT INTO clinical_backup_test (value) VALUES (?)').run('committed-in-wal');
+        expect(fs.existsSync(`${current.dbPath}-wal`)).toBe(true);
+
+        const service = new BackupService(current.database, drive, current.security, current.directory, {
+            createIsolatedSecurityService: () => new SecurityService(targetStore),
+            onRestoreCommitted: vi.fn(),
+            onStep: step => { if (step === 'restore-after-config-replace') throw new Error('forced WAL interruption'); }
+        });
+        await expect(service.restoreLocalBackup(bundle, incoming.recoveryCode)).rejects.toThrow('forced WAL interruption');
+        expect(current.security.getDb().prepare('SELECT value FROM clinical_backup_test ORDER BY rowid').all())
+            .toEqual([{ value: 'base-row' }, { value: 'committed-in-wal' }]);
+        current.security.closeDb();
+    });
 });

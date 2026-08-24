@@ -256,7 +256,20 @@ export class BackupService {
                 }
             }
             journal.phase = 'snapshot-created'; this.saveJournal(journal); this.step('restore-after-snapshot');
-            if (journal.hadDatabase) this.copyDurable(targetDatabase, journal.databaseRollback);
+            if (journal.hadDatabase) {
+                if (this.securityService.getDb()) {
+                    // The base file alone may lag committed WAL transactions.
+                    // Ask SQLite for a consistent encrypted snapshot while the
+                    // live connection is still open, then make it durable before
+                    // recording the replacement phase in the journal.
+                    await this.dbService.backupDatabase(journal.databaseRollback);
+                    this.fsyncFile(journal.databaseRollback);
+                } else {
+                    // A closed vault is quiescent, so copying its base file is
+                    // sufficient after startup reconciliation has completed.
+                    this.copyDurable(targetDatabase, journal.databaseRollback);
+                }
+            }
             if (journal.hadConfig) this.copyDurable(liveConfig, journal.configRollback);
             this.fsyncDirectory(stageDirectory);
             journal.phase = 'live-files-replacing'; this.saveJournal(journal); this.step('restore-after-journal');
@@ -396,7 +409,10 @@ export class BackupService {
     }
     private copyDurable(source: string, destination: string) {
         fs.copyFileSync(source, destination);
-        const fd = fs.openSync(destination, 'r+');
+        this.fsyncFile(destination);
+    }
+    private fsyncFile(filePath: string) {
+        const fd = fs.openSync(filePath, 'r+');
         try { (this.options.fsync || fs.fsyncSync)(fd); } finally { fs.closeSync(fd); }
     }
     private removeSidecars(database: string) { for (const suffix of ['-wal', '-shm']) this.remove(`${database}${suffix}`); }
