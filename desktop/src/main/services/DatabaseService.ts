@@ -574,14 +574,15 @@ export class DatabaseService {
             return this.getEncounterById(Number(result.lastInsertRowid));
         });
 
-        return begin();
+        return begin.immediate();
     }
 
-    getActiveConsultation(patientId: number) {
+    getActiveConsultation(patientId: number, actingUserId: number) {
         const row = this.db.prepare(`
             SELECT * FROM visits WHERE patient_id = ? AND status = 'in-progress'
             ORDER BY started_at DESC, id DESC LIMIT 1
         `).get(Number(patientId));
+        if (row) this.assertResponsiblePractitioner(row, actingUserId);
         return row ? this.hydrateVisit(row) : null;
     }
 
@@ -606,7 +607,7 @@ export class DatabaseService {
             }
             return this.getEncounterById(encounterId);
         });
-        return resume();
+        return resume.immediate();
     }
 
     saveConsultationProgress(input: any, actingUserId: number) {
@@ -623,12 +624,13 @@ export class DatabaseService {
             this.logAudit('ENCOUNTER_PROGRESS', 'visits', encounterId, actingUserId, 'Saved consultation progress');
             return this.getEncounterById(encounterId);
         });
-        return save();
+        return save.immediate();
     }
 
     completeConsultation(input: any, actingUserId: number) {
         const encounterId = Number(input?.encounterId);
         if (!Number.isInteger(encounterId) || encounterId <= 0) throw new Error('encounterId is required');
+        if (!input?.visit) throw new Error('visit is required to complete an encounter');
 
         const complete = this.db.transaction(() => {
             const encounter = this.db.prepare('SELECT * FROM visits WHERE id = ?').get(encounterId);
@@ -656,7 +658,7 @@ export class DatabaseService {
             this.logAudit('ENCOUNTER_COMPLETE', 'visits', encounterId, actingUserId, `Completed queue entry ${encounter.queue_entry_id}`);
             return this.getEncounterById(encounterId);
         });
-        return complete();
+        return complete.immediate();
     }
 
     postponeConsultation(input: any, actingUserId: number) {
@@ -677,7 +679,7 @@ export class DatabaseService {
             this.logAudit('ENCOUNTER_POSTPONE', 'visits', encounterId, actingUserId, `Postponed queue entry ${encounter.queue_entry_id}`);
             return this.getEncounterById(encounterId);
         });
-        return postpone();
+        return postpone.immediate();
     }
 
     beginNextConsultation(input: any, actingUserId: number) {
@@ -727,10 +729,11 @@ export class DatabaseService {
             this.logAudit('ENCOUNTER_START', 'visits', result.lastInsertRowid, actingUserId, `Started next encounter for queue entry ${queue.id}`);
             return this.getEncounterById(Number(result.lastInsertRowid));
         });
-        return beginNext();
+        return beginNext.immediate();
     }
 
-    private updateEncounterClinicalData(encounterId: number, visit: any = {}) {
+    private updateEncounterClinicalData(encounterId: number, visit: any) {
+        if (!visit) return;
         const data = {
             id: encounterId,
             diagnosis: visit.diagnosis ?? '',
@@ -771,7 +774,7 @@ export class DatabaseService {
 
     private assertResponsiblePractitioner(encounter: any, actingUserId: number) {
         if (Number(encounter.doctor_id) !== Number(actingUserId)) {
-            throw new Error('Only the responsible practitioner can mutate this encounter');
+            throw new Error('Only the responsible practitioner can access this encounter');
         }
     }
 

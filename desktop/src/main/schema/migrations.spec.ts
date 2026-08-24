@@ -221,6 +221,24 @@ describe('Database Migrations', () => {
             expect(sql).toContain('idx_visits_one_active_patient');
             expect(sql).toContain('CREATE TABLE IF NOT EXISTS encounter_requests');
         });
+
+        it('adds consultation permissions without dropping existing doctor permissions', () => {
+            const run = vi.fn();
+            mockDb.prepare = vi.fn().mockReturnValue({
+                run,
+                get: vi.fn().mockReturnValue({ permissions: JSON.stringify(['saveVisit']) }),
+                all: vi.fn()
+            });
+
+            MIGRATIONS[6].up(mockDb);
+
+            const [serializedPermissions, role] = run.mock.calls[0];
+            const permissions = JSON.parse(serializedPermissions);
+            expect(role).toBe('doctor');
+            expect(permissions).toContain('saveVisit');
+            expect(permissions).toContain('beginConsultation');
+            expect(permissions).toContain('beginNextConsultation');
+        });
     });
 
     describe('Full Migration Run', () => {

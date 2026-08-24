@@ -340,7 +340,7 @@ export class ApiServer {
         if (typeof dbAny[method] === 'function') {
             try {
                 const encounterCommands = new Set([
-                    'beginConsultation', 'saveConsultationProgress', 'completeConsultation',
+                    'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress', 'completeConsultation',
                     'postponeConsultation', 'resumeConsultation', 'beginNextConsultation'
                 ]);
                 const result = encounterCommands.has(method)

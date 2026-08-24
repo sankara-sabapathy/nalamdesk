@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { DataService } from '../services/api.service';
 import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
+import { newRequestId } from '../services/request-id';
 
 @Component({
   // ... (omitted for brevity, keeping same template)
@@ -146,6 +147,7 @@ import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
 export class QueueComponent implements OnInit, OnDestroy {
   queue = signal<any[]>([]);
   refreshIntervalId: any;
+  private readonly startRequestIds = new Map<number, string>();
 
   constructor(
     private router: Router,
@@ -177,13 +179,19 @@ export class QueueComponent implements OnInit, OnDestroy {
 
   async startConsult(item: any) {
     try {
-      const encounter = item.active_encounter_id
-        ? await this.dataService.invoke<any>('resumeConsultation', { encounterId: item.active_encounter_id })
-        : await this.dataService.invoke<any>('beginConsultation', {
+      let encounter: any;
+      if (item.active_encounter_id) {
+        encounter = await this.dataService.invoke<any>('resumeConsultation', { encounterId: item.active_encounter_id });
+      } else {
+        const startRequestId = this.startRequestIds.get(item.id) || newRequestId();
+        this.startRequestIds.set(item.id, startRequestId);
+        encounter = await this.dataService.invoke<any>('beginConsultation', {
           patientId: item.patient_id,
           queueEntryId: item.id,
-          startRequestId: this.newRequestId()
+          startRequestId
         });
+        this.startRequestIds.delete(item.id);
+      }
       await this.refreshQueue();
       this.router.navigate(['/visit', item.patient_id], {
         state: { isConsulting: true, encounterId: encounter.id, patientName: item.patient_name }
@@ -192,10 +200,6 @@ export class QueueComponent implements OnInit, OnDestroy {
       console.error('Could not start consultation', e);
       alert('Failed to start consultation');
     }
-  }
-
-  private newRequestId(): string {
-    return globalThis.crypto?.randomUUID?.() || `consult-${Date.now()}-${Math.random()}`;
   }
 
   async remove(id: number) {

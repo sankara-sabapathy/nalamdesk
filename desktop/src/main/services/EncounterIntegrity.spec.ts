@@ -20,8 +20,8 @@ class TestDatabase {
         const row = this.sqlite.prepare(`PRAGMA ${sql}`).get() as any;
         return options?.simple ? row?.user_version : row;
     }
-    transaction<T extends (...args: any[]) => any>(operation: T): T {
-        return ((...args: any[]) => {
+    transaction<T extends (...args: any[]) => any>(operation: T): T & { immediate: T } {
+        const run = ((...args: any[]) => {
             this.sqlite.exec('BEGIN IMMEDIATE');
             try {
                 const value = operation(...args);
@@ -31,7 +31,9 @@ class TestDatabase {
                 this.sqlite.exec('ROLLBACK');
                 throw error;
             }
-        }) as T;
+        }) as T & { immediate: T };
+        run.immediate = run;
+        return run;
     }
 }
 
@@ -85,6 +87,19 @@ describe('encounter integrity transactions', () => {
         expect(retry.status).toBe('finished');
         expect(db.prepare('SELECT count(*) count FROM visits').get().count).toBe(1);
         expect(db.prepare('SELECT status FROM patient_queue WHERE id = ?').get(queueEntryId).status).toBe('completed');
+    });
+
+    it('preserves saved clinical data when progress omits a payload and rejects empty completion', () => {
+        const queueEntryId = queue();
+        const encounter = service.beginConsultation({ patientId: 1, queueEntryId, startRequestId: 'payload-guard' }, 10);
+        service.saveConsultationProgress({ encounterId: encounter.id, visit: { diagnosis: 'Keep me', symptoms: 'Stable' } }, 10);
+
+        service.saveConsultationProgress({ encounterId: encounter.id }, 10);
+        expect(() => service.completeConsultation({ encounterId: encounter.id }, 10)).toThrow('visit is required');
+
+        expect(db.prepare('SELECT diagnosis, symptoms, status FROM visits WHERE id = ?').get(encounter.id))
+            .toMatchObject({ diagnosis: 'Keep me', symptoms: 'Stable', status: 'in-progress' });
+        expect(db.prepare('SELECT status FROM patient_queue WHERE id = ?').get(queueEntryId).status).toBe('in-consult');
     });
 
     it('rolls back clinical completion when the exact queue entry cannot complete', () => {
@@ -155,7 +170,8 @@ describe('encounter integrity transactions', () => {
         `).run(queueEntryId)).toThrow('Encounter queue entry does not match patient');
         expect(() => service.removeFromQueue(queueEntryId, 10))
             .toThrow('Cannot remove a queue entry with an active encounter');
-        expect(service.getActiveConsultation(1).id).toBe(encounter.id);
+        expect(service.getActiveConsultation(1, 10).id).toBe(encounter.id);
+        expect(() => service.getActiveConsultation(1, 11)).toThrow('responsible practitioner');
     });
 
     it('rejects idempotency keys reused by a different actor, patient, queue, or operation', () => {
@@ -328,6 +344,39 @@ describe('migration v7 compatibility', () => {
             expect(migrated.status).toBe('finished');
             expect(migrated.started_at).toBeTruthy();
             expect(migrated.completed_at).toBeTruthy();
+            expect(db.pragma('user_version', { simple: true })).toBe(7);
+        } finally {
+            db.close();
+        }
+    });
+
+    it('skips pre-release encounter requests with orphaned foreign-key references', async () => {
+        const db: any = new TestDatabase();
+        try {
+            db.exec(`
+                PRAGMA foreign_keys = ON;
+                CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+                CREATE TABLE patients (id INTEGER PRIMARY KEY, name TEXT);
+                CREATE TABLE patient_queue (id INTEGER PRIMARY KEY, patient_id INTEGER, status TEXT);
+                CREATE TABLE visits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, doctor_id INTEGER,
+                    date DATETIME DEFAULT CURRENT_TIMESTAMP, diagnosis TEXT, prescription_json TEXT,
+                    amount_paid REAL, symptoms TEXT, examination_notes TEXT, diagnosis_type TEXT,
+                    status TEXT, started_at DATETIME, completed_at DATETIME, updated_at DATETIME,
+                    queue_entry_id INTEGER, start_request_id TEXT, start_operation TEXT, start_actor_id INTEGER
+                );
+                CREATE TABLE roles (name TEXT PRIMARY KEY, permissions TEXT);
+                INSERT INTO roles VALUES ('doctor', '["saveVisit"]');
+                INSERT INTO visits (
+                    patient_id, doctor_id, status, queue_entry_id, start_request_id, start_operation, start_actor_id
+                ) VALUES (404, 405, 'in-progress', 406, 'orphaned-request', 'begin', 405);
+                PRAGMA user_version = 6;
+            `);
+            const service = new DatabaseService();
+            service.setDb(db);
+
+            await expect(service.migrate()).resolves.toBeUndefined();
+            expect(db.prepare('SELECT count(*) count FROM encounter_requests').get().count).toBe(0);
             expect(db.pragma('user_version', { simple: true })).toBe(7);
         } finally {
             db.close();

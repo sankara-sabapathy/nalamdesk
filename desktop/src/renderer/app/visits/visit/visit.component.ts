@@ -7,6 +7,7 @@ import { PdfService } from '../../services/pdf.service';
 import { PrescriptionComponent } from '../../visits/prescription/prescription.component';
 import { AuthService } from '../../services/auth.service';
 import { DataService } from '../../services/api.service';
+import { newRequestId } from '../../services/request-id';
 
 interface PrescriptionItem {
   medicine: string;
@@ -107,6 +108,10 @@ interface Visit {
 
       <!-- Main Panel: The "Chart" (Vertical Document) -->
       <div class="flex-1 flex flex-col h-full bg-white relative overflow-hidden">
+        <div *ngIf="consultationLoadError" class="m-3 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-center justify-between gap-3">
+          <span>{{ consultationLoadError }}</span>
+          <button type="button" (click)="retryConsultationLoad()" class="rounded bg-amber-700 px-3 py-1.5 font-semibold text-white hover:bg-amber-800">Retry</button>
+        </div>
         
         <!-- Header / Toolbar -->
         <div class="min-h-16 py-2 border-b flex flex-col md:flex-row md:items-center justify-between px-4 md:px-8 bg-white z-20 sticky top-0 gap-2">
@@ -270,7 +275,10 @@ export class VisitComponent implements OnInit {
   encounterId: number | null = null;
   isConsulting = false;
   activeEncounterReadOnly = false;
+  consultationLoadError: string | null = null;
   actionInFlight = false;
+  private consultationStartPending = false;
+  private startRequestId: string | null = null;
   private nextStartRequestId: string | null = null;
   currentUser: any;
   patientVitals: any;
@@ -346,22 +354,36 @@ export class VisitComponent implements OnInit {
   }
 
   async loadData() {
+    this.consultationLoadError = null;
     try {
       this.visitForm.disable();
+      let activeEncounterReadDenied = false;
+      const activeEncounterRequest = this.dataService.invoke<any>('getActiveConsultation', this.patientId)
+        .catch(error => {
+          if (this.isAuthorizationError(error)) {
+            activeEncounterReadDenied = true;
+            return null;
+          }
+          throw error;
+        });
       const [visits, allPatients, vitals, activeEncounter] = await Promise.all([
         this.dataService.invoke<any[]>('getVisits', this.patientId),
         this.dataService.invoke<any[]>('getPatients', ''),
         this.dataService.invoke<any>('getVitals', this.patientId),
-        this.dataService.invoke<any>('getActiveConsultation', this.patientId)
+        activeEncounterRequest
       ]);
       const p = allPatients.find((patient: any) => patient.id === this.patientId);
       let resumedEncounter: any = null;
+      let resumeDenied = false;
       if (activeEncounter) {
         try {
           resumedEncounter = await this.dataService.invoke<any>('resumeConsultation', { encounterId: activeEncounter.id });
         } catch (e) {
-          // Another practitioner's active encounter is visible as chart context only.
-          console.warn('Active encounter is read-only for this user', e);
+          resumeDenied = this.isAuthorizationError(e);
+          if (!resumeDenied) {
+            this.consultationLoadError = 'Could not resume this consultation. Retry when the connection is available.';
+          }
+          console.warn(resumeDenied ? 'Active encounter is read-only for this user' : 'Could not resume active encounter', e);
         }
       }
 
@@ -371,13 +393,20 @@ export class VisitComponent implements OnInit {
         this.patientVitals = vitals;
 
         if (resumedEncounter) {
+          this.consultationStartPending = false;
+          this.startRequestId = null;
           this.activeEncounterReadOnly = false;
           this.encounterId = resumedEncounter.id;
           this.isConsulting = true;
           this.editingVisitId = null;
           this.patchEncounter(resumedEncounter);
-        } else if (activeEncounter) {
+        } else if ((activeEncounter && resumeDenied) || activeEncounterReadDenied) {
           this.activeEncounterReadOnly = true;
+          this.encounterId = null;
+          this.isConsulting = false;
+          this.editingVisitId = null;
+        } else if (activeEncounter && this.consultationLoadError) {
+          this.activeEncounterReadOnly = false;
           this.encounterId = null;
           this.isConsulting = false;
           this.editingVisitId = null;
@@ -397,15 +426,18 @@ export class VisitComponent implements OnInit {
         }
       });
 
-      if (this.isConsulting && !activeEncounter) {
+      if (this.isConsulting && !activeEncounter && !activeEncounterReadDenied) {
         const queue = await this.dataService.invoke<any[]>('getQueue');
         const queueEntry = queue.find(item => item.patient_id === this.patientId && item.status === 'waiting');
         if (!queueEntry) throw new Error('Patient does not have a waiting queue entry');
+        this.startRequestId ||= newRequestId();
         const encounter = await this.dataService.invoke<any>('beginConsultation', {
           patientId: this.patientId,
           queueEntryId: queueEntry.id,
-          startRequestId: this.newRequestId()
+          startRequestId: this.startRequestId
         });
+        this.consultationStartPending = false;
+        this.startRequestId = null;
         this.ngZone.run(() => {
           this.encounterId = encounter.id;
           this.patchEncounter(encounter);
@@ -416,7 +448,22 @@ export class VisitComponent implements OnInit {
       }
     } catch (e) {
       console.error(e);
+      this.ngZone.run(() => {
+        if (this.isConsulting && !this.encounterId) {
+          this.consultationStartPending = true;
+          this.isConsulting = false;
+          this.consultationLoadError = 'Could not start this consultation. Open the patient from the queue or retry.';
+        } else {
+          this.consultationLoadError = 'Could not load the consultation. Retry when the connection is available.';
+        }
+        this.visitForm.disable();
+      });
     }
+  }
+
+  retryConsultationLoad(): Promise<void> {
+    if (this.consultationStartPending) this.isConsulting = true;
+    return this.loadData();
   }
 
   updatePrescription(items: any[]) {
@@ -448,7 +495,8 @@ export class VisitComponent implements OnInit {
           // Actually for classic flow, saving progress shouldn't clear form until Done.
         }
         // Reload history
-        this.dataService.invoke<any>('getVisits', this.patientId).then(v => this.history = v);
+        this.dataService.invoke<any[]>('getVisits', this.patientId)
+          .then(visits => this.history = visits.filter(visit => visit.status !== 'in-progress'));
       });
       return true;
     } catch (e) {
@@ -507,7 +555,7 @@ export class VisitComponent implements OnInit {
     this.actionInFlight = true;
     try {
       if (await this.completeConsult(false)) {
-        this.nextStartRequestId ||= this.newRequestId();
+        this.nextStartRequestId ||= newRequestId();
         const nextEncounter = await this.dataService.invoke<any>('beginNextConsultation', {
           startRequestId: this.nextStartRequestId
         });
@@ -610,8 +658,9 @@ export class VisitComponent implements OnInit {
     this.currentPrescription = encounter.prescription || [];
   }
 
-  private newRequestId(): string {
-    return globalThis.crypto?.randomUUID?.() || `consult-${Date.now()}-${Math.random()}`;
+  private isAuthorizationError(error: unknown): boolean {
+    const message = String((error as Error)?.message ?? error ?? '');
+    return /responsible practitioner|forbidden|unauthorized/i.test(message);
   }
 
   goBack() {

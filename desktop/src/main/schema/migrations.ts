@@ -363,7 +363,16 @@ export const MIGRATIONS = [
                        patient_id, queue_entry_id, COALESCE(start_actor_id, doctor_id)
                 FROM visits
                 WHERE start_request_id IS NOT NULL AND queue_entry_id IS NOT NULL
-                  AND COALESCE(start_actor_id, doctor_id) IS NOT NULL;
+                  AND COALESCE(start_actor_id, doctor_id) IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1 FROM patient_queue q
+                      WHERE q.id = visits.queue_entry_id AND q.patient_id = visits.patient_id
+                  )
+                  AND EXISTS (SELECT 1 FROM patients p WHERE p.id = visits.patient_id)
+                  AND EXISTS (
+                      SELECT 1 FROM users u
+                      WHERE u.id = COALESCE(visits.start_actor_id, visits.doctor_id)
+                  );
             `);
 
             // LAN/offline doctors use the same explicit encounter commands as Electron.

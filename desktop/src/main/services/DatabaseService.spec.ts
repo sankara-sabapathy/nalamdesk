@@ -19,11 +19,16 @@ describe('DatabaseService', () => {
             run: vi.fn().mockReturnValue({ lastInsertRowid: 1, changes: 1 })
         };
 
+        const transaction = vi.fn((fn: any) => {
+            console.log('[Test] db.transaction called');
+            fn.immediate = fn;
+            return fn;
+        });
         mockDb = {
             exec: vi.fn((sql) => console.log('[Test] db.exec called:', sql ? sql.substring(0, 50) : 'null')),
             prepare: vi.fn().mockReturnValue(mockStatement),
             pragma: vi.fn(() => { console.log('[Test] db.pragma called'); return 0; }),
-            transaction: vi.fn((fn) => { console.log('[Test] db.transaction called'); return fn; }),
+            transaction,
             backup: vi.fn(),
             name: ':memory:'
         };

@@ -519,7 +519,7 @@ ipcMain.handle('db:getActiveConsultation', (_, patientId) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
-    return databaseService.getActiveConsultation(patientId);
+    return databaseService.getActiveConsultation(patientId, user.id);
 });
 ipcMain.handle('db:saveConsultationProgress', (_, input) => {
     const user = sessionService.getUser();
@@ -877,4 +877,3 @@ ipcMain.handle('auth:restoreSystemBackup', async (_, backupPath) => {
         return { success: false, error: e.message };
     }
 });
-

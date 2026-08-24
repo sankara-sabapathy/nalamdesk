@@ -83,4 +83,28 @@ describe('QueueComponent', () => {
             state: { isConsulting: true, encounterId: 101, patientName: 'P1' }
         });
     });
+
+    it('should reuse the start request id after a lost response', async () => {
+        const item = { id: 1, patient_id: 11, patient_name: 'P1' };
+        const requestIds: string[] = [];
+        let attempts = 0;
+        mockDataService.invoke.mockImplementation((method: string, input: any) => {
+            if (method === 'beginConsultation') {
+                requestIds.push(input.startRequestId);
+                attempts += 1;
+                return attempts === 1 ? Promise.reject(new Error('response lost')) : Promise.resolve({ id: 101 });
+            }
+            if (method === 'getQueue') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+        await component.startConsult(item);
+        await component.startConsult(item);
+
+        expect(requestIds).toHaveLength(2);
+        expect(requestIds[1]).toBe(requestIds[0]);
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 11], expect.objectContaining({ state: expect.objectContaining({ encounterId: 101 }) }));
+    });
 });

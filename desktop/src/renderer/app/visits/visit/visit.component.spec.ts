@@ -149,18 +149,16 @@ describe('VisitComponent', () => {
         expect(component.encounterId).toBe(7);
     });
 
-    it("loads another practitioner's active patient chart in read-only mode", async () => {
+    it("keeps another practitioner's active patient chart private and read-only", async () => {
         component.patientId = 1;
         component.isConsulting = true;
         const history = [{ id: 5, patient_id: 1, status: 'finished', diagnosis: 'Prior visit' }];
-        const activeEncounter = { id: 7, patient_id: 1, doctor_id: 10, status: 'in-progress', prescription: [] };
         vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         mockDataService.invoke.mockImplementation((method: string) => {
             if (method === 'getVisits') return Promise.resolve(history);
             if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
             if (method === 'getVitals') return Promise.resolve({ pulse: 80 });
-            if (method === 'getActiveConsultation') return Promise.resolve(activeEncounter);
-            if (method === 'resumeConsultation') return Promise.reject(new Error('Only the responsible practitioner can mutate this encounter'));
+            if (method === 'getActiveConsultation') return Promise.reject(new Error('Only the responsible practitioner can access this encounter'));
             return Promise.resolve(null);
         });
 
@@ -176,10 +174,64 @@ describe('VisitComponent', () => {
         expect(component.visitForm.disable).toHaveBeenCalled();
         expect(component.visitForm.enable).not.toHaveBeenCalled();
         expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'beginConsultation')).toBe(false);
+        expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'resumeConsultation')).toBe(false);
 
         component.editVisit(history[0]);
         expect(component.editingVisitId).toBeNull();
         expect(component.visitForm.enable).not.toHaveBeenCalled();
+    });
+
+    it('surfaces a retryable error instead of read-only mode for transient resume failures', async () => {
+        component.patientId = 1;
+        const activeEncounter = { id: 7, patient_id: 1, status: 'in-progress', prescription: [] };
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getVisits') return Promise.resolve([]);
+            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
+            if (method === 'getVitals') return Promise.resolve({});
+            if (method === 'getActiveConsultation') return Promise.resolve(activeEncounter);
+            if (method === 'resumeConsultation') return Promise.reject(new Error('database is locked'));
+            return Promise.resolve(null);
+        });
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        await component.loadData();
+
+        expect(component.activeEncounterReadOnly).toBe(false);
+        expect(component.consultationLoadError).toContain('Retry');
+        expect(component.encounterId).toBeNull();
+        expect(component.visitForm.enable).not.toHaveBeenCalled();
+    });
+
+    it('leaves a failed start usable and reuses the request id on retry', async () => {
+        component.patientId = 1;
+        component.isConsulting = true;
+        const requestIds: string[] = [];
+        let attempts = 0;
+        mockDataService.invoke.mockImplementation((method: string, input: any) => {
+            if (method === 'getVisits') return Promise.resolve([]);
+            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
+            if (method === 'getVitals') return Promise.resolve({});
+            if (method === 'getActiveConsultation') return Promise.resolve(null);
+            if (method === 'getQueue') return Promise.resolve([{ id: 9, patient_id: 1, status: 'waiting' }]);
+            if (method === 'beginConsultation') {
+                requestIds.push(input.startRequestId);
+                attempts += 1;
+                return attempts === 1 ? Promise.reject(new Error('response lost')) : Promise.resolve({ id: 7, prescription: [] });
+            }
+            return Promise.resolve(null);
+        });
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await component.loadData();
+        expect(component.isConsulting).toBe(false);
+        expect(component.consultationLoadError).toContain('Could not start');
+        expect(component.visitForm.disable).toHaveBeenCalled();
+
+        await component.retryConsultationLoad();
+        expect(requestIds).toHaveLength(2);
+        expect(requestIds[1]).toBe(requestIds[0]);
+        expect(component.encounterId).toBe(7);
+        expect(component.visitForm.enable).toHaveBeenCalled();
     });
 
     it('should save visit', async () => {
@@ -213,6 +265,29 @@ describe('VisitComponent', () => {
             encounterId: 7,
             visit: expect.objectContaining({ symptoms: 'Cough', examination_notes: 'Throat Red' })
         });
+    });
+
+    it('keeps an in-progress draft out of history after saving progress', async () => {
+        component.patientId = 1;
+        component.encounterId = 7;
+        component.visitForm = {
+            value: { diagnosis: 'Draft' }, invalid: false, valid: true,
+            reset: vi.fn(), patchValue: vi.fn(), disable: vi.fn(), enable: vi.fn(),
+            markAllAsTouched: vi.fn(), get: vi.fn().mockReturnValue({ invalid: false })
+        } as any;
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'saveConsultationProgress') return Promise.resolve({ id: 7 });
+            if (method === 'getVisits') return Promise.resolve([
+                { id: 7, status: 'in-progress', diagnosis: 'Draft' },
+                { id: 6, status: 'finished', diagnosis: 'Prior' }
+            ]);
+            return Promise.resolve(null);
+        });
+
+        await component.saveVisit();
+        await Promise.resolve();
+
+        expect(component.history).toEqual([{ id: 6, status: 'finished', diagnosis: 'Prior' }]);
     });
 
     it('should not enter historical edit mode during an active consultation', () => {
@@ -307,5 +382,42 @@ describe('VisitComponent', () => {
 
         expect(mockDataService.invoke.mock.calls.filter((call: any[]) => call[0] === 'completeConsultation')).toHaveLength(1);
         expect(mockDataService.invoke.mock.calls.filter((call: any[]) => call[0] === 'beginNextConsultation')).toHaveLength(1);
+    });
+
+    it('should ignore a second Finish & Exit click while completion is pending', async () => {
+        component.encounterId = 7;
+        component.visitForm = {
+            value: { diagnosis: 'Done' }, invalid: false, valid: true,
+            markAllAsTouched: vi.fn()
+        } as any;
+        let releaseCompletion!: (value: any) => void;
+        mockDataService.invoke.mockImplementation((method: string) => method === 'completeConsultation'
+            ? new Promise(resolve => { releaseCompletion = resolve; })
+            : Promise.resolve(null));
+
+        const first = component.endConsult();
+        const second = component.endConsult();
+        releaseCompletion({ id: 7, status: 'finished' });
+        await Promise.all([first, second]);
+
+        expect(mockDataService.invoke.mock.calls.filter((call: any[]) => call[0] === 'completeConsultation')).toHaveLength(1);
+    });
+
+    it('should ignore a second Postpone click and omit invalid visit data', async () => {
+        component.encounterId = 7;
+        component.visitForm = { value: {}, invalid: true, valid: false } as any;
+        let releasePostpone!: (value: any) => void;
+        mockDataService.invoke.mockImplementation((method: string) => method === 'postponeConsultation'
+            ? new Promise(resolve => { releasePostpone = resolve; })
+            : Promise.resolve(null));
+
+        const first = component.postponeConsult();
+        const second = component.postponeConsult();
+        releasePostpone({ id: 7 });
+        await Promise.all([first, second]);
+
+        const calls = mockDataService.invoke.mock.calls.filter((call: any[]) => call[0] === 'postponeConsultation');
+        expect(calls).toHaveLength(1);
+        expect(calls[0][1]).toEqual({ encounterId: 7, visit: undefined });
     });
 });

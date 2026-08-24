@@ -12014,6 +12014,10 @@ html:has(.drawer-toggle:checked) {
   grid-column: span 6 / span 6;
 }
 
+.m-3 {
+  margin: 0.75rem;
+}
+
 .mx-2 {
   margin-left: 0.5rem;
   margin-right: 0.5rem;
@@ -12775,6 +12779,11 @@ html:has(.drawer-toggle:checked) {
   border-style: dashed;
 }
 
+.border-amber-300 {
+  --tw-border-opacity: 1;
+  border-color: rgb(252 211 77 / var(--tw-border-opacity, 1));
+}
+
 .border-base-200 {
   --tw-border-opacity: 1;
   border-color: var(--fallback-b2,oklch(var(--b2)/var(--tw-border-opacity, 1)));
@@ -12910,6 +12919,16 @@ html:has(.drawer-toggle:checked) {
 .\!bg-primary {
   --tw-bg-opacity: 1 !important;
   background-color: var(--fallback-p,oklch(var(--p)/var(--tw-bg-opacity, 1))) !important;
+}
+
+.bg-amber-50 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(255 251 235 / var(--tw-bg-opacity, 1));
+}
+
+.bg-amber-700 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(180 83 9 / var(--tw-bg-opacity, 1));
 }
 
 .bg-base-100 {
@@ -13495,6 +13514,11 @@ html:has(.drawer-toggle:checked) {
 .\!text-white {
   --tw-text-opacity: 1 !important;
   color: rgb(255 255 255 / var(--tw-text-opacity, 1)) !important;
+}
+
+.text-amber-900 {
+  --tw-text-opacity: 1;
+  color: rgb(120 53 15 / var(--tw-text-opacity, 1));
 }
 
 .text-base-content {
@@ -14177,6 +14201,11 @@ h6 {
 
 .hover\:border-sky-500\/20:hover {
   border-color: rgb(14 165 233 / 0.2);
+}
+
+.hover\:bg-amber-800:hover {
+  --tw-bg-opacity: 1;
+  background-color: rgb(146 64 14 / var(--tw-bg-opacity, 1));
 }
 
 .hover\:bg-base-200:hover {
