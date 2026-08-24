@@ -1,5 +1,6 @@
 
 import { SecurityService } from './services/SecurityService';
+import type { DeviceKeyStore } from './services/DeviceKeyStore';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -10,11 +11,16 @@ async function testSecurity() {
     if (!fs.existsSync(userDataPath)) fs.mkdirSync(userDataPath);
     if (fs.existsSync(dbPath)) fs.unlinkSync(dbPath);
 
-    const security = new SecurityService();
-    const password = 'mySecretPassword';
+    const deviceStore: DeviceKeyStore = {
+        status: () => ({ available: true, provider: 'verification-memory-store' }),
+        protect: (value) => Buffer.from(value),
+        unprotect: (value) => Buffer.from(value)
+    };
+    const security = new SecurityService(deviceStore);
+    const password = 'adminLoginPassword';
 
-    console.log('1. Initializing DB (Fresh)...');
-    await security.initialize(password, dbPath, userDataPath);
+    console.log('1. Creating a fresh device-bound vault...');
+    await security.setup(password, dbPath, userDataPath);
 
     const db = security.getDb();
     db.exec(`CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY, secret TEXT)`);
@@ -23,23 +29,10 @@ async function testSecurity() {
     console.log('2. Data inserted. Closing DB.');
     security.closeDb();
 
-    console.log('3. Attempting to open with WRONG password...');
-    const security2 = new SecurityService();
+    console.log('3. Cold-starting without a user password...');
     try {
-        await security2.initialize('wrongPassword', dbPath, userDataPath);
-        console.error('FAIL: Database should NOT open with wrong key!');
-    } catch (e: any) {
-        if (e.message === 'INVALID_PASSWORD') {
-            console.log('PASS: Correctly rejected wrong password.');
-        } else {
-            console.error('FAIL: Unexpected error:', e);
-        }
-    }
-
-    console.log('4. Attempting to open with CORRECT password...');
-    try {
-        const security3 = new SecurityService();
-        await security3.initialize(password, dbPath, userDataPath);
+        const security3 = new SecurityService(deviceStore);
+        await security3.initializeDevice(dbPath, userDataPath);
         const row = security3.getDb().prepare('SELECT * FROM test').get() as any;
         if (row && row.secret === 'This is a secret message') {
             console.log('PASS: Data recovered successfully:', row.secret);
@@ -48,7 +41,7 @@ async function testSecurity() {
         }
         security3.closeDb();
     } catch (e) {
-        console.error('FAIL: Could not reopen with correct key:', e);
+        console.error('FAIL: Could not reopen with the device key:', e);
     }
 
     // Cleanup

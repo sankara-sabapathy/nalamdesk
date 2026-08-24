@@ -30,6 +30,35 @@ describe('AuthService', () => {
             expect(window.electron.login).toHaveBeenCalledWith({ username: 'admin', password: 'pass' });
         });
 
+        it('preserves a one-time migration recovery code for acknowledgement', async () => {
+            (window as any).electron = {
+                login: vi.fn().mockResolvedValue({
+                    success: true,
+                    user: { id: 1, role: 'admin' },
+                    pendingRecoveryCode: 'AAAA-BBBB-CCCC-DDDD'
+                })
+            };
+            await expect(service.login('admin', 'legacy')).resolves.toMatchObject({
+                success: true,
+                pendingRecoveryCode: 'AAAA-BBBB-CCCC-DDDD'
+            });
+        });
+
+        it('sends the exact displayed recovery code when acknowledging', async () => {
+            (window as any).electron = {
+                acknowledgeRecoveryCode: vi.fn().mockResolvedValue({ success: true })
+            };
+            await expect(service.acknowledgeRecoveryCode('AAAA-BBBB-CCCC-DDDD'))
+                .resolves.toEqual({ success: true });
+            expect(window.electron.acknowledgeRecoveryCode)
+                .toHaveBeenCalledWith('AAAA-BBBB-CCCC-DDDD');
+        });
+
+        it('fails closed when recovery acknowledgement IPC is unavailable', async () => {
+            await expect(service.acknowledgeRecoveryCode('AAAA-BBBB-CCCC-DDDD'))
+                .resolves.toEqual({ success: false });
+        });
+
         it('should handle login failure', async () => {
             (window as any).electron = {
                 login: vi.fn().mockResolvedValue({ success: false, error: 'Invalid' })
@@ -48,6 +77,18 @@ describe('AuthService', () => {
             const result = await service.login('a', 'b');
             expect(result.success).toBe(false);
             expect(result.error).toBe('IPC Error');
+        });
+
+        it('never persists a password hash returned by a compromised IPC payload', async () => {
+            (window as any).electron = {
+                login: vi.fn().mockResolvedValue({
+                    success: true,
+                    user: { id: 1, username: 'admin', role: 'admin', name: 'Admin', password: '$argon2id$hash' }
+                })
+            };
+            await service.login('admin', 'pass');
+            expect((service.getUser() as any).password).toBeUndefined();
+            expect(localStorage.getItem('nalamdesk_user')).not.toContain('$argon2id$hash');
         });
     });
 

@@ -1,403 +1,1008 @@
 import * as argon2 from 'argon2';
-// @ts-ignore - types might be missing or need specific import
+// @ts-ignore native module has no compatible default declaration
 import Database from 'better-sqlite3-multiple-ciphers';
-import * as path from 'path';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as path from 'path';
+import type { DeviceKeyStore } from './DeviceKeyStore';
 
-/**
- * Security Config Interface stored in security.json
- */
-interface SecurityConfig {
-    version: number;
-    salt: string; // Hex string
-    wrappedKey: string; // Encrypted DEK (Hex string) - Encrypted with Password
-    iv: string; // IV used for wrapping key (Hex string)
-    recovery?: {
-        salt: string; // Hex string (Salt for recovery code)
-        wrappedKey: string; // Encrypted DEK (Hex string) - Encrypted with Recovery Code
-        iv: string; // IV used for recovery wrapping
+export interface RecoveryEnvelope {
+    algorithm: 'aes-256-gcm';
+    kdf: 'argon2id';
+    kdfParams: {
+        timeCost: number;
+        memoryCost: number;
+        parallelism: number;
+        hashLength: number;
     };
+    salt: string;
+    iv: string;
+    wrappedKey: string;
+    aadVersion: 1;
 }
 
+interface PendingRecoveryAck {
+    protectedPayload: string;
+    createdAt: string;
+    reason: 'fresh-setup' | 'legacy-migration' | 'transition-recovery';
+}
+
+export interface TransitionRecoveryEnvelope extends RecoveryEnvelope {
+    purpose: 'legacy-transition';
+}
+
+export interface SecurityConfigV3 {
+    version: 3;
+    vaultId: string;
+    keyVersion: number;
+    device: { provider: string; protectedPayload: string };
+    recovery: RecoveryEnvelope;
+    migratedFrom?: 1 | 2;
+    pendingRecoveryAck?: PendingRecoveryAck;
+    transitionRecovery?: TransitionRecoveryEnvelope;
+}
+
+interface SecurityConfigV2 {
+    version: 2;
+    salt: string;
+    wrappedKey: string;
+    iv: string;
+    recovery?: { salt: string; wrappedKey: string; iv: string };
+}
+
+export interface SetupStatus {
+    isSetup: boolean;
+    hasRecovery: boolean;
+    vaultState: 'not-setup' | 'ready' | 'legacy-migration-required' | 'recovery-required' | 'corrupt';
+    configVersion?: number;
+}
+
+export interface VaultUnlockResult { migrated: boolean }
+
+interface MigrationJournal {
+    version: 1;
+    sourceVersion: 1 | 2;
+    phase: 'snapshot-created' | 'database-rekeyed' | 'config-committing' | 'config-written' | 'rollback-restored';
+    databaseBackup: string;
+    configBackup?: string;
+    legacySaltPath?: string;
+    startedAt: string;
+}
+
+export interface SetupJournal {
+    version: 1;
+    phase: 'started' | 'vault-created' | 'complete';
+    databaseCreated: boolean;
+    startedAt: string;
+}
+
+export type SecurityStep =
+    | 'setup-after-journal' | 'setup-after-bind' | 'setup-after-config-commit'
+    | 'migration-after-snapshot' | 'migration-after-rekey' | 'migration-after-bind'
+    | 'migration-after-config-commit' | 'cleanup-legacy-salt' | 'cleanup-database-backup'
+    | 'cleanup-config-backup' | 'cleanup-journal' | 'cleanup-rollback-database-backup'
+    | 'cleanup-rollback-config-backup' | 'cleanup-rollback-journal' | 'cleanup-setup-journal';
+
+export interface SecurityServiceHooks {
+    onStep?: (step: SecurityStep) => void;
+    platform?: NodeJS.Platform;
+    fsync?: (fd: number) => void;
+}
+
+const CONFIG_FILE = 'security.json';
+const JOURNAL_FILE = 'security-migration.json';
+const SETUP_JOURNAL_FILE = 'security-setup.json';
+const LEGACY_SALT_FILE = 'salt.bin';
+const VAULT_TABLE = '__nalamdesk_vault';
+const RECOVERY_KDF_PARAMS = Object.freeze({ timeCost: 3, memoryCost: 65536, parallelism: 1, hashLength: 32 });
+
 /**
- * SecurityService handles database encryption using SQLCipher with a Key Wrapping Architecture.
- * 
- * V2 Architecture:
- * - Data Encryption Key (DEK): A random 32-byte key that actually encrypts the DB.
- * - Key Encryption Key (KEK): Derived from User Password (or Recovery Code).
- * - The DEK is encrypted (wrapped) by the KEK and stored in security.json.
- * 
- * This allows:
- * 1. Password Changes (Re-wrap DEK with new Password KEK) without re-encrypting the whole DB.
- * 2. Password Recovery (Unwrap DEK with Recovery Code KEK, then Re-wrap with new Password KEK).
+ * Owns the SQLCipher DEK. User passwords are intentionally absent from the v3
+ * unlock path: device unlock and user authentication are separate operations.
  */
 export class SecurityService {
     private db: any;
-    private dbPath: string = '';
-    private appUserDataPath: string = '';
-
-    // In-memory DEK (cleared on app exit)
+    private dbPath = '';
+    private appUserDataPath = '';
     private dek: Buffer | null = null;
 
-    /**
-     * Checks if the application is already set up.
-     */
-    isSetup(userDataPath: string): { isSetup: boolean, hasRecovery: boolean } {
-        const configPath = path.join(userDataPath, 'security.json');
-        const legacySaltPath = path.join(userDataPath, 'salt.bin');
+    constructor(
+        private readonly deviceKeyStore: DeviceKeyStore,
+        private readonly hooks: SecurityServiceHooks = {}
+    ) { }
 
-        if (fs.existsSync(configPath)) {
-            try {
-                const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as SecurityConfig;
-                return { isSetup: true, hasRecovery: !!config.recovery };
-            } catch (e) {
-                return { isSetup: true, hasRecovery: false }; // Corrupt file? Treat as setup but broken? Or just assume true.
+    isSetup(userDataPath: string): SetupStatus {
+        const configPath = path.join(userDataPath, CONFIG_FILE);
+        const legacySaltPath = path.join(userDataPath, LEGACY_SALT_FILE);
+        if (!fs.existsSync(configPath)) {
+            return fs.existsSync(legacySaltPath)
+                ? { isSetup: true, hasRecovery: false, vaultState: 'legacy-migration-required', configVersion: 1 }
+                : { isSetup: false, hasRecovery: false, vaultState: 'not-setup' };
+        }
+        try {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as SecurityConfigV3 | SecurityConfigV2;
+            if (config.version === 3) {
+                return {
+                    isSetup: true,
+                    hasRecovery: true,
+                    vaultState: this.deviceKeyStore.status().available ? 'ready' : 'recovery-required',
+                    configVersion: 3
+                };
             }
+            if (config.version === 2) {
+                return { isSetup: true, hasRecovery: !!config.recovery, vaultState: 'legacy-migration-required', configVersion: 2 };
+            }
+            return { isSetup: true, hasRecovery: false, vaultState: 'corrupt', configVersion: (config as any).version };
+        } catch {
+            return { isSetup: true, hasRecovery: false, vaultState: 'corrupt' };
         }
-
-        // If legacy salt exists, we consider it "Setup" (will migrate on login)
-        if (fs.existsSync(legacySaltPath)) {
-            return { isSetup: true, hasRecovery: false };
-        }
-
-        return { isSetup: false, hasRecovery: false };
     }
 
-    /**
-     * Fresh Setup: Generates new DEK, creates security.json, and initializes DB.
-     * Returns the Recovery Code for the user to save.
-     */
-    async setup(password: string, dbPath: string, userDataPath: string): Promise<string> {
-        this.appUserDataPath = userDataPath;
-        this.dbPath = dbPath;
-
-        // 1. Generate Random DEK
-        this.dek = crypto.randomBytes(32);
-
-        // 2. Generate Recovery Code
+    /** adminPassword remains only for caller compatibility; it never wraps the DEK. */
+    async setup(_adminPassword: string, dbPath: string, userDataPath: string): Promise<string> {
+        this.configurePaths(dbPath, userDataPath);
+        this.assertDeviceStoreAvailable();
+        this.reconcileSetupJournal();
+        if (fs.existsSync(path.join(userDataPath, CONFIG_FILE))) throw new Error('ALREADY_SETUP');
+        const databaseCreated = !fs.existsSync(dbPath) || fs.statSync(dbPath).size === 0;
+        if (!databaseCreated) throw new Error('UNCLAIMED_DATABASE_PRESENT');
+        const journal: SetupJournal = {
+            version: 1,
+            phase: 'started',
+            databaseCreated,
+            startedAt: new Date().toISOString()
+        };
+        this.saveSetupJournal(journal);
+        this.step('setup-after-journal');
+        const dek = crypto.randomBytes(32);
         const recoveryCode = this.generateRecoveryCodeString();
-
-        // 3. Create Security Config (Wrap DEK with Password AND Recovery Code)
-        const config = await this.createSecurityConfig(this.dek, password, recoveryCode);
-        this.saveConfig(config);
-
-        // 4. Initialize DB with DEK
-        this.initDb(this.dbPath, this.dek);
-
-        return recoveryCode;
-    }
-
-    /**
-     * Initialize / Unlock the encrypted database.
-     * Handles V1 -> V2 Migration transparently.
-     */
-    async initialize(password: string, dbPath: string, userDataPath: string): Promise<void> {
-        this.appUserDataPath = userDataPath;
-        this.dbPath = dbPath;
-
-        const configPath = path.join(userDataPath, 'security.json');
-        const legacySaltPath = path.join(userDataPath, 'salt.bin');
-
-        // CASE 1: V2 Setup Exists
-        if (fs.existsSync(configPath)) {
-            console.log('[Security] Loading V2 Configuration...');
-            const config = this.loadConfig();
-
-            // Unwrap DEK using Password
-            try {
-                this.dek = await this.unwrapKey(config.wrappedKey, config.iv, config.salt, password);
-                this.initDb(this.dbPath, this.dek);
-                console.log('[Security] Vault Unlocked (V2).');
-            } catch (e) {
-                console.error('[Security] Failed to unlock vault:', e);
-                throw new Error('INVALID_PASSWORD');
-            }
-            return;
-        }
-
-        // CASE 2: V1 Legacy Exists -> Migrate to V2
-        if (fs.existsSync(legacySaltPath)) {
-            console.log('[Security] Detected V1 Setup. Starting Migration to V2...');
-            await this.migrateV1toV2(password, legacySaltPath);
-            return;
-        }
-
-        // CASE 3: No Setup -> Should have called setup() instead.
-        throw new Error('NOT_SETUP');
-    }
-
-
-    /**
-     * Recover Password using Recovery Code.
-     * Sets a new password and re-wraps the DEK.
-     */
-    async recover(recoveryCode: string, newPassword: string, userDataPath: string, dbPath: string): Promise<string> {
-        this.appUserDataPath = userDataPath;
-        this.dbPath = dbPath;
-
-        const config = this.loadConfig();
-        if (!config.recovery) {
-            throw new Error('NO_RECOVERY_CODE_SET');
-        }
-
-        // 1. Unwrap DEK using Recovery Code
+        const config = await this.createV3Config(dek, recoveryCode, undefined, undefined, 'fresh-setup');
         try {
-            this.dek = await this.unwrapKey(config.recovery.wrappedKey, config.recovery.iv, config.recovery.salt, recoveryCode);
-        } catch (e) {
-            throw new Error('INVALID_RECOVERY_CODE');
-        }
-
-        // 2. Rotate Security Config (New Password KEK + New Recovery Code KEK)
-        const newRecoveryCode = this.generateRecoveryCodeString();
-
-        // Wrap DEK with NEW Password
-        const salt = crypto.randomBytes(16);
-        const kek = await this.deriveKey(newPassword, salt);
-        const { encrypted: wrappedKey, iv } = this.aesEncrypt(this.dek, kek);
-
-        // Wrap DEK with NEW Recovery Code
-        const rSalt = crypto.randomBytes(16);
-        const rKek = await this.deriveKey(newRecoveryCode, rSalt);
-        const { encrypted: rWrappedKey, iv: rIv } = this.aesEncrypt(this.dek, rKek);
-
-        const newConfig: SecurityConfig = {
-            version: 2,
-            salt: salt.toString('hex'),
-            wrappedKey: wrappedKey,
-            iv: iv,
-            recovery: {
-                salt: rSalt.toString('hex'),
-                wrappedKey: rWrappedKey,
-                iv: rIv
-            }
-        };
-
-        this.saveConfig(newConfig);
-
-        // 3. Open DB
-        this.initDb(this.dbPath, this.dek);
-        console.log('[Security] Password reset successful. Vault Unlocked. Recovery Code Rotated.');
-
-        return newRecoveryCode;
-    }
-
-    /**
-     * Helper: Generate a secure recovery code string (Format: XXXX-XXXX-XXXX-XXXX)
-     */
-    generateRecoveryCodeString(): string {
-        // Generate 16 bytes of random entropy, generic human-readable format
-        const bytes = crypto.randomBytes(10); // 20 hex chars
-        const hex = bytes.toString('hex').toUpperCase();
-        return `${hex.slice(0, 5)}-${hex.slice(5, 10)}-${hex.slice(10, 15)}-${hex.slice(15, 20)}`;
-    }
-
-    /**
-     * Regenerate Recovery Code (for Admin).
-     * Requires the current password to unlock logic (though DEK is already in memory).
-     * Re-wraps the DEK with valid Password and NEW Recovery Code.
-     */
-    async regenerateRecoveryCode(password: string): Promise<string> {
-        if (!this.dek) {
-            // Try to load/unlock if not in memory (shouldn't happen if logged in, but safety first)
-            // Or assume DEK is available if app is running and unlocked.
-            // If DEK is missing, we must fail or ask to unlock.
-            throw new Error('VAULT_LOCKED');
-        }
-
-        const config = this.loadConfig();
-
-        // Vefiry password by attempting to derive KEK and check against wrappedKey?
-        // Or just rely on the fact we are re-wrapping. 
-        // Better to re-wrap properly.
-
-        // 1. Generate NEW Recovery Code
-        const newRecoveryCode = this.generateRecoveryCodeString();
-
-        // 2. Create NEW Security Config
-        // We re-use the existing DEK (this.dek).
-        const newConfig = await this.createSecurityConfig(this.dek, password, newRecoveryCode);
-
-        this.saveConfig(newConfig);
-
-        return newRecoveryCode;
-    }
-
-    // ==================================================================================
-    //                                  PRIVATE HELPERS
-    // ==================================================================================
-
-    private async createSecurityConfig(dek: Buffer, password: string, recoveryCode: string): Promise<SecurityConfig> {
-        // 1. Wrap with Password
-        const salt = crypto.randomBytes(16);
-        const kek = await this.deriveKey(password, salt);
-        const { encrypted: wrappedKey, iv } = this.aesEncrypt(dek, kek);
-
-        // 2. Wrap with Recovery Code
-        const rSalt = crypto.randomBytes(16);
-        const rKek = await this.deriveKey(recoveryCode, rSalt);
-        const { encrypted: rWrappedKey, iv: rIv } = this.aesEncrypt(dek, rKek);
-
-        return {
-            version: 2,
-            salt: salt.toString('hex'),
-            wrappedKey: wrappedKey,
-            iv: iv,
-            recovery: {
-                salt: rSalt.toString('hex'),
-                wrappedKey: rWrappedKey,
-                iv: rIv
-            }
-        };
-    }
-
-    private async unwrapKey(wrappedKeyHex: string, ivHex: string, saltHex: string, secret: string): Promise<Buffer> {
-        const salt = Buffer.from(saltHex, 'hex');
-        const kek = await this.deriveKey(secret, salt);
-        return this.aesDecrypt(wrappedKeyHex, ivHex, kek);
-    }
-
-    /**
-     * Migrate V1 (Direct Password) to V2 (Wrapped Key)
-     * 1. Derive OLD Key from Password + Old Salt.
-     * 2. Open DB with OLD Key.
-     * 3. Change DB Key to NEW Random DEK (`PRAGMA rekey`).
-     * 4. Wrap NEW DEK with Password and Save Config.
-     */
-    private async migrateV1toV2(password: string, legacySaltPath: string): Promise<void> {
-        const salt = fs.readFileSync(legacySaltPath);
-
-        // 1. Derive V1 Key
-        const oldKey = await this.deriveKeyArgon2(password, salt); // Use raw argon2 like V1
-
-        // 2. Open DB with V1 Key to verify password
-        try {
-            this.initDb(this.dbPath, oldKey);
-        } catch (e) {
-            throw new Error('INVALID_PASSWORD'); // Pass through
-        }
-
-        console.log('[Security] V1 Key Verified. Rekeying database...');
-
-        // 3. Generate NEW Random DEK
-        this.dek = crypto.randomBytes(32);
-        const newKeyHex = this.dek.toString('hex');
-
-        // 4. PRAGMA rekey (Change DB Encryption Key)
-        this.db.pragma(`rekey = "x'${newKeyHex}'"`);
-
-        // 5. Create V2 Config (Wrap DEK)
-        // Note: We don't have a recovery code yet. User will need to generate one later.
-        const configSalt = crypto.randomBytes(16);
-        const kek = await this.deriveKey(password, configSalt);
-        const { encrypted: wrappedKey, iv } = this.aesEncrypt(this.dek, kek);
-
-        const config: SecurityConfig = {
-            version: 2,
-            salt: configSalt.toString('hex'),
-            wrappedKey: wrappedKey,
-            iv: iv,
-            // recovery: undefined // No recovery code yet
-        };
-
-        this.saveConfig(config);
-
-        // 6. Cleanup V1 Salt
-        // fs.unlinkSync(legacySaltPath); // Optional: keep for safety or backup? Let's keep it but maybe rename?
-        console.log('[Security] Migration to V2 Complete.');
-    }
-
-    private saveConfig(config: SecurityConfig) {
-        const configPath = path.join(this.appUserDataPath, 'security.json');
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-    }
-
-    private loadConfig(): SecurityConfig {
-        const configPath = path.join(this.appUserDataPath, 'security.json');
-        return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    }
-
-    /**
-     * V2 Key Derivation (Standardized)
-     * Uses Argon2id but we can tune parameters if needed. 
-     * We keep it simple to match V1 but ensure it's consistent.
-     */
-    private async deriveKey(secret: string, salt: Buffer): Promise<Buffer> {
-        return argon2.hash(secret, {
-            type: argon2.argon2id,
-            raw: true,
-            salt: salt
-        });
-    }
-
-    /**
-     * V1 Key Derivation (Strictly for backward compat with exact V1 params if any)
-     * V1 used default params.
-     */
-    private async deriveKeyArgon2(password: string, salt: Buffer): Promise<Buffer> {
-        return argon2.hash(password, {
-            type: argon2.argon2id,
-            raw: true,
-            salt: salt
-        });
-    }
-
-    private aesEncrypt(data: Buffer, key: Buffer): { encrypted: string, iv: string } {
-        const iv = crypto.randomBytes(16); // IV for AES-256-GCM
-        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-        const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
-        const tag = cipher.getAuthTag();
-        // Return IV + AuthTag + EncryptedData as hex string or define a format
-        // Simple format: iv (hex) | tag (hex) | encrypted (hex)
-        // Actually, let's keep IV separate in JSON for clarity. 
-        // Combine Tag + Encrypted
-        return {
-            encrypted: Buffer.concat([tag, encrypted]).toString('hex'), // First 16 bytes is tag
-            iv: iv.toString('hex')
-        };
-    }
-
-    private aesDecrypt(encryptedHex: string, ivHex: string, key: Buffer): Buffer {
-        const encryptedAndTag = Buffer.from(encryptedHex, 'hex');
-        const tag = encryptedAndTag.subarray(0, 16);
-        const encrypted = encryptedAndTag.subarray(16);
-        const iv = Buffer.from(ivHex, 'hex');
-
-        const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-        decipher.setAuthTag(tag);
-        return Buffer.concat([decipher.update(encrypted), decipher.final()]);
-    }
-
-    private initDb(filePath: string, key: Buffer): void {
-        try {
-            this.dbPath = filePath;
-            const isDevMode = process.env['NODE_ENV'] !== 'production';
-            const db = new Database(filePath, isDevMode ? { verbose: console.log } : {});
-
-            const hexKey = key.toString('hex');
-            db.pragma(`key = "x'${hexKey}'"`);
-
-            // Verify
-            db.prepare('SELECT count(*) FROM sqlite_master').get();
-
-            this.db = db;
-            console.log('[Security] Database opened successfully');
-        } catch (error: any) {
-            console.error('[Security] Database initialization failed:', error);
-            if (error.message && (error.message.includes('file is not a database') || error.message.includes('SqliteError'))) {
-                throw new Error('INVALID_PASSWORD');
-            }
+            this.initDb(dbPath, dek);
+            this.bindVault(config.vaultId, config.keyVersion, true);
+            this.db.pragma('wal_checkpoint(TRUNCATE)');
+            this.step('setup-after-bind');
+            this.saveConfigAtomic(config);
+            this.step('setup-after-config-commit');
+            journal.phase = 'vault-created';
+            this.saveSetupJournal(journal);
+            this.dek = dek;
+            return recoveryCode;
+        } catch (error) {
+            this.closeDb();
+            this.rollbackSetup(journal);
             throw error;
         }
     }
 
-    getDb() { return this.db; }
-    closeDb() {
-        if (this.db) {
-            this.db.close();
-            this.db = null;
-            this.dek = null; // Clear key from memory on close
+    /** Marks the entire setup pipeline (vault, schema, settings, admin) durable. */
+    completeProvisioning(): void {
+        const journal = this.loadSetupJournal();
+        if (!journal || journal.phase !== 'vault-created') throw new Error('PROVISIONING_NOT_STARTED');
+        this.db?.pragma('wal_checkpoint(TRUNCATE)');
+        journal.phase = 'complete';
+        this.saveSetupJournal(journal);
+        this.cleanupSetupJournal();
+    }
+
+    /** Rolls back only files created by the in-progress fresh provisioning. */
+    abortProvisioning(): void {
+        const journal = this.loadSetupJournal();
+        if (!journal || journal.phase === 'complete') return;
+        this.rollbackSetup(journal);
+    }
+
+    /** Reconciles an interrupted setup before setup-state is presented. */
+    reconcileProvisioning(dbPath: string, userDataPath: string): void {
+        this.configurePaths(dbPath, userDataPath);
+        this.reconcileSetupJournal();
+    }
+
+    /** Unlock v3 using only the OS-bound device envelope. */
+    async initializeDevice(dbPath: string, userDataPath: string): Promise<VaultUnlockResult> {
+        this.configurePaths(dbPath, userDataPath);
+        this.reconcileSetupJournal();
+        this.reconcileMigrationJournal();
+        const status = this.isSetup(userDataPath);
+        if (!status.isSetup) throw new Error('NOT_SETUP');
+        if (status.vaultState === 'legacy-migration-required') throw new Error('LEGACY_MIGRATION_REQUIRED');
+        if (status.vaultState === 'corrupt') throw new Error('SECURITY_CONFIG_CORRUPT');
+        this.assertDeviceStoreAvailable();
+        const config = this.loadConfigV3();
+        try {
+            const dek = this.unprotectDeviceDek(config);
+            this.initDb(dbPath, dek);
+            this.bindVault(config.vaultId, config.keyVersion, false);
+            this.dek = dek;
+            return { migrated: false };
+        } catch (error: any) {
+            this.closeDb();
+            if (error?.message === 'VAULT_BINDING_MISMATCH') throw error;
+            throw new Error('DEVICE_UNLOCK_FAILED');
         }
     }
-    getDbPath() { return this.dbPath; }
+
+    /** One-time compatibility path. The legacy secret is never retained in v3. */
+    async migrateLegacy(legacySecret: string, dbPath: string, userDataPath: string): Promise<VaultUnlockResult> {
+        this.configurePaths(dbPath, userDataPath);
+        this.assertDeviceStoreAvailable();
+        this.reconcileMigrationJournal();
+        const configPath = path.join(userDataPath, CONFIG_FILE);
+        if (fs.existsSync(configPath)) {
+            const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as SecurityConfigV3 | SecurityConfigV2;
+            if (parsed.version === 3) return this.initializeDevice(dbPath, userDataPath);
+            if (parsed.version !== 2) throw new Error('UNSUPPORTED_SECURITY_CONFIG');
+            return this.migrateV2(parsed, legacySecret);
+        }
+        const saltPath = path.join(userDataPath, LEGACY_SALT_FILE);
+        if (!fs.existsSync(saltPath)) throw new Error('NOT_SETUP');
+        return this.migrateV1(legacySecret, saltPath);
+    }
+
+    /** Re-enrol this device from the portable recovery envelope. */
+    async recoverDevice(recoveryCode: string, userDataPath: string, dbPath: string): Promise<VaultUnlockResult> {
+        this.configurePaths(dbPath, userDataPath);
+        this.assertDeviceStoreAvailable();
+        const status = this.isSetup(userDataPath);
+        if (status.configVersion === 2) {
+            return this.migrateLegacy(recoveryCode, dbPath, userDataPath);
+        }
+        const config = this.loadConfigV3();
+        const previousConfigText = fs.readFileSync(path.join(userDataPath, CONFIG_FILE), 'utf8');
+        let dek: Buffer;
+        let usedTransition = false;
+        this.validateRecoveryEnvelope(config.recovery);
+        try {
+            dek = await this.unwrapRecovery(config.recovery, recoveryCode, config.vaultId, config.keyVersion);
+        } catch {
+            if (config.transitionRecovery?.purpose !== 'legacy-transition') throw new Error('INVALID_RECOVERY_CODE');
+            this.validateRecoveryEnvelope(config.transitionRecovery);
+            try {
+                dek = await this.unwrapRecovery(
+                    config.transitionRecovery,
+                    recoveryCode,
+                    config.vaultId,
+                    config.keyVersion,
+                    'legacy-transition'
+                );
+                usedTransition = true;
+            } catch { throw new Error('INVALID_RECOVERY_CODE'); }
+        }
+        try {
+            this.initDb(dbPath, dek);
+            this.bindVault(config.vaultId, config.keyVersion, false);
+        } catch (error: any) {
+            this.closeDb();
+            dek.fill(0);
+            if (error?.message === 'VAULT_BINDING_MISMATCH') throw error;
+            throw new Error('INVALID_RECOVERY_CODE');
+        }
+        try {
+            const updated: SecurityConfigV3 = {
+                ...config,
+                device: this.createDeviceEnvelope(dek, config.vaultId, config.keyVersion)
+            };
+            if (usedTransition) {
+                const freshCode = this.generateRecoveryCodeString();
+                updated.recovery = await this.createRecoveryEnvelope(dek, freshCode, config.vaultId, config.keyVersion);
+                updated.transitionRecovery = await this.createTransitionRecoveryEnvelope(
+                    dek, recoveryCode, config.vaultId, config.keyVersion
+                );
+                updated.pendingRecoveryAck = this.createPendingRecoveryAck(
+                    freshCode, config.vaultId, config.keyVersion, 'transition-recovery'
+                );
+            } else {
+                // Possession of the primary code retires every transitional artifact.
+                delete updated.pendingRecoveryAck;
+                delete updated.transitionRecovery;
+            }
+            this.saveConfigAtomic(updated);
+            this.dek = dek;
+            return { migrated: false };
+        } catch (error) {
+            this.failEnrollment(dek, previousConfigText);
+            throw error;
+        }
+    }
+
+    async regenerateRecoveryCode(): Promise<string> {
+        if (!this.dek) throw new Error('VAULT_LOCKED');
+        const config = this.loadConfigV3();
+        const recoveryCode = this.generateRecoveryCodeString();
+        config.recovery = await this.createRecoveryEnvelope(this.dek, recoveryCode, config.vaultId, config.keyVersion);
+        delete config.pendingRecoveryAck;
+        delete config.transitionRecovery;
+        this.saveConfigAtomic(config);
+        return recoveryCode;
+    }
+
+    /** Re-wrap the unchanged DEK for this device; independent of all user credentials. */
+    rotateDeviceEnvelope(): void {
+        if (!this.dek) throw new Error('VAULT_LOCKED');
+        this.assertDeviceStoreAvailable();
+        const config = this.loadConfigV3();
+        config.device = this.createDeviceEnvelope(this.dek, config.vaultId, config.keyVersion);
+        this.saveConfigAtomic(config);
+    }
+
+    getPendingRecoveryCode(): string | null {
+        const config = this.loadConfigV3();
+        if (!config.pendingRecoveryAck) return null;
+        const payload = this.unprotectContextPayload(config.pendingRecoveryAck.protectedPayload);
+        if (payload.version !== 1 || payload.purpose !== 'recovery-ack' ||
+            payload.vaultId !== config.vaultId || payload.keyVersion !== config.keyVersion ||
+            typeof payload.recoveryCode !== 'string') {
+            throw new Error('PENDING_RECOVERY_CONTEXT_MISMATCH');
+        }
+        return payload.recoveryCode;
+    }
+
+    acknowledgePendingRecoveryCode(recoveryCode: string): void {
+        const config = this.loadConfigV3();
+        if (!config.pendingRecoveryAck) throw new Error('NO_PENDING_RECOVERY_CODE');
+        const pending = this.getPendingRecoveryCode();
+        if (!pending || !this.constantTimeEqual(pending, recoveryCode)) throw new Error('INVALID_RECOVERY_ACK');
+        delete config.pendingRecoveryAck;
+        delete config.transitionRecovery;
+        this.saveConfigAtomic(config);
+    }
+
+    /** Frozen portable contract consumed by issue #8. */
+    getPortableVaultMetadata(): Pick<SecurityConfigV3, 'version' | 'vaultId' | 'keyVersion' | 'recovery' | 'transitionRecovery'> {
+        const { version, vaultId, keyVersion, recovery, transitionRecovery } = this.loadConfigV3();
+        return { version, vaultId, keyVersion, recovery, ...(transitionRecovery ? { transitionRecovery } : {}) };
+    }
+
+    /** Frozen restore contract consumed by issue #8. */
+    async installPortableVaultMetadata(
+        metadata: Pick<SecurityConfigV3, 'version' | 'vaultId' | 'keyVersion' | 'recovery' | 'transitionRecovery'>,
+        recoveryCode: string,
+        dbPath: string,
+        userDataPath: string
+    ): Promise<void> {
+        this.configurePaths(dbPath, userDataPath);
+        this.assertDeviceStoreAvailable();
+        const configPath = path.join(userDataPath, CONFIG_FILE);
+        const previousConfigText = fs.existsSync(configPath)
+            ? fs.readFileSync(configPath, 'utf8')
+            : undefined;
+        let dek: Buffer;
+        let usedTransition = false;
+        this.validateRecoveryEnvelope(metadata.recovery);
+        try {
+            dek = await this.unwrapRecovery(metadata.recovery, recoveryCode, metadata.vaultId, metadata.keyVersion);
+        } catch {
+            if (metadata.transitionRecovery?.purpose !== 'legacy-transition') throw new Error('INVALID_RECOVERY_CODE');
+            this.validateRecoveryEnvelope(metadata.transitionRecovery);
+            dek = await this.unwrapRecovery(
+                metadata.transitionRecovery,
+                recoveryCode,
+                metadata.vaultId,
+                metadata.keyVersion,
+                'legacy-transition'
+            );
+            usedTransition = true;
+        }
+        try {
+            this.initDb(dbPath, dek);
+            this.bindVault(metadata.vaultId, metadata.keyVersion, false);
+        } catch (error) {
+            this.closeDb();
+            dek.fill(0);
+            throw error;
+        }
+        try {
+            const config: SecurityConfigV3 = {
+                ...metadata,
+                device: this.createDeviceEnvelope(dek, metadata.vaultId, metadata.keyVersion)
+            };
+            if (usedTransition) {
+                const freshCode = this.generateRecoveryCodeString();
+                config.recovery = await this.createRecoveryEnvelope(
+                    dek, freshCode, metadata.vaultId, metadata.keyVersion
+                );
+                config.transitionRecovery = await this.createTransitionRecoveryEnvelope(
+                    dek, recoveryCode, metadata.vaultId, metadata.keyVersion
+                );
+                config.pendingRecoveryAck = this.createPendingRecoveryAck(
+                    freshCode, metadata.vaultId, metadata.keyVersion, 'transition-recovery'
+                );
+            } else {
+                delete config.pendingRecoveryAck;
+                delete config.transitionRecovery;
+            }
+            this.saveConfigAtomic(config);
+            this.dek = dek;
+        } catch (error) {
+            this.failEnrollment(dek, previousConfigText);
+            throw error;
+        }
+    }
+
+    generateRecoveryCodeString(): string {
+        const hex = crypto.randomBytes(16).toString('hex').toUpperCase();
+        return `${hex.slice(0, 8)}-${hex.slice(8, 16)}-${hex.slice(16, 24)}-${hex.slice(24, 32)}`;
+    }
+
+    async deriveKey(secret: string, salt: Buffer): Promise<Buffer> {
+        return argon2.hash(secret, {
+            type: argon2.argon2id,
+            raw: true,
+            salt,
+            ...RECOVERY_KDF_PARAMS
+        });
+    }
+
+    getDb(): any { return this.db; }
+    getDbPath(): string { return this.dbPath; }
+    getVaultId(): string | null { try { return this.loadConfigV3().vaultId; } catch { return null; } }
+
+    closeDb(): void {
+        if (this.db) this.db.close();
+        this.db = null;
+        if (this.dek) this.dek.fill(0);
+        this.dek = null;
+    }
+
+    private async migrateV2(config: SecurityConfigV2, secret: string): Promise<VaultUnlockResult> {
+        let oldDek: Buffer;
+        try {
+            oldDek = await this.unwrapLegacy(config.wrappedKey, config.iv, config.salt, secret);
+        } catch {
+            if (!config.recovery) throw new Error('INVALID_LEGACY_CREDENTIAL');
+            try {
+                oldDek = await this.unwrapLegacy(
+                    config.recovery.wrappedKey,
+                    config.recovery.iv,
+                    config.recovery.salt,
+                    secret
+                );
+            } catch { throw new Error('INVALID_LEGACY_CREDENTIAL'); }
+        }
+        try {
+            this.initDb(this.dbPath, oldDek);
+            this.db.pragma('wal_checkpoint(TRUNCATE)');
+            this.closeDb();
+        } catch {
+            this.closeDb();
+            throw new Error('INVALID_LEGACY_CREDENTIAL');
+        }
+        return this.commitLegacyMigration(2, oldDek, this.generateRecoveryCodeString(), secret, false);
+    }
+
+    private async migrateV1(secret: string, saltPath: string): Promise<VaultUnlockResult> {
+        const oldKey = await this.deriveLegacyKey(secret, fs.readFileSync(saltPath));
+        try { this.initDb(this.dbPath, oldKey); } catch { throw new Error('INVALID_LEGACY_CREDENTIAL'); }
+        this.db.pragma('wal_checkpoint(TRUNCATE)');
+        this.closeDb();
+        return this.commitLegacyMigration(1, crypto.randomBytes(32), this.generateRecoveryCodeString(), secret, true, oldKey, saltPath);
+    }
+
+    private async commitLegacyMigration(
+        sourceVersion: 1 | 2,
+        dek: Buffer,
+        recoveryCode: string,
+        legacySecret: string,
+        rekey: boolean,
+        oldKey?: Buffer,
+        saltPath?: string
+    ): Promise<VaultUnlockResult> {
+        const backup = `${this.dbPath}.pre-v3-migration`;
+        const configPath = path.join(this.appUserDataPath, CONFIG_FILE);
+        const configBackup = `${configPath}.pre-v3-migration`;
+        const journal: MigrationJournal = {
+            version: 1,
+            sourceVersion,
+            phase: 'snapshot-created',
+            databaseBackup: backup,
+            configBackup: fs.existsSync(configPath) ? configBackup : undefined,
+            legacySaltPath: saltPath,
+            startedAt: new Date().toISOString()
+        };
+        fs.copyFileSync(this.dbPath, backup);
+        this.fsyncFile(backup);
+        if (journal.configBackup) {
+            fs.copyFileSync(configPath, journal.configBackup);
+            this.fsyncFile(journal.configBackup);
+        }
+        this.saveJournal(journal);
+        this.step('migration-after-snapshot');
+        let committed = false;
+        try {
+            if (rekey) {
+                this.initDb(this.dbPath, oldKey!);
+                this.db.pragma(`rekey = "x'${dek.toString('hex')}'"`);
+                this.db.pragma('wal_checkpoint(TRUNCATE)');
+                this.closeDb();
+                journal.phase = 'database-rekeyed';
+                this.saveJournal(journal);
+                this.step('migration-after-rekey');
+            }
+            this.initDb(this.dbPath, dek);
+            const config = await this.createV3Config(dek, recoveryCode, sourceVersion, legacySecret, 'legacy-migration');
+            this.bindVault(config.vaultId, config.keyVersion, true);
+            // Make the binding durable in the main database before the config
+            // commit becomes authoritative.
+            this.db.pragma('wal_checkpoint(TRUNCATE)');
+            this.step('migration-after-bind');
+            journal.phase = 'config-committing';
+            this.saveJournal(journal);
+            this.saveConfigAtomic(config);
+            committed = true;
+            this.step('migration-after-config-commit');
+            journal.phase = 'config-written';
+            this.saveJournal(journal);
+            this.dek = dek;
+            this.cleanupCommittedMigration(journal, saltPath);
+            return { migrated: true };
+        } catch (error) {
+            if (committed || this.hasV3Config()) {
+                this.dek = dek;
+                this.cleanupCommittedMigration(journal, saltPath);
+                return { migrated: true };
+            }
+            this.closeDb();
+            this.restoreMigrationSnapshot(journal);
+            this.cleanupRollbackArtifacts(journal);
+            throw error;
+        }
+    }
+
+    private reconcileMigrationJournal(): void {
+        const journalPath = this.journalPath();
+        if (!fs.existsSync(journalPath)) return;
+        const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')) as MigrationJournal;
+        const configCommitted = this.hasV3Config();
+        if (!configCommitted) {
+            this.closeDb();
+            if (journal.phase !== 'rollback-restored') this.restoreMigrationSnapshot(journal);
+            this.cleanupRollbackArtifacts(journal);
+            return;
+        }
+        this.cleanupCommittedMigration(journal, journal.legacySaltPath);
+    }
+
+    private async createV3Config(
+        dek: Buffer,
+        recoveryCode: string,
+        migratedFrom?: 1 | 2,
+        legacySecret?: string,
+        pendingReason?: PendingRecoveryAck['reason']
+    ): Promise<SecurityConfigV3> {
+        const vaultId = crypto.randomUUID();
+        const keyVersion = 1;
+        const config: SecurityConfigV3 = {
+            version: 3,
+            vaultId,
+            keyVersion,
+            device: this.createDeviceEnvelope(dek, vaultId, keyVersion),
+            recovery: await this.createRecoveryEnvelope(dek, recoveryCode, vaultId, keyVersion)
+        };
+        if (pendingReason) {
+            config.pendingRecoveryAck = this.createPendingRecoveryAck(
+                recoveryCode, vaultId, keyVersion, pendingReason
+            );
+        }
+        if (migratedFrom && legacySecret) {
+            config.migratedFrom = migratedFrom;
+            config.transitionRecovery = await this.createTransitionRecoveryEnvelope(
+                dek, legacySecret, vaultId, keyVersion
+            );
+        }
+        return config;
+    }
+
+    private async createRecoveryEnvelope(
+        dek: Buffer,
+        code: string,
+        vaultId: string,
+        keyVersion: number,
+        purpose: 'recovery-dek' | 'legacy-transition' = 'recovery-dek'
+    ): Promise<RecoveryEnvelope> {
+        const salt = crypto.randomBytes(16);
+        const wrapped = this.aesEncrypt(
+            dek,
+            await this.deriveKey(code, salt),
+            this.recoveryAad(vaultId, keyVersion, purpose)
+        );
+        return {
+            algorithm: 'aes-256-gcm',
+            kdf: 'argon2id',
+            kdfParams: { ...RECOVERY_KDF_PARAMS },
+            aadVersion: 1,
+            salt: salt.toString('hex'),
+            ...wrapped
+        };
+    }
+
+    private async unwrapRecovery(
+        envelope: RecoveryEnvelope,
+        code: string,
+        vaultId: string,
+        keyVersion: number,
+        purpose: 'recovery-dek' | 'legacy-transition' = 'recovery-dek'
+    ): Promise<Buffer> {
+        this.validateRecoveryEnvelope(envelope);
+        const salt = Buffer.from(envelope.salt, 'hex');
+        const key = await argon2.hash(code, {
+            type: argon2.argon2id,
+            raw: true,
+            salt,
+            ...envelope.kdfParams
+        });
+        return this.aesDecrypt(envelope.wrappedKey, envelope.iv, key, this.recoveryAad(vaultId, keyVersion, purpose));
+    }
+
+    private validateRecoveryEnvelope(envelope: RecoveryEnvelope): void {
+        const params = envelope?.kdfParams;
+        const validHex = (value: unknown, bytes: number) =>
+            typeof value === 'string' && value.length === bytes * 2 && /^[0-9a-f]+$/i.test(value);
+        if (envelope?.algorithm !== 'aes-256-gcm' || envelope?.kdf !== 'argon2id' || envelope?.aadVersion !== 1 ||
+            !validHex(envelope.salt, 16) || !validHex(envelope.iv, 12) ||
+            typeof envelope.wrappedKey !== 'string' || envelope.wrappedKey.length !== 96 ||
+            !/^[0-9a-f]+$/i.test(envelope.wrappedKey) || !params ||
+            !Number.isInteger(params.timeCost) || params.timeCost < 1 || params.timeCost > 10 ||
+            !Number.isInteger(params.memoryCost) || params.memoryCost < 8192 || params.memoryCost > 1048576 ||
+            !Number.isInteger(params.parallelism) || params.parallelism < 1 || params.parallelism > 16 ||
+            params.hashLength !== 32) {
+            throw new Error('INVALID_RECOVERY_ENVELOPE');
+        }
+    }
+
+    private async unwrapLegacy(wrappedKey: string, iv: string, salt: string, secret: string): Promise<Buffer> {
+        return this.aesDecrypt(wrappedKey, iv, await this.deriveLegacyKey(secret, Buffer.from(salt, 'hex')));
+    }
+
+    private async deriveLegacyKey(secret: string, salt: Buffer): Promise<Buffer> {
+        return argon2.hash(secret, { type: argon2.argon2id, raw: true, salt });
+    }
+
+    private aesEncrypt(data: Buffer, key: Buffer, aad?: Buffer): { wrappedKey: string; iv: string } {
+        const iv = crypto.randomBytes(12);
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+        if (aad) cipher.setAAD(aad);
+        const ciphertext = Buffer.concat([cipher.update(data), cipher.final()]);
+        return { wrappedKey: Buffer.concat([cipher.getAuthTag(), ciphertext]).toString('hex'), iv: iv.toString('hex') };
+    }
+
+    private aesDecrypt(value: string, ivHex: string, key: Buffer, aad?: Buffer): Buffer {
+        const valueBuffer = Buffer.from(value, 'hex');
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+        if (aad) decipher.setAAD(aad);
+        decipher.setAuthTag(valueBuffer.subarray(0, 16));
+        return Buffer.concat([decipher.update(valueBuffer.subarray(16)), decipher.final()]);
+    }
+
+    private bindVault(vaultId: string, keyVersion: number, create: boolean): void {
+        if (create) {
+            this.db.exec(`CREATE TABLE IF NOT EXISTS ${VAULT_TABLE} (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), vault_id TEXT NOT NULL, key_version INTEGER NOT NULL)`);
+        }
+        let row;
+        try {
+            row = this.db.prepare(`SELECT vault_id, key_version FROM ${VAULT_TABLE} WHERE singleton = 1`).get();
+        } catch {
+            throw new Error('VAULT_BINDING_MISMATCH');
+        }
+        if (!row && create) {
+            this.db.prepare(`INSERT INTO ${VAULT_TABLE} (singleton, vault_id, key_version) VALUES (1, ?, ?)`).run(vaultId, keyVersion);
+            return;
+        }
+        if (!row || row.vault_id !== vaultId || row.key_version !== keyVersion) throw new Error('VAULT_BINDING_MISMATCH');
+    }
+
+    private initDb(filePath: string, key: Buffer): void {
+        // Never enable verbose SQL logging here: SQLCipher's key PRAGMA would
+        // disclose the live DEK to logs even in a development build.
+        const db = new Database(filePath);
+        try {
+            db.pragma(`key = "x'${key.toString('hex')}'"`);
+            db.prepare('SELECT count(*) FROM sqlite_master').get();
+            this.db = db;
+        } catch (error: any) {
+            db.close();
+            if (String(error?.message).includes('file is not a database')) throw new Error('INVALID_PASSWORD');
+            throw error;
+        }
+    }
+
+    private configurePaths(dbPath: string, userDataPath: string): void {
+        this.dbPath = dbPath;
+        this.appUserDataPath = userDataPath;
+    }
+
+    private assertDeviceStoreAvailable(): void {
+        const status = this.deviceKeyStore.status();
+        if (!status.available) throw new Error(status.reason || 'DEVICE_KEY_UNAVAILABLE');
+    }
+
+    private loadConfigV3(): SecurityConfigV3 {
+        const config = JSON.parse(fs.readFileSync(path.join(this.appUserDataPath, CONFIG_FILE), 'utf8')) as SecurityConfigV3;
+        if (config.version !== 3) throw new Error('LEGACY_MIGRATION_REQUIRED');
+        if (!config.vaultId || !Number.isInteger(config.keyVersion) || config.keyVersion < 1 ||
+            !config.device?.protectedPayload || !config.recovery?.wrappedKey || !config.recovery?.kdfParams) {
+            throw new Error('SECURITY_CONFIG_CORRUPT');
+        }
+        return config;
+    }
+
+    private saveConfigAtomic(config: SecurityConfigV3): void {
+        fs.mkdirSync(this.appUserDataPath, { recursive: true });
+        const target = path.join(this.appUserDataPath, CONFIG_FILE);
+        const temporary = `${target}.tmp`;
+        const fd = fs.openSync(temporary, 'w', 0o600);
+        try {
+            fs.writeFileSync(fd, JSON.stringify(config, null, 2), 'utf8');
+            this.fsyncDescriptor(fd);
+        } finally { fs.closeSync(fd); }
+        fs.renameSync(temporary, target);
+        this.fsyncDirectory();
+    }
+
+    private failEnrollment(dek: Buffer, previousConfigText?: string): void {
+        this.closeDb();
+        dek.fill(0);
+        const target = path.join(this.appUserDataPath, CONFIG_FILE);
+        const temporary = `${target}.tmp`;
+        if (previousConfigText === undefined) {
+            for (const file of [target, temporary]) {
+                if (fs.existsSync(file)) fs.unlinkSync(file);
+            }
+            this.fsyncDirectory();
+            return;
+        }
+        this.saveTextAtomic(target, previousConfigText);
+    }
+
+    private saveTextAtomic(target: string, text: string): void {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        const temporary = `${target}.tmp`;
+        const fd = fs.openSync(temporary, 'w', 0o600);
+        try {
+            fs.writeFileSync(fd, text, 'utf8');
+            this.fsyncDescriptor(fd);
+        } finally { fs.closeSync(fd); }
+        fs.renameSync(temporary, target);
+        this.fsyncDirectory();
+    }
+
+    private journalPath(): string { return path.join(this.appUserDataPath, JOURNAL_FILE); }
+    private saveJournal(journal: MigrationJournal): void {
+        const target = this.journalPath();
+        const temporary = `${target}.tmp`;
+        const fd = fs.openSync(temporary, 'w', 0o600);
+        try {
+            fs.writeFileSync(fd, JSON.stringify(journal, null, 2), 'utf8');
+            this.fsyncDescriptor(fd);
+        } finally { fs.closeSync(fd); }
+        fs.renameSync(temporary, target);
+        this.fsyncDirectory();
+    }
+
+    private hasV3Config(): boolean {
+        try {
+            const config = JSON.parse(fs.readFileSync(path.join(this.appUserDataPath, CONFIG_FILE), 'utf8'));
+            return config.version === 3 && !!config.vaultId && !!config.device?.protectedPayload;
+        } catch { return false; }
+    }
+
+    private restoreMigrationSnapshot(journal: MigrationJournal): void {
+        if (!fs.existsSync(journal.databaseBackup)) throw new Error('MIGRATION_SNAPSHOT_MISSING');
+        if (journal.configBackup && !fs.existsSync(journal.configBackup)) throw new Error('MIGRATION_SNAPSHOT_MISSING');
+        for (const suffix of ['-wal', '-shm']) {
+            const sidecar = `${this.dbPath}${suffix}`;
+            if (fs.existsSync(sidecar)) fs.unlinkSync(sidecar);
+        }
+        if (fs.existsSync(journal.databaseBackup)) fs.copyFileSync(journal.databaseBackup, this.dbPath);
+        const configPath = path.join(this.appUserDataPath, CONFIG_FILE);
+        if (journal.configBackup && fs.existsSync(journal.configBackup)) {
+            fs.copyFileSync(journal.configBackup, configPath);
+        } else if (fs.existsSync(configPath)) {
+            fs.unlinkSync(configPath);
+        }
+        journal.phase = 'rollback-restored';
+        this.saveJournal(journal);
+    }
+
+    private createDeviceEnvelope(dek: Buffer, vaultId: string, keyVersion: number): SecurityConfigV3['device'] {
+        return {
+            provider: this.deviceKeyStore.status().provider,
+            protectedPayload: this.protectContextPayload({
+                version: 1,
+                purpose: 'device-dek',
+                vaultId,
+                keyVersion,
+                dek: dek.toString('base64')
+            })
+        };
+    }
+
+    private createPendingRecoveryAck(
+        recoveryCode: string,
+        vaultId: string,
+        keyVersion: number,
+        reason: PendingRecoveryAck['reason']
+    ): PendingRecoveryAck {
+        return {
+            protectedPayload: this.protectContextPayload({
+                version: 1,
+                purpose: 'recovery-ack',
+                vaultId,
+                keyVersion,
+                recoveryCode
+            }),
+            createdAt: new Date().toISOString(),
+            reason
+        };
+    }
+
+    private async createTransitionRecoveryEnvelope(
+        dek: Buffer,
+        legacySecret: string,
+        vaultId: string,
+        keyVersion: number
+    ): Promise<TransitionRecoveryEnvelope> {
+        return {
+            ...await this.createRecoveryEnvelope(
+                dek, legacySecret, vaultId, keyVersion, 'legacy-transition'
+            ),
+            purpose: 'legacy-transition'
+        };
+    }
+
+    private unprotectDeviceDek(config: SecurityConfigV3): Buffer {
+        const payload = this.unprotectContextPayload(config.device.protectedPayload);
+        if (payload.version !== 1 || payload.purpose !== 'device-dek' ||
+            payload.vaultId !== config.vaultId || payload.keyVersion !== config.keyVersion ||
+            typeof payload.dek !== 'string') {
+            throw new Error('VAULT_BINDING_MISMATCH');
+        }
+        const dek = Buffer.from(payload.dek, 'base64');
+        if (dek.length !== 32) throw new Error('INVALID_DEVICE_ENVELOPE');
+        return dek;
+    }
+
+    private protectContextPayload(payload: Record<string, unknown>): string {
+        return this.deviceKeyStore.protect(Buffer.from(JSON.stringify(payload), 'utf8')).toString('base64');
+    }
+
+    private unprotectContextPayload(value: string): any {
+        try {
+            return JSON.parse(this.deviceKeyStore.unprotect(Buffer.from(value, 'base64')).toString('utf8'));
+        } catch { throw new Error('INVALID_DEVICE_ENVELOPE'); }
+    }
+
+    private recoveryAad(
+        vaultId: string,
+        keyVersion: number,
+        purpose: 'recovery-dek' | 'legacy-transition' = 'recovery-dek'
+    ): Buffer {
+        return Buffer.from(`nalamdesk|v3|${purpose}|${vaultId}|${keyVersion}`, 'utf8');
+    }
+
+    private constantTimeEqual(left: string, right: string): boolean {
+        const leftBuffer = Buffer.from(left, 'utf8');
+        const rightBuffer = Buffer.from(right, 'utf8');
+        if (leftBuffer.length !== rightBuffer.length) {
+            // Keep a fixed-cost comparison even when lengths differ.
+            crypto.timingSafeEqual(leftBuffer, Buffer.alloc(leftBuffer.length));
+            return false;
+        }
+        return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+    }
+
+    private cleanupCommittedMigration(journal: MigrationJournal, saltPath?: string): void {
+        let clean = true;
+        const attempt = (step: SecurityStep, action: () => void) => {
+            try { this.step(step); action(); } catch { clean = false; }
+        };
+        if (saltPath && fs.existsSync(saltPath)) {
+            attempt('cleanup-legacy-salt', () => fs.renameSync(saltPath, `${saltPath}.migrated`));
+        }
+        if (fs.existsSync(journal.databaseBackup)) {
+            attempt('cleanup-database-backup', () => fs.unlinkSync(journal.databaseBackup));
+        }
+        if (journal.configBackup && fs.existsSync(journal.configBackup)) {
+            attempt('cleanup-config-backup', () => fs.unlinkSync(journal.configBackup!));
+        }
+        if (clean && fs.existsSync(this.journalPath())) {
+            attempt('cleanup-journal', () => fs.unlinkSync(this.journalPath()));
+        }
+    }
+
+    private cleanupRollbackArtifacts(journal: MigrationJournal): void {
+        let clean = true;
+        const attempt = (step: SecurityStep, file?: string) => {
+            if (!file || !fs.existsSync(file)) return;
+            try { this.step(step); fs.unlinkSync(file); } catch { clean = false; }
+        };
+        attempt('cleanup-rollback-database-backup', journal.databaseBackup);
+        attempt('cleanup-rollback-config-backup', journal.configBackup);
+        if (clean) attempt('cleanup-rollback-journal', this.journalPath());
+    }
+
+    private setupJournalPath(): string { return path.join(this.appUserDataPath, SETUP_JOURNAL_FILE); }
+    private saveSetupJournal(journal: SetupJournal): void {
+        this.saveJsonAtomic(this.setupJournalPath(), journal);
+    }
+
+    private loadSetupJournal(): SetupJournal | null {
+        try { return JSON.parse(fs.readFileSync(this.setupJournalPath(), 'utf8')) as SetupJournal; }
+        catch { return null; }
+    }
+
+    private reconcileSetupJournal(): void {
+        const journalPath = this.setupJournalPath();
+        if (!fs.existsSync(journalPath)) return;
+        const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8')) as SetupJournal;
+        if (journal.phase === 'complete') this.cleanupSetupJournal();
+        else this.rollbackSetup(journal);
+    }
+
+    private rollbackSetup(journal: SetupJournal): void {
+        this.closeDb();
+        if (journal.databaseCreated) {
+            for (const file of [this.dbPath, `${this.dbPath}-wal`, `${this.dbPath}-shm`]) {
+                if (fs.existsSync(file)) fs.unlinkSync(file);
+            }
+        }
+        const configPath = path.join(this.appUserDataPath, CONFIG_FILE);
+        for (const file of [configPath, `${configPath}.tmp`]) {
+            if (fs.existsSync(file)) fs.unlinkSync(file);
+        }
+        this.cleanupSetupJournal();
+    }
+
+    private cleanupSetupJournal(): void {
+        try {
+            this.step('cleanup-setup-journal');
+            if (fs.existsSync(this.setupJournalPath())) fs.unlinkSync(this.setupJournalPath());
+        } catch { /* committed setup is authoritative; reconcile cleanup on next start */ }
+    }
+
+    private saveJsonAtomic(target: string, value: unknown): void {
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        const temporary = `${target}.tmp`;
+        const fd = fs.openSync(temporary, 'w', 0o600);
+        try {
+            fs.writeFileSync(fd, JSON.stringify(value, null, 2), 'utf8');
+            this.fsyncDescriptor(fd);
+        } finally { fs.closeSync(fd); }
+        fs.renameSync(temporary, target);
+        this.fsyncDirectory();
+    }
+
+    private step(step: SecurityStep): void { this.hooks.onStep?.(step); }
+
+    private fsyncFile(filePath: string): void {
+        // Windows FlushFileBuffers requires a handle opened with write access.
+        // POSIX accepts a read-only descriptor and avoids broadening access.
+        const platform = this.hooks.platform ?? process.platform;
+        const fd = fs.openSync(filePath, platform === 'win32' ? 'r+' : 'r');
+        try { this.fsyncDescriptor(fd); } finally { fs.closeSync(fd); }
+    }
+
+    private fsyncDirectory(): void {
+        const platform = this.hooks.platform ?? process.platform;
+        try {
+            const directory = fs.openSync(this.appUserDataPath, 'r');
+            try { this.fsyncDescriptor(directory); } finally { fs.closeSync(directory); }
+        } catch (error) {
+            // Windows does not expose directory handles compatible with fsync.
+            // All other failures remain fatal so supported platforms retain
+            // the durability guarantee.
+            if (!this.isUnsupportedWindowsFsync(error, platform)) throw error;
+        }
+    }
+
+    private fsyncDescriptor(fd: number): void {
+        // Regular files are opened writable (including r+ on Windows), so an
+        // fsync failure is a real durability failure and must never be hidden.
+        (this.hooks.fsync ?? fs.fsyncSync)(fd);
+    }
+
+    private isUnsupportedWindowsFsync(error: unknown, platform: NodeJS.Platform): boolean {
+        if (platform !== 'win32' || !error || typeof error !== 'object') return false;
+        const code = (error as NodeJS.ErrnoException).code;
+        return code === 'EPERM' || code === 'EINVAL' || code === 'ENOSYS' || code === 'ENOTSUP';
+    }
 }

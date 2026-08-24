@@ -7,6 +7,7 @@ export interface UserSession {
     name: string;
     specialty?: string;
     license_number?: string;
+    password_reset_required?: number;
     sessionId?: string;
 }
 
@@ -18,7 +19,13 @@ export class SessionService {
             throw new Error('Invalid user session data');
         }
         this.currentUser = {
-            ...user,
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            name: user.name,
+            ...(user.specialty ? { specialty: user.specialty } : {}),
+            ...(user.license_number ? { license_number: user.license_number } : {}),
+            ...(user.password_reset_required !== undefined ? { password_reset_required: user.password_reset_required } : {}),
             sessionId: crypto.randomUUID()
         };
     }

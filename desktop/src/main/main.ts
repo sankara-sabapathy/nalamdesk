@@ -7,9 +7,12 @@ import { SessionService } from './services/SessionService';
 import { BackupService } from './services/BackupService';
 import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
+import { ElectronSafeStorageDeviceKeyStore } from './services/DeviceKeyStore';
 import { DatabaseService } from './services/DatabaseService';
 import { GoogleDriveService } from './services/GoogleDriveService';
 import { CloudSyncService } from './services/CloudSyncService';
+import { buildAuthenticatedLoginResult } from './services/AuthResult';
+import { ProvisioningService } from './services/ProvisioningService';
 import { ApiServer } from '../server/app';
 import {
     DEV_APP_NAME,
@@ -97,8 +100,9 @@ ipcMain.handle('utils:getRuntimeInfo', () => ({
 }));
 
 // Services
-const securityService = new SecurityService();
+const securityService = new SecurityService(new ElectronSafeStorageDeviceKeyStore());
 const databaseService = new DatabaseService();
+const provisioningService = new ProvisioningService(securityService, databaseService);
 const googleDriveService = new GoogleDriveService();
 const cloudSyncService = new CloudSyncService(databaseService);
 
@@ -282,6 +286,8 @@ app.on('before-quit', async (e) => {
 // IPC Handlers
 ipcMain.handle('auth:checkSetup', () => {
     const userDataPath = app.getPath('userData');
+    const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
+    securityService.reconcileProvisioning(getDatabasePath(userDataPath, dbName), userDataPath);
     return securityService.isSetup(userDataPath);
 });
 
@@ -292,22 +298,11 @@ ipcMain.handle('auth:setup', async (event, { password, clinicDetails, adminDetai
         const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
         const dbPath = getDatabasePath(userDataPath, dbName);
 
-        // 1. Setup Security (Generates DEK + Recovery Code)
-        const recoveryCode = await securityService.setup(password, dbPath, userDataPath);
-
-        // 2. Set DB Service
-        databaseService.setDb(securityService.getDb());
-
-        // 3. Migrate DB Schema
-        await databaseService.migrate();
-
-        // 4. Save Settings
-        databaseService.saveSettings(clinicDetails);
-
-        // 5. Create Admin User
-        // We pass password here, but remember, Auth is now decoupled from DB Key.
-        // The Admin Password is the same as the Master Password for simplicity in V1/V2 transition.
-        await databaseService.ensureAdminUser(password);
+        // One durable transaction covers vault creation, schema, clinic settings,
+        // and the administrator credential. The password never wraps the DEK.
+        const recoveryCode = await provisioningService.provision(
+            password, clinicDetails, dbPath, userDataPath
+        );
 
         console.log('[Auth] Setup Complete.');
         return { success: true, recoveryCode };
@@ -317,26 +312,25 @@ ipcMain.handle('auth:setup', async (event, { password, clinicDetails, adminDetai
     }
 });
 
-ipcMain.handle('auth:recover', async (event, { recoveryCode, newPassword }) => {
+ipcMain.handle('auth:recover', async (event, { recoveryCode }) => {
     try {
         console.log('[Auth] Starting Recovery...');
         const userDataPath = app.getPath('userData');
         const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
         const dbPath = getDatabasePath(userDataPath, dbName);
 
-        // 1. Recover Vault
-        const newRecoveryCode = await securityService.recover(recoveryCode, newPassword, userDataPath, dbPath);
+        // Recovery re-enrols this device. Account password recovery is a
+        // separate workflow owned by issue #6.
+        await securityService.recoverDevice(recoveryCode, userDataPath, dbPath);
 
         // 2. Set DB
         databaseService.setDb(securityService.getDb());
 
-        // 3. Update Admin Password in DB (since we reset it)
-        // Note: We need a way to find the admin user and update their password hash.
-        // DatabaseService needs a method for this.
-        // For now, let's assume 'admin' user exists.
-        await databaseService.updateUserPassword('admin', newPassword);
-
-        return { success: true, recoveryCode: newRecoveryCode };
+        await databaseService.migrate();
+        return {
+            success: true,
+            pendingRecoveryCode: securityService.getPendingRecoveryCode() || undefined
+        };
     } catch (e: any) {
         console.error('[Auth] Recovery failed:', e);
         return { success: false, error: e.message };
@@ -347,9 +341,12 @@ ipcMain.handle('auth:regenerateRecoveryCode', async (event, { password }) => {
     try {
         const user = sessionService.getUser();
         if (!user || user.role !== 'admin') throw new Error('Forbidden');
+        const argon2 = await import('argon2');
+        const admin = await databaseService.getUserByUsername('admin');
+        if (!admin || !password || !await argon2.verify(admin.password, password)) throw new Error('INVALID_CREDENTIALS');
 
         console.log('[Auth] Regenerating Recovery Code...');
-        const recoveryCode = await securityService.regenerateRecoveryCode(password);
+        const recoveryCode = await securityService.regenerateRecoveryCode();
         return { success: true, recoveryCode };
     } catch (e: any) {
         console.error('[Auth] Regenerate Recovery Code failed:', e);
@@ -357,32 +354,50 @@ ipcMain.handle('auth:regenerateRecoveryCode', async (event, { password }) => {
     }
 });
 
+ipcMain.handle('auth:acknowledgeRecoveryCode', (_event, { recoveryCode }) => {
+    const user = sessionService.getUser();
+    if (!user || user.role !== 'admin') throw new Error('Forbidden');
+    securityService.acknowledgePendingRecoveryCode(recoveryCode);
+    return { success: true };
+});
+
 ipcMain.handle('clipboard:writeText', (event, text) => {
     clipboard.writeText(text);
     return true;
 });
 
-async function tryUnlockDatabase(password: string): Promise<string | null> {
-    if (securityService.getDb()) return null; // Already open
+async function tryUnlockDatabase(legacySecret: string): Promise<{ error?: string; migrated?: boolean }> {
+    if (securityService.getDb()) return {};
 
     try {
         const userDataPath = app.getPath('userData');
         const dbName = process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db';
         const dbPath = getDatabasePath(userDataPath, dbName);
 
-        // This handles Unlock OR V1->V2 Migration
-        await securityService.initialize(password, dbPath, userDataPath);
+        let result;
+        try {
+            result = await securityService.initializeDevice(dbPath, userDataPath);
+        } catch (error: any) {
+            if (error.message !== 'LEGACY_MIGRATION_REQUIRED') throw error;
+            // The submitted password is used only for this one-time legacy
+            // migration. It is not part of the v3 device unlock contract.
+            result = await securityService.migrateLegacy(legacySecret, dbPath, userDataPath);
+        }
         databaseService.setDb(securityService.getDb());
 
         // Ensure schema is up to date (safe idempotent)
         await databaseService.migrate();
-        return null;
+        return { migrated: result.migrated };
     } catch (e: any) {
-        if (e.message === 'NOT_SETUP') return 'SETUP_REQUIRED';
-        if (e.message === 'INVALID_PASSWORD') return 'INVALID_PASSWORD';
+        if (e.message === 'NOT_SETUP') return { error: 'SETUP_REQUIRED' };
+        if (e.message === 'INVALID_LEGACY_CREDENTIAL') return { error: 'INVALID_CREDENTIALS' };
+        if (['ENCRYPTION_UNAVAILABLE', 'INSECURE_LINUX_BACKEND', 'DEVICE_UNLOCK_FAILED'].includes(e.message)) {
+            return { error: 'RECOVERY_REQUIRED' };
+        }
+        if (e.message === 'VAULT_BINDING_MISMATCH') return { error: 'VAULT_BINDING_MISMATCH' };
 
         console.error('DB Init failed:', e);
-        return 'SYSTEM_ERROR';
+        return { error: 'SYSTEM_ERROR' };
     }
 }
 
@@ -411,7 +426,7 @@ async function handleAdminLogin(password: string): Promise<{ success: boolean; u
 
     sessionService.setUser(user);
     initializeServices(databaseService.getSettings());
-    return { success: true, user };
+    return buildAuthenticatedLoginResult(sessionService.getUser()!, securityService);
 }
 
 ipcMain.handle('auth:login', async (event, credentials) => {
@@ -420,8 +435,7 @@ ipcMain.handle('auth:login', async (event, credentials) => {
 
         // 1. Initialize / Unlock DB
         const unlockResult = await tryUnlockDatabase(password);
-        if (unlockResult === 'SETUP_REQUIRED') return { success: false, error: 'SETUP_REQUIRED' };
-        if (unlockResult === 'SYSTEM_ERROR') return { success: false, error: 'SYSTEM_ERROR' };
+        if (unlockResult.error) return { success: false, error: unlockResult.error };
 
         // 2. Check if DB is open
         const db = securityService.getDb();
@@ -436,7 +450,9 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         // 3. Admin fast path
         if (username === 'admin') {
             const adminResult = await handleAdminLogin(password);
-            if (adminResult) return adminResult;
+            if (adminResult) {
+                return adminResult;
+            }
             // Fallthrough to standard validation if admin user missing from DB
         }
 
@@ -447,7 +463,7 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         if (result.success && result.user) {
             sessionService.setUser(result.user);
             initializeServices(databaseService.getSettings());
-            return { success: true, user: result.user };
+            return buildAuthenticatedLoginResult(sessionService.getUser()!, securityService);
         }
 
         return { success: false, error: 'INVALID_CREDENTIALS' };

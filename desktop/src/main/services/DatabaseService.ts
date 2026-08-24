@@ -34,15 +34,17 @@ export class DatabaseService {
         }
     }
 
-    async migrate() {
+    async migrate(options: { skipBackup?: boolean } = {}) {
         if (!this.db) throw new Error('DB not initialized');
 
         // Safety: Backup before migrating
-        try {
-            await this.createBackup(this.db.name);
-        } catch (e) {
-            console.error('[DB] Backup failed! Proceeding with caution...', e);
-            // Optional: Throw if backup is critical? For now, log and proceed (or user can't login).
+        if (!options.skipBackup) {
+            try {
+                await this.createBackup(this.db.name);
+            } catch (e) {
+                console.error('[DB] Backup failed! Proceeding with caution...', e);
+                // Optional: Throw if backup is critical? For now, log and proceed (or user can't login).
+            }
         }
 
         // Check Version

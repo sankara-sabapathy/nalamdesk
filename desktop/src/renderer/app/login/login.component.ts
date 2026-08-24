@@ -17,8 +17,20 @@ import { RuntimeService } from '../services/runtime.service';
         <div *ngIf="error" class="bg-red-900/50 border border-red-500 text-red-200 px-4 py-2 rounded mb-4 text-sm">
           {{ error }}
         </div>
+        <div *ngIf="vaultNotice" class="bg-blue-950/60 border border-blue-600 text-blue-100 px-4 py-2 rounded mb-4 text-sm">
+          {{ vaultNotice }}
+        </div>
 
-        <form (ngSubmit)="onLogin()">
+        <div *ngIf="pendingRecoveryCode" class="bg-amber-950 border border-amber-500 p-4 rounded mb-4 text-sm">
+          <p class="font-bold text-amber-300 mb-2">Security upgrade complete</p>
+          <p class="text-amber-100 mb-2">Save this new recovery code before continuing. The old vault password wrapper has been removed.</p>
+          <code class="block bg-gray-950 p-2 rounded select-all break-all">{{ pendingRecoveryCode }}</code>
+          <button type="button" (click)="acknowledgeMigration()" class="mt-3 w-full bg-amber-600 hover:bg-amber-700 py-2 rounded font-bold">
+            I have saved this code
+          </button>
+        </div>
+
+        <form (ngSubmit)="onLogin()" *ngIf="!pendingRecoveryCode">
           <div class="mb-4">
             <label class="block text-gray-400 text-sm font-bold mb-2" for="username">
               Username
@@ -60,7 +72,7 @@ import { RuntimeService } from '../services/runtime.service';
         </form>
         
         <div class="mt-4 text-center flex justify-between text-xs text-gray-400">
-            <a routerLink="/recover" class="hover:text-blue-400">Forgot Password?</a>
+            <a routerLink="/recover" class="hover:text-blue-400">Recover Device</a>
             <div class="flex flex-col items-end">
                 <span>Secure Local-First Access</span>
                 <div *ngIf="runtime.lanAccessUrl" class="mt-1 flex items-center gap-1.5 bg-gray-700/50 px-2 py-0.5 rounded-md border border-gray-600/30">
@@ -82,6 +94,9 @@ export class LoginComponent implements OnInit {
   password = '';
   error = '';
   isLoading = false;
+  pendingRecoveryCode = '';
+  vaultNotice = '';
+  private pendingRoute = '/dashboard';
   isElectron = !!(globalThis as any).electron;
 
   constructor(
@@ -96,6 +111,8 @@ export class LoginComponent implements OnInit {
     const status = await this.authService.checkSetup();
     if (!status.isSetup) {
       this.router.navigate(['/setup']);
+    } else if (status.vaultState && !['ready', 'not-setup'].includes(status.vaultState)) {
+      this.vaultNotice = 'Additional security verification may be required. Sign in or use Recover Device if access is unavailable.';
     }
 
     if (this.isElectron) {
@@ -119,26 +136,39 @@ export class LoginComponent implements OnInit {
           const user = this.authService.getUser();
           this.password = ''; // Clear sensitive data
 
-          if (user && user.password_reset_required) {
-            this.router.navigate(['/change-password']);
+          this.pendingRoute = user && user.password_reset_required ? '/change-password' : '/dashboard';
+          if (result.pendingRecoveryCode) {
+            this.pendingRecoveryCode = result.pendingRecoveryCode;
           } else {
-            this.router.navigate(['/dashboard']);
+            this.router.navigate([this.pendingRoute]);
           }
         } else {
           this.password = ''; // Clear sensitive data on failure too
-          this.error = result.error || 'Login failed';
-
-          if (this.error === 'SYSTEM_LOCKED') {
-            this.error = 'System Locked. Please login as Administrator to unlock.';
-          }
+          this.error = 'Sign-in failed. Check your credentials or use Recover Device if access is unavailable.';
         }
       });
     } catch (e) {
       this.ngZone.run(() => {
         this.isLoading = false;
-        this.error = 'Login Error';
+        this.error = 'Sign-in failed. Check your credentials or use Recover Device if access is unavailable.';
         console.error(e);
       });
+    }
+  }
+
+  async acknowledgeMigration() {
+    this.error = '';
+    try {
+      const result = await this.authService.acknowledgeRecoveryCode(this.pendingRecoveryCode);
+      if (!result.success) {
+        this.error = 'Could not confirm the recovery code. Please try again.';
+        return;
+      }
+      this.pendingRecoveryCode = '';
+      this.router.navigate([this.pendingRoute]);
+    } catch (error) {
+      this.error = 'Could not confirm the recovery code. Please try again.';
+      console.error(error);
     }
   }
 }

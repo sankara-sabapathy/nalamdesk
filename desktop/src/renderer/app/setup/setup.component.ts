@@ -78,9 +78,9 @@ import { jsPDF } from 'jspdf';
                 This setup wizard will help you:
                 </p>
                 <ul class="list-disc list-inside text-gray-400 mb-8 space-y-2">
-                <li>Secure your patient data with a Master Password.</li>
+                <li>Create the administrator login and a device-protected local vault.</li>
                 <li>Configure your Clinic details.</li>
-                <li>Generate a Recovery Code (Essential for password reset).</li>
+                <li>Generate a Recovery Code for restoring the encrypted vault on a new device.</li>
                 </ul>
                 <button (click)="step = 2" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-medium">
                 Get Started
@@ -88,17 +88,17 @@ import { jsPDF } from 'jspdf';
             </ng-template>
           </div>
 
-          <!-- Step 2: Master Password -->
+          <!-- Step 2: Administrator password -->
           <div *ngIf="step === 2">
-            <h3 class="text-xl font-semibold mb-4 text-white">Create Master Password</h3>
+            <h3 class="text-xl font-semibold mb-4 text-white">Create Administrator Password</h3>
             <div class="bg-yellow-900/30 border border-yellow-700 text-yellow-200 p-4 rounded mb-6 text-sm">
-              <span class="font-bold">IMPORTANT:</span> This password encrypts your database. 
-              If you lose it, you can ONLY restore access using the Recovery Code generated in Step 4.
+              <span class="font-bold">IMPORTANT:</span> This password signs in the administrator.
+              The local vault is protected by this device, and recovery uses the separate Recovery Code generated in Step 4.
             </div>
 
             <div class="space-y-4">
               <div>
-                <label class="block text-gray-400 text-sm mb-1">Master Password</label>
+                <label class="block text-gray-400 text-sm mb-1">Administrator Password</label>
                 <input type="password" [(ngModel)]="password" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
               </div>
               <div>
@@ -159,7 +159,7 @@ import { jsPDF } from 'jspdf';
                  {{ recoveryCode }}
                </div>
                <p class="text-red-400 text-xs mt-3">
-                 SAVE THIS CODE! It is the ONLY way to reset your password if lost.
+                 SAVE THIS CODE! It is required to recover the encrypted vault on a new or reset device.
                </p>
             </div>
 
@@ -273,7 +273,7 @@ export class SetupComponent implements OnInit {
 
     doc.setFontSize(12);
     doc.setTextColor(50, 50, 50);
-    doc.text("Keep this document safe. This code allows you to reset your Master Password.", 20, 40);
+    doc.text("Keep this document safe. This code restores access to your encrypted clinic vault.", 20, 40);
 
     doc.setDrawColor(200, 200, 200);
     doc.setFillColor(245, 245, 245);
@@ -292,7 +292,7 @@ export class SetupComponent implements OnInit {
     doc.save("nalamdesk-recovery-code.pdf");
   }
 
-  goToDashboard() {
+  async goToDashboard() {
     // Setup automatically calls ensureAdminUser which sets up DB.
     // But we are not technically "logged in" via session service yet in the Renderer (AuthService).
     // We should probably auto-login or redirect to login page (but nicely).
@@ -300,12 +300,21 @@ export class SetupComponent implements OnInit {
     // OR, since we just made the password, we can auto-login behind the scenes.
 
     // Auto-login attempt
-    this.authService.login('admin', this.password).then(res => {
-      if (res.success) {
-        this.router.navigate(['/dashboard']);
-      } else {
-        this.router.navigate(['/login']);
+    const res = await this.authService.login('admin', this.password);
+    if (res.success) {
+      try {
+        const acknowledgement = await this.authService.acknowledgeRecoveryCode(this.recoveryCode);
+        if (acknowledgement.success) {
+          this.router.navigate(['/dashboard']);
+        } else {
+          alert('Could not confirm the recovery code. Please try again.');
+        }
+      } catch (error) {
+        console.error(error);
+        alert('Could not confirm the recovery code. Please try again.');
       }
-    });
+    } else {
+      this.router.navigate(['/login']);
+    }
   }
 }
