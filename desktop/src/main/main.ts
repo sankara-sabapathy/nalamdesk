@@ -6,6 +6,7 @@ import log from 'electron-log';
 import { SessionService } from './services/SessionService';
 import { BackupService } from './services/BackupService';
 import { selectRestoreBundle } from './services/BackupFileSelection';
+import { RestoreOperationGate } from './services/RestoreOperationGate';
 import { requireExistingRestoreAuthorization } from './services/RestoreAuthorization';
 import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
@@ -137,6 +138,7 @@ const backupService = new BackupService(databaseService, googleDriveService, sec
     onRestoreCommitted: () => sessionService.clearSession()
 });
 const authorizedRestorePaths = new Set<string>();
+const restoreOperationGate = new RestoreOperationGate();
 
 // ... (cloud sync init logic)
 // DB init happens via IPC. ApiServer will report 503 if DB not ready (guarded in handler).
@@ -958,24 +960,27 @@ ipcMain.handle('auth:restoreSystemBackup', async (_, request: {
     try {
         if (!request || typeof request.path !== 'string' ||
             !authorizedRestorePaths.has(path.resolve(request.path))) throw new Error('BACKUP_PATH_NOT_AUTHORIZED');
-        const liveDbPath = getDatabasePath(userDataPath,
-            process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db');
-        const hasDatabase = fs.existsSync(liveDbPath);
-        const hasConfig = fs.existsSync(path.join(userDataPath, 'security.json'));
-        await requireExistingRestoreAuthorization({
-            hasDatabase,
-            hasConfig,
-            databaseOpen: !!securityService.getDb(),
-            sessionUser: sessionService.getUser(),
-            persistedAdmin: securityService.getDb()
-                ? await databaseService.getUserByUsername('admin')
-                : null,
-            currentAdminPassword: request.currentAdminPassword
+        return await restoreOperationGate.run(async () => {
+            const liveDbPath = getDatabasePath(userDataPath,
+                process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db');
+            const hasDatabase = fs.existsSync(liveDbPath);
+            const hasConfig = fs.existsSync(path.join(userDataPath, 'security.json'));
+            await requireExistingRestoreAuthorization({
+                hasDatabase,
+                hasConfig,
+                databaseOpen: !!securityService.getDb(),
+                sessionUser: sessionService.getUser(),
+                persistedAdmin: securityService.getDb()
+                    ? await databaseService.getUserByUsername('admin')
+                    : null,
+                currentAdminPassword: request.currentAdminPassword
+            });
+            const result = await backupService.restoreLocalBackup(request.path, request.recoveryCode);
+            // Keep the single-flight guard and authorized path until relaunch so
+            // no second request can mutate the restored vault in this process.
+            setTimeout(() => { app.relaunch(); app.exit(0); }, 500);
+            return result;
         });
-        const result = await backupService.restoreLocalBackup(request.path, request.recoveryCode);
-        authorizedRestorePaths.delete(path.resolve(request.path));
-        setTimeout(() => { app.relaunch(); app.exit(0); }, 500);
-        return result;
     } catch (e: any) {
         console.error('[Main] System Restore Failed:', e);
         return { success: false, error: e.message };

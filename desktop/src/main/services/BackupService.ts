@@ -44,6 +44,7 @@ export interface BackupServiceOptions {
     onStep?: (step: BackupStep) => void;
     /** Test seams for platform-specific durability behavior. */
     fsync?: (fd: number) => void;
+    write?: (fd: number, buffer: Buffer, offset: number, length: number, position: number | null) => number;
     platform?: NodeJS.Platform;
     /** Required restore commit boundary: invalidate every pre-restore session. */
     onRestoreCommitted?: () => void;
@@ -341,7 +342,7 @@ export class BackupService {
             while (position < total) {
                 const bytes = fs.readSync(source, buffer, 0, Math.min(buffer.length, total - position), position);
                 if (!bytes) throw new Error('BACKUP_TRUNCATED');
-                fs.writeSync(target, buffer, 0, bytes); hash.update(buffer.subarray(0, bytes)); position += bytes;
+                this.writeAll(target, buffer, 0, bytes); hash.update(buffer.subarray(0, bytes)); position += bytes;
             }
             fs.fsyncSync(target);
         } finally { fs.closeSync(source); fs.closeSync(target); }
@@ -381,12 +382,20 @@ export class BackupService {
         if (bytes.length > MAX_MANIFEST) throw new Error('BACKUP_MANIFEST_TOO_LARGE');
         const output = fs.openSync(target, 'w', 0o600); const input = fs.openSync(database, 'r');
         try {
-            fs.writeSync(output, MAGIC); const length = Buffer.alloc(4); length.writeUInt32BE(bytes.length);
-            fs.writeSync(output, length); fs.writeSync(output, bytes);
+            this.writeAll(output, MAGIC); const length = Buffer.alloc(4); length.writeUInt32BE(bytes.length);
+            this.writeAll(output, length); this.writeAll(output, bytes);
             const buffer = Buffer.allocUnsafe(1024 * 1024); let read: number;
-            while ((read = fs.readSync(input, buffer, 0, buffer.length, null)) > 0) fs.writeSync(output, buffer, 0, read);
+            while ((read = fs.readSync(input, buffer, 0, buffer.length, null)) > 0) this.writeAll(output, buffer, 0, read);
             fs.fsyncSync(output);
         } finally { fs.closeSync(input); fs.closeSync(output); }
+    }
+    private writeAll(fd: number, buffer: Buffer, offset = 0, length = buffer.length) {
+        let written = 0;
+        while (written < length) {
+            const bytes = (this.options.write || fs.writeSync)(fd, buffer, offset + written, length - written, null);
+            if (bytes <= 0) throw new Error('BACKUP_WRITE_FAILED');
+            written += bytes;
+        }
     }
     private hasMagic(filePath: string): boolean {
         try { const fd = fs.openSync(filePath, 'r'); try { const bytes = Buffer.alloc(MAGIC.length); return fs.readSync(fd, bytes, 0, bytes.length, 0) === bytes.length && bytes.equals(MAGIC); } finally { fs.closeSync(fd); } }

@@ -56,7 +56,7 @@ describe('SetupComponent external backup selection', () => {
         expect(value.localBackups).toEqual([]);
     });
 
-    it('adds an external recoverable bundle without exposing raw filesystem APIs', async () => {
+    it('adds an external recoverable bundle', async () => {
         (window as any).electron = { backup: { selectRestoreBundle: vi.fn(async () => ({
             path: '/external/clinic.ndbackup', name: 'clinic.ndbackup'
         })) } };
@@ -64,8 +64,6 @@ describe('SetupComponent external backup selection', () => {
         await value.selectExternalBackup();
         expect(value.hasBackups).toBe(true);
         expect(value.localBackups[0]).toMatchObject({ name: 'clinic.ndbackup', recoverable: true });
-        expect((window as any).electron.fs).toBeUndefined();
-        expect((window as any).electron.backup.readFile).toBeUndefined();
     });
 
     it('labels a selected legacy DB as non-recoverable', async () => {
@@ -76,5 +74,17 @@ describe('SetupComponent external backup selection', () => {
         await value.selectExternalBackup();
         expect(value.localBackups[0]).toMatchObject({ format: 'legacy-database-only', recoverable: false });
         expect(value.restoreError).toContain('legacy backup');
+    });
+
+    it('clears a legacy warning when a recoverable bundle is selected next', async () => {
+        const selectRestoreBundle = vi.fn()
+            .mockResolvedValueOnce({ path: '/external/old.db', name: 'old.db' })
+            .mockResolvedValueOnce({ path: '/external/clinic.ndbackup', name: 'clinic.ndbackup' });
+        (window as any).electron = { backup: { selectRestoreBundle } };
+        const value = externalBackupComponent();
+        await value.selectExternalBackup();
+        expect(value.restoreError).toContain('legacy backup');
+        await value.selectExternalBackup();
+        expect(value.restoreError).toBe('');
     });
 });

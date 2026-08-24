@@ -29,6 +29,7 @@ describe('BackupService recoverable bundles', () => {
     let bundle: string;
 
     beforeEach(() => {
+        vi.clearAllMocks();
         root = fs.mkdtempSync(path.join(os.tmpdir(), 'nalamdesk-backup-'));
         sourceUserData = path.join(root, 'source');
         sourceDb = path.join(sourceUserData, 'nalamdesk-test.db');
@@ -112,7 +113,8 @@ describe('BackupService recoverable bundles', () => {
         const service = new BackupService(database(sourceDb), drive(), sourceSecurity(), sourceUserData, { appVersion: 'test' });
         await service.createBackupBundle(bundle);
     }
-    function targetService(options: { existing?: boolean; validatorError?: string; validatorSchema?: number; failAt?: BackupStep } = {}) {
+    function targetService(options: { existing?: boolean; validatorError?: string; validatorSchema?: number;
+        failAt?: BackupStep; write?: (fd: number, buffer: Buffer, offset: number, length: number, position: number | null) => number } = {}) {
         const userData = path.join(root, 'target');
         const dbPath = path.join(userData, 'nalamdesk-test.db');
         fs.mkdirSync(userData, { recursive: true });
@@ -129,7 +131,8 @@ describe('BackupService recoverable bundles', () => {
         const service = new BackupService(db, drive(), live, userData, {
             createIsolatedSecurityService: () => validator('correct-code', options.validatorError, options.validatorSchema ?? 6),
             onStep: step => { if (step === options.failAt) throw new Error(`INTERRUPTED_${step}`); },
-            onRestoreCommitted: committed
+            onRestoreCommitted: committed,
+            write: options.write
         });
         return { service, userData, dbPath, live, db, committed };
     }
@@ -145,6 +148,16 @@ describe('BackupService recoverable bundles', () => {
         expect(text).not.toContain('password');
         expect(text).not.toContain('recoveryCode');
         expect(text).not.toContain('token');
+    });
+
+    it('retries short writes while creating and extracting a bundle', async () => {
+        const shortWrite = (fd: number, data: Buffer, offset: number, length: number, position: number | null) =>
+            fs.writeSync(fd, data, offset, Math.min(length, 3), position);
+        await new BackupService(database(sourceDb), drive(), sourceSecurity(), sourceUserData, { write: shortWrite })
+            .createBackupBundle(bundle);
+        const { service, dbPath } = targetService({ write: shortWrite });
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).resolves.toMatchObject({ success: true });
+        expect(fs.readFileSync(dbPath).toString()).toBe('encrypted-sqlcipher-source-data');
     });
 
     it.each([

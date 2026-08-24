@@ -50,11 +50,11 @@ import { jsPDF } from 'jspdf';
                         class="mb-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white text-sm">
                         Choose Backup File…
                     </button>
-                    <label class="block text-gray-300 text-sm mb-1">Recovery Code</label>
-                    <input type="password" [(ngModel)]="restoreRecoveryCode" autocomplete="off"
+                    <label for="restore-recovery-code" class="block text-gray-300 text-sm mb-1">Recovery Code</label>
+                    <input id="restore-recovery-code" type="password" [(ngModel)]="restoreRecoveryCode" autocomplete="off"
                         placeholder="Required to validate and restore the encrypted vault"
                         class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white">
-                    <p *ngIf="restoreError" class="text-red-400 text-sm mt-2">{{restoreError}}</p>
+                    <p *ngIf="restoreError" aria-live="polite" class="text-red-400 text-sm mt-2">{{restoreError}}</p>
                 </div>
 
                 <div class="space-y-3 mb-8 max-h-60 overflow-y-auto pr-2">
@@ -283,7 +283,9 @@ export class SetupComponent implements OnInit {
           : undefined
       }, ...this.localBackups.filter(item => item.path !== selected.path)];
       this.hasBackups = true;
-      if (legacy) this.restoreError = 'This legacy backup can be identified, but cannot recover a clean device.';
+      this.restoreError = legacy
+        ? 'This legacy backup can be identified, but cannot recover a clean device.'
+        : '';
     } catch (e: any) {
       this.restoreError = e?.message || 'Unable to select the backup file.';
     }
