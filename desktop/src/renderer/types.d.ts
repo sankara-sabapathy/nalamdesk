@@ -6,7 +6,9 @@ declare global {
             login: (credentials: { username: string, password: string }) => Promise<{ success: boolean; user?: any; error?: string; pendingRecoveryCode?: string }>;
             checkSetup: () => Promise<{ isSetup: boolean; hasRecovery: boolean; vaultState?: string; configVersion?: number }>;
             getRecoveryStatus: () => Promise<{ isSetup: boolean; hasRecovery: boolean; hasBackups: boolean; backups?: any[] }>;
-            restoreSystemBackup: (path: string) => Promise<void>;
+            restoreSystemBackup: (request: { path: string; recoveryCode: string; currentAdminPassword?: string }) => Promise<{
+                success: boolean; restartRequired?: boolean; preRestoreSnapshot?: string; error?: string
+            }>;
             setup: (data: any) => Promise<{ success: boolean; recoveryCode?: string; error?: string }>;
             recover: (data: { recoveryCode: string }) => Promise<{ success: boolean; pendingRecoveryCode?: string; error?: string }>;
             acknowledgeRecoveryCode: (recoveryCode: string) => Promise<{ success: boolean }>;
@@ -74,6 +76,7 @@ declare global {
             },
             backup: {
                 selectPath: () => Promise<string | null>;
+                selectRestoreBundle: () => Promise<{ path: string; name: string } | null>;
                 useDefaultPath: () => Promise<string | null>;
                 runNow: () => Promise<{ success: boolean; error?: string }>;
                 listSystemBackups: () => Promise<any[]>;

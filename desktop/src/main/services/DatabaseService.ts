@@ -2,9 +2,52 @@ import { MIGRATIONS } from '../schema/migrations';
 
 export class DatabaseService {
     private db: any;
+    private fenced = false;
+    private inFlight = 0;
+    private drain: Array<() => void> = [];
 
     setDb(db: any) {
         this.db = db;
+    }
+
+    beginWork(): void {
+        if (this.fenced) throw new Error('RESTORE_IN_PROGRESS');
+        this.inFlight++;
+    }
+
+    endWork(): void {
+        if (this.inFlight > 0) this.inFlight--;
+        if (this.inFlight === 0) {
+            const waiters = this.drain.splice(0);
+            for (const done of waiters) done();
+        }
+    }
+
+    async fence(timeoutMs = 10_000): Promise<void> {
+        this.fenced = true;
+        if (this.inFlight === 0) return;
+        await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                const index = this.drain.indexOf(onIdle);
+                if (index >= 0) this.drain.splice(index, 1);
+                reject(new Error('RESTORE_DRAIN_TIMEOUT'));
+            }, timeoutMs);
+            const onIdle = () => {
+                clearTimeout(timer);
+                resolve();
+            };
+            this.drain.push(onIdle);
+        });
+    }
+
+    unfence(): void {
+        this.fenced = false;
+    }
+
+    async runWork<T>(work: () => T | Promise<T>): Promise<T> {
+        this.beginWork();
+        try { return await work(); }
+        finally { this.endWork(); }
     }
 
     private async createBackup(dbName: string) {

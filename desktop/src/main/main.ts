@@ -5,6 +5,10 @@ import log from 'electron-log';
 
 import { SessionService } from './services/SessionService';
 import { BackupService } from './services/BackupService';
+import { selectRestoreBundle } from './services/BackupFileSelection';
+import { RestoreOperationGate } from './services/RestoreOperationGate';
+import { runDriveRestore } from './services/DriveRestore';
+import { requireExistingRestoreAuthorization } from './services/RestoreAuthorization';
 import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
 import { ElectronSafeStorageDeviceKeyStore } from './services/DeviceKeyStore';
@@ -128,7 +132,14 @@ const apiServer = new ApiServer(
     isDev ? getDevUiProxyUrl() : undefined
 );
 const sessionService = new SessionService();
-const backupService = new BackupService(databaseService, googleDriveService, securityService, userDataPath);
+const backupService = new BackupService(databaseService, googleDriveService, securityService, userDataPath, {
+    appVersion: app.getVersion(),
+    // Restore validation must not reconfigure or close the live vault.
+    createIsolatedSecurityService: () => new SecurityService(new ElectronSafeStorageDeviceKeyStore()),
+    onRestoreCommitted: () => sessionService.clearSession()
+});
+const authorizedRestorePaths = new Set<string>();
+const restoreOperationGate = new RestoreOperationGate();
 
 // ... (cloud sync init logic)
 // DB init happens via IPC. ApiServer will report 503 if DB not ready (guarded in handler).
@@ -481,7 +492,11 @@ async function handleAdminLogin(password: string): Promise<{ success: boolean; u
     return buildAuthenticatedLoginResult(sessionService.getUser()!, securityService);
 }
 
-ipcMain.handle('auth:login', async (event, credentials) => {
+function handleDb(channel: string, handler: (...args: any[]) => any) {
+    ipcMain.handle(channel, async (...args) => databaseService.runWork(() => handler(...args)));
+}
+
+handleDb('auth:login', async (event, credentials) => {
     try {
         const { username, password } = credentials;
 
@@ -521,39 +536,38 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         return { success: false, error: 'INVALID_CREDENTIALS' };
 
     } catch (error: any) {
+        if (error?.message === 'RESTORE_IN_PROGRESS') throw error;
         console.error('Login failed:', error);
         return { success: false, error: 'UNKNOWN_ERROR' };
     }
 });
 
-// ... (Database IPC Handlers)
-
 // Dashboard / Stats
-ipcMain.handle('db:getDashboardStats', () => {
+handleDb('db:getDashboardStats', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getDashboardStats();
 });
 
 // Patients
-ipcMain.handle('db:getPatients', (_, query) => {
+handleDb('db:getPatients', (_, query) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getPatients(query);
 });
-ipcMain.handle('db:getPatientById', (_, id) => {
+handleDb('db:getPatientById', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getPatientById(id);
 });
-ipcMain.handle('db:savePatient', (_, patient) => {
+handleDb('db:savePatient', (_, patient) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     // Basic RBAC check (doctors/receptionists) - simplified for now
     if (!['doctor', 'receptionist', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.savePatient(patient);
 });
-ipcMain.handle('db:deletePatient', (_, id) => {
+handleDb('db:deletePatient', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
@@ -561,123 +575,123 @@ ipcMain.handle('db:deletePatient', (_, id) => {
 });
 
 // Visits
-ipcMain.handle('db:getVisits', (_, patientId) => {
+handleDb('db:getVisits', (_, patientId) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getVisits(patientId);
 });
-ipcMain.handle('db:getAllVisits', (_, limit) => {
+handleDb('db:getAllVisits', (_, limit) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getAllVisits(limit);
 });
-ipcMain.handle('db:saveVisit', (_, visit) => {
+handleDb('db:saveVisit', (_, visit) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.saveVisit(visit);
 });
-ipcMain.handle('db:beginConsultation', (_, input) => {
+handleDb('db:beginConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.beginConsultation(input, user.id);
 });
-ipcMain.handle('db:getActiveConsultation', (_, patientId) => {
+handleDb('db:getActiveConsultation', (_, patientId) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.getActiveConsultation(patientId, user.id);
 });
-ipcMain.handle('db:saveConsultationProgress', (_, input) => {
+handleDb('db:saveConsultationProgress', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.saveConsultationProgress(input, user.id);
 });
-ipcMain.handle('db:completeConsultation', (_, input) => {
+handleDb('db:completeConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.completeConsultation(input, user.id);
 });
-ipcMain.handle('db:postponeConsultation', (_, input) => {
+handleDb('db:postponeConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.postponeConsultation(input, user.id);
 });
-ipcMain.handle('db:resumeConsultation', (_, input) => {
+handleDb('db:resumeConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.resumeConsultation(input, user.id);
 });
-ipcMain.handle('db:beginNextConsultation', (_, input) => {
+handleDb('db:beginNextConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.beginNextConsultation(input, user.id);
 });
-ipcMain.handle('db:deleteVisit', (_, id) => {
+handleDb('db:deleteVisit', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
     return databaseService.deleteVisit(id);
 });
-ipcMain.handle('db:getVitals', (_, patientId) => {
+handleDb('db:getVitals', (_, patientId) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getVitals(patientId);
 });
-ipcMain.handle('db:saveVitals', (_, vitals) => {
+handleDb('db:saveVitals', (_, vitals) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.saveVitals(vitals);
 });
 
 // Users
-ipcMain.handle('db:getUsers', () => {
+handleDb('db:getUsers', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
     return databaseService.getUsers();
 });
-ipcMain.handle('db:saveUser', (_, userData) => {
+handleDb('db:saveUser', (_, userData) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
     return databaseService.saveUser(userData, user.id);
 });
-ipcMain.handle('db:deleteUser', (_, id) => {
+handleDb('db:deleteUser', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
     return databaseService.deleteUser(id);
 });
-ipcMain.handle('db:getDoctors', () => {
+handleDb('db:getDoctors', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getDoctors();
 });
-ipcMain.handle('db:getAllRoles', () => {
+handleDb('db:getAllRoles', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getAllRoles();
 })
 
 // Settings
-ipcMain.handle('db:getSettings', () => {
+handleDb('db:getSettings', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     // if (user.role !== 'admin') throw new Error('Forbidden'); // Allow reading settings?
     return databaseService.getSettings();
 });
-ipcMain.handle('db:getPublicSettings', () => {
+handleDb('db:getPublicSettings', () => {
     // Public endpoint - no auth required (used for Login screen)
     return databaseService.getPublicSettings();
 });
-ipcMain.handle('db:saveSettings', async (_, settings) => {
+handleDb('db:saveSettings', async (_, settings) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
@@ -701,34 +715,34 @@ ipcMain.handle('db:saveSettings', async (_, settings) => {
 });
 
 // Queue IPC Handlers
-ipcMain.handle('db:getQueue', () => {
+handleDb('db:getQueue', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getQueue();
 });
-ipcMain.handle('db:addToQueue', (_, { patientId, priority }) => {
+handleDb('db:addToQueue', (_, { patientId, priority }) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.addToQueue(patientId, priority, user.id);
 });
-ipcMain.handle('db:updateQueueStatus', (_, { id, status }) => {
+handleDb('db:updateQueueStatus', (_, { id, status }) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.updateQueueStatus(id, status, user.id);
 });
-ipcMain.handle('db:updateQueueStatusByPatientId', (_, { patientId, status }) => {
+handleDb('db:updateQueueStatusByPatientId', (_, { patientId, status }) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.updateQueueStatusByPatientId(patientId, status, user.id);
 });
-ipcMain.handle('db:removeFromQueue', (_, id) => {
+handleDb('db:removeFromQueue', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.removeFromQueue(id, user.id);
 });
 
 // Audit IPC Handlers
-ipcMain.handle('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));
+handleDb('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));
 
 // Cloud IPC Handlers
 // Cloud IPC Handlers
@@ -769,12 +783,12 @@ ipcMain.handle('cloud:getPublishedSlots', (_, date) => {
 
 // Appointment Request IPC
 // Appointment Request IPC
-ipcMain.handle('db:getAppointmentRequests', () => {
+handleDb('db:getAppointmentRequests', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getAppointmentRequests();
 });
-ipcMain.handle('db:updateAppointmentRequestStatus', (_, { id, status }) => {
+handleDb('db:updateAppointmentRequestStatus', (_, { id, status }) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.updateAppointmentRequestStatus(id, status);
@@ -782,19 +796,19 @@ ipcMain.handle('db:updateAppointmentRequestStatus', (_, { id, status }) => {
 
 // Appointments (Bookings) IPC
 // Appointments (Bookings) IPC
-ipcMain.handle('db:getAppointments', (_, date) => {
+handleDb('db:getAppointments', (_, date) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getAppointments(date);
 });
-ipcMain.handle('db:saveAppointment', (_, appt) => {
+handleDb('db:saveAppointment', (_, appt) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.saveAppointment(appt);
 });
 
 // Drive IPC Handlers
-ipcMain.handle('drive:authenticate', async (_, { clientId, clientSecret }) => {
+handleDb('drive:authenticate', async (_, { clientId, clientSecret }) => {
     if (!mainWindow) return { success: false, error: 'Main window not found' };
     try {
         // Configure credentials first
@@ -812,17 +826,19 @@ ipcMain.handle('drive:authenticate', async (_, { clientId, clientSecret }) => {
 
         return { success: true };
     } catch (e: any) {
+        if (e?.message === 'RESTORE_IN_PROGRESS') throw e;
         console.error('Drive auth failed', e);
         return { success: false, error: e.message || 'Authentication failed' };
     }
 });
 
-ipcMain.handle('drive:disconnect', async () => {
+handleDb('drive:disconnect', async () => {
     try {
         googleDriveService.setCredentials(null);
         databaseService.saveSettings({ drive_tokens: '' });
         return { success: true };
     } catch (e: any) {
+        if (e?.message === 'RESTORE_IN_PROGRESS') throw e;
         console.error('Drive disconnect failed', e);
         return { success: false, error: e.message };
     }
@@ -848,21 +864,18 @@ ipcMain.handle('drive:backup', async () => {
 
 ipcMain.handle('drive:restore', async (_, fileId) => {
     try {
-        const dbPath = securityService.getDbPath();
-        if (!dbPath) throw new Error('DB not open');
-        securityService.closeDb();
-        await googleDriveService.downloadFile(fileId, dbPath);
-
-        // Restart app to reload DB (delay to allow IPC response)
-        setTimeout(() => {
-            app.relaunch();
-            app.exit(0);
-        }, 1500);
-
-        return { success: true, restartRequired: true };
+        return await runDriveRestore({
+            gate: restoreOperationGate,
+            dbService: databaseService,
+            getDbPath: () => securityService.getDbPath(),
+            closeDb: () => securityService.closeDb(),
+            downloadFile: (id, destination) => googleDriveService.downloadFile(id, destination),
+            fileId,
+            onCommitted: () => { setTimeout(() => { app.relaunch(); app.exit(0); }, 1500); }
+        });
     } catch (e: any) {
+        if (e?.message === 'RESTORE_IN_PROGRESS') throw e;
         console.error('Restore failed', e.message); // e might be object
-
         return { success: false, error: String(e) };
     }
 });
@@ -886,6 +899,21 @@ ipcMain.handle('backup:selectPath', async () => {
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
+});
+
+ipcMain.handle('backup:selectRestoreBundle', async () => {
+    if (!mainWindow) return null;
+    const selected = await selectRestoreBundle(() => dialog.showOpenDialog(mainWindow!, {
+        properties: ['openFile'],
+        title: 'Select NalamDesk Backup',
+        buttonLabel: 'Select Backup',
+        filters: [
+            { name: 'NalamDesk recoverable backup', extensions: ['ndbackup'] },
+            { name: 'Legacy database backup', extensions: ['db'] }
+        ]
+    }));
+    if (selected) authorizedRestorePaths.add(path.resolve(selected.path));
+    return selected;
 });
 
 ipcMain.handle('backup:useDefaultPath', async () => {
@@ -917,6 +945,7 @@ ipcMain.handle('auth:getRecoveryStatus', async () => {
 
     if (!isSetup) {
         backups = await backupService.listSystemBackups();
+        for (const backup of backups) authorizedRestorePaths.add(path.resolve(backup.path));
         hasBackups = backups.length > 0;
     }
 
@@ -928,18 +957,33 @@ ipcMain.handle('auth:getRecoveryStatus', async () => {
     };
 });
 
-ipcMain.handle('auth:restoreSystemBackup', async (_, backupPath) => {
+ipcMain.handle('auth:restoreSystemBackup', async (_, request: {
+    path: string; recoveryCode: string; currentAdminPassword?: string
+}) => {
     try {
-        console.log('[Main] System Restore Triggered for:', backupPath);
-        await backupService.restoreLocalBackup(backupPath);
-
-        // After restore, we should probably restart the app to ensure clean state?
-        // Or just return success and let the frontend reload?
-        // Ideally, relaunch to reload DB connection fresh.
-        app.relaunch();
-        app.exit(0);
-
-        return { success: true };
+        if (!request || typeof request.path !== 'string' ||
+            !authorizedRestorePaths.has(path.resolve(request.path))) throw new Error('BACKUP_PATH_NOT_AUTHORIZED');
+        return await restoreOperationGate.run(async () => {
+            const liveDbPath = getDatabasePath(userDataPath,
+                process.env['NODE_ENV'] === 'test' ? 'nalamdesk-test.db' : 'nalamdesk.db');
+            const hasDatabase = fs.existsSync(liveDbPath);
+            const hasConfig = fs.existsSync(path.join(userDataPath, 'security.json'));
+            await requireExistingRestoreAuthorization({
+                hasDatabase,
+                hasConfig,
+                databaseOpen: !!securityService.getDb(),
+                sessionUser: sessionService.getUser(),
+                persistedAdmin: securityService.getDb()
+                    ? await databaseService.getUserByUsername('admin')
+                    : null,
+                currentAdminPassword: request.currentAdminPassword
+            });
+            const result = await backupService.restoreLocalBackup(request.path, request.recoveryCode);
+            // Keep the single-flight guard and authorized path until relaunch so
+            // no second request can mutate the restored vault in this process.
+            setTimeout(() => { app.relaunch(); app.exit(0); }, 500);
+            return result;
+        });
     } catch (e: any) {
         console.error('[Main] System Restore Failed:', e);
         return { success: false, error: e.message };

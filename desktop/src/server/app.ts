@@ -281,35 +281,47 @@ export class ApiServer {
             return reply.code(400).send({ error: 'Invalid input' });
         }
         const { username, password } = body;
-        let user;
         try {
-            user = this.dbService.getUserByUsername(username);
-        } catch (e) {
-            return reply.code(503).send({ error: 'System initialization in progress. Please try again.' });
-        }
-
-        if (!user || user.active === 0) {
-            return reply.code(401).send({ error: 'Invalid credentials' });
-        }
-
-        // Admin IP Restriction
-        if (user.role === 'admin') {
-            const ip = request.ip;
-            if (process.env['STRICT_ADMIN_IP'] === 'true' && ip !== '127.0.0.1' && ip !== '::1') {
-                return reply.code(403).send({ error: 'Admin login restricted to Master System' });
+            this.dbService.beginWork();
+        } catch (error: any) {
+            if (error?.message === 'RESTORE_IN_PROGRESS') {
+                return reply.code(503).send({ error: 'RESTORE_IN_PROGRESS' });
             }
+            throw error;
         }
-
-        // Verify Password
         try {
-            if (await argon2.verify(user.password, password)) {
-                const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, JWT_SECRET, { expiresIn: '12h' });
-                return { token, user: { id: user.id, username: user.username, role: user.role, name: user.name } };
-            } else {
+            let user;
+            try {
+                user = this.dbService.getUserByUsername(username);
+            } catch (e) {
+                return reply.code(503).send({ error: 'System initialization in progress. Please try again.' });
+            }
+
+            if (!user || user.active === 0) {
                 return reply.code(401).send({ error: 'Invalid credentials' });
             }
-        } catch (e) {
-            return reply.code(500).send({ error: 'Auth error' });
+
+            // Admin IP Restriction
+            if (user.role === 'admin') {
+                const ip = request.ip;
+                if (process.env['STRICT_ADMIN_IP'] === 'true' && ip !== '127.0.0.1' && ip !== '::1') {
+                    return reply.code(403).send({ error: 'Admin login restricted to Master System' });
+                }
+            }
+
+            // Verify Password
+            try {
+                if (await argon2.verify(user.password, password)) {
+                    const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, JWT_SECRET, { expiresIn: '12h' });
+                    return { token, user: { id: user.id, username: user.username, role: user.role, name: user.name } };
+                } else {
+                    return reply.code(401).send({ error: 'Invalid credentials' });
+                }
+            } catch (e) {
+                return reply.code(500).send({ error: 'Auth error' });
+            }
+        } finally {
+            this.dbService.endWork();
         }
     }
 
@@ -329,30 +341,42 @@ export class ApiServer {
             return reply.code(404).send({ error: 'Method not found or not allowed' });
         }
 
-        // 2. RBAC Enforcement
-        if (!this.checkPermission(user.role, method)) {
-            return reply.code(403).send({ error: 'Forbidden' });
-        }
-
-        const dbAny = this.dbService as any;
-
-        // 3. Execution using Allowlist
-        if (typeof dbAny[method] === 'function') {
-            try {
-                const encounterCommands = new Set([
-                    'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress', 'completeConsultation',
-                    'postponeConsultation', 'resumeConsultation', 'beginNextConsultation'
-                ]);
-                const result = encounterCommands.has(method)
-                    ? await dbAny[method](...args, user.id)
-                    : await dbAny[method](...args);
-                return result;
-            } catch (e: any) {
-                console.error(`[IPC Error] method: ${method}`, e);
-                return reply.code(500).send({ error: 'Internal server error' });
+        try {
+            this.dbService.beginWork();
+        } catch (error: any) {
+            if (error?.message === 'RESTORE_IN_PROGRESS') {
+                return reply.code(503).send({ error: 'RESTORE_IN_PROGRESS' });
             }
-        } else {
-            return reply.code(404).send({ error: 'Method not implemented' });
+            throw error;
+        }
+        try {
+            // 2. RBAC Enforcement
+            if (!this.checkPermission(user.role, method)) {
+                return reply.code(403).send({ error: 'Forbidden' });
+            }
+
+            const dbAny = this.dbService as any;
+
+            // 3. Execution using Allowlist
+            if (typeof dbAny[method] === 'function') {
+                try {
+                    const encounterCommands = new Set([
+                        'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress', 'completeConsultation',
+                        'postponeConsultation', 'resumeConsultation', 'beginNextConsultation'
+                    ]);
+                    const result = encounterCommands.has(method)
+                        ? await dbAny[method](...args, user.id)
+                        : await dbAny[method](...args);
+                    return result;
+                } catch (e: any) {
+                    console.error(`[IPC Error] method: ${method}`, e);
+                    return reply.code(500).send({ error: 'Internal server error' });
+                }
+            } else {
+                return reply.code(404).send({ error: 'Method not implemented' });
+            }
+        } finally {
+            this.dbService.endWork();
         }
     }
 
