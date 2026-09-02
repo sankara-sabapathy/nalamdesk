@@ -253,6 +253,38 @@ describe('BackupService recoverable bundles', () => {
         await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('BACKUP_SCHEMA_VERSION_UNSUPPORTED');
     });
 
+    it('captures pre-restore schema after restore-before-live-close and restores that bundle', async () => {
+        await createBundle();
+        let schemaVersion = 6;
+        const userData = path.join(root, 'schema-boundary');
+        const dbPath = path.join(userData, 'nalamdesk-test.db');
+        fs.mkdirSync(userData, { recursive: true });
+        fs.writeFileSync(dbPath, 'encrypted-old-live-data');
+        fs.writeFileSync(path.join(userData, 'security.json'), JSON.stringify(liveConfig()));
+        const live = {
+            getDbPath: vi.fn(() => dbPath),
+            getPortableVaultMetadata: vi.fn(() => portable),
+            getDb: vi.fn(() => ({ pragma: vi.fn(() => schemaVersion) })),
+            closeDb: vi.fn(),
+            initializeDevice: vi.fn(async () => ({}))
+        } as unknown as SecurityService;
+        const interrupted = new BackupService(database(dbPath), drive(), live, userData, {
+            createIsolatedSecurityService: () => validator(),
+            onStep: step => {
+                if (step === 'restore-before-live-close') schemaVersion = 7;
+                if (step === 'restore-after-config-replace') throw new Error('INTERRUPTED_restore-after-config-replace');
+            },
+            onRestoreCommitted: vi.fn()
+        });
+        await expect(interrupted.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('INTERRUPTED');
+        const snapshots = fs.readdirSync(path.join(userData, 'backups')).filter(file => file.includes('pre-restore'));
+        expect(snapshots).toHaveLength(1);
+        const { service, dbPath: recoveredPath } = targetService({ validatorSchema: 7 });
+        await expect(service.restoreLocalBackup(path.join(userData, 'backups', snapshots[0]), 'correct-code'))
+            .resolves.toMatchObject({ success: true });
+        expect(fs.readFileSync(recoveredPath).toString()).toBe('encrypted-old-live-data');
+    });
+
     it.each(['restore-after-database-replace', 'restore-after-config-replace'] as BackupStep[])(
         'rolls back the exact DB/config pair after interruption at %s', async failAt => {
             await createBundle();

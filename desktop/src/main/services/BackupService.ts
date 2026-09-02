@@ -247,6 +247,10 @@ export class BackupService {
             this.step('restore-after-stage-validation');
             this.saveJournal(journal);
 
+            // From this point until activation, no live write may commit outside
+            // the rollback snapshot. Closing checkpoints WAL data into the base
+            // file and makes the following durable copy transactionally final.
+            this.step('restore-before-live-close');
             if (journal.hadDatabase && journal.hadConfig) {
                 fs.mkdirSync(this.localBackupPath, { recursive: true });
                 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -259,10 +263,6 @@ export class BackupService {
                     schemaVersion: liveDb ? Number(liveDb.pragma('user_version', { simple: true }) || 0) : 0
                 };
             }
-            // From this point until activation, no live write may commit outside
-            // the rollback snapshot. Closing checkpoints WAL data into the base
-            // file and makes the following durable copy transactionally final.
-            this.step('restore-before-live-close');
             if (this.securityService.getDb()) {
                 this.securityService.closeDb();
                 liveDatabaseClosed = true;

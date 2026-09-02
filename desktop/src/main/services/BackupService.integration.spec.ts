@@ -195,6 +195,45 @@ describe.skipIf(!process.versions.electron)('BackupService SQLCipher integration
         current.security.closeDb();
     });
 
+    it('restores a pre-restore bundle after a schema change at restore-before-live-close', async () => {
+        const incoming = await vault(path.join(root, 'incoming-schema'), new BackupIntegrationStore(0x74), 'incoming');
+        await makeBundle(incoming); incoming.security.closeDb();
+        const targetStore = new BackupIntegrationStore(0x75);
+        const current = await vault(path.join(root, 'target-schema'), targetStore, 'current');
+        let boundarySchema = 0;
+        const service = new BackupService(current.database, drive, current.security, current.directory, {
+            createIsolatedSecurityService: () => new SecurityService(targetStore),
+            onRestoreCommitted: vi.fn(),
+            onStep: step => {
+                if (step === 'restore-before-live-close') {
+                    const liveDb = current.security.getDb();
+                    const currentVersion = Number(liveDb.pragma('user_version', { simple: true }));
+                    boundarySchema = currentVersion === 0 ? 1 : currentVersion - 1;
+                    liveDb.pragma(`user_version = ${boundarySchema}`);
+                }
+                if (step === 'restore-after-config-replace') throw new Error('forced schema-boundary interruption');
+            }
+        });
+        await expect(service.restoreLocalBackup(bundle, incoming.recoveryCode))
+            .rejects.toThrow('forced schema-boundary interruption');
+        expect(current.security.getDb().pragma('user_version', { simple: true })).toBe(boundarySchema);
+        const snapshots = fs.readdirSync(path.join(current.directory, 'backups'))
+            .filter(name => name.includes('pre-restore'));
+        expect(snapshots).toHaveLength(1);
+        current.security.closeDb();
+
+        const recoveryDirectory = path.join(root, 'schema-boundary-recovery'); fs.mkdirSync(recoveryDirectory);
+        const recoveryStore = new BackupIntegrationStore(0x76);
+        const recoverySecurity = new SecurityService(recoveryStore);
+        await new BackupService(new DatabaseService(), drive, recoverySecurity, recoveryDirectory, {
+            createIsolatedSecurityService: () => new SecurityService(recoveryStore), onRestoreCommitted: vi.fn()
+        }).restoreLocalBackup(path.join(current.directory, 'backups', snapshots[0]), current.recoveryCode);
+        expect(recoverySecurity.getDb().pragma('user_version', { simple: true })).toBe(boundarySchema);
+        expect(recoverySecurity.getDb().prepare('SELECT value FROM clinical_backup_test').get())
+            .toEqual({ value: 'current' });
+        recoverySecurity.closeDb();
+    });
+
     it('includes a final write committed immediately before the live vault closes', async () => {
         const incoming = await vault(path.join(root, 'incoming-close'), new BackupIntegrationStore(0x66), 'incoming');
         await makeBundle(incoming); incoming.security.closeDb();
