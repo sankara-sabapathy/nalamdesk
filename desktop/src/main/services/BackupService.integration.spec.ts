@@ -239,20 +239,18 @@ describe.skipIf(!process.versions.electron)('BackupService SQLCipher integration
         await makeBundle(incoming); incoming.security.closeDb();
         const targetStore = new BackupIntegrationStore(0x78);
         const current = await vault(path.join(root, 'target-api'), targetStore, 'base-row');
-        let releaseWrite!: () => void;
-        const inFlightWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
-        const overlapping = (async () => {
-            await inFlightWrite;
-            current.security.getDb().prepare('INSERT INTO clinical_backup_test (value) VALUES (?)').run('api-write');
-        })();
+        current.database.beginWork();
         const service = new BackupService(current.database, drive, current.security, current.directory, {
             createIsolatedSecurityService: () => new SecurityService(targetStore),
             onRestoreCommitted: vi.fn(),
-            quiesceLiveWrites: async () => {
-                releaseWrite();
-                await overlapping;
-            },
             onStep: step => {
+                if (step === 'restore-after-stage-validation') {
+                    queueMicrotask(() => {
+                        expect(() => current.database.beginWork()).toThrow('RESTORE_IN_PROGRESS');
+                        current.security.getDb().prepare('INSERT INTO clinical_backup_test (value) VALUES (?)').run('api-write');
+                        current.database.endWork();
+                    });
+                }
                 if (step === 'restore-before-live-close') {
                     expect(current.security.getDb().prepare('SELECT value FROM clinical_backup_test ORDER BY rowid').all())
                         .toEqual([{ value: 'base-row' }, { value: 'api-write' }]);
@@ -264,6 +262,7 @@ describe.skipIf(!process.versions.electron)('BackupService SQLCipher integration
             .rejects.toThrow('forced api-overlap interruption');
         expect(current.security.getDb().prepare('SELECT value FROM clinical_backup_test ORDER BY rowid').all())
             .toEqual([{ value: 'base-row' }, { value: 'api-write' }]);
+        expect(() => { current.database.beginWork(); current.database.endWork(); }).not.toThrow();
         const snapshots = fs.readdirSync(path.join(current.directory, 'backups'))
             .filter(name => name.includes('pre-restore'));
         expect(snapshots).toHaveLength(1);

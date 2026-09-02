@@ -4,9 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { BackupService, type BackupStep } from './BackupService';
 import { CronJob } from 'cron';
-import type { DatabaseService } from './DatabaseService';
 import type { GoogleDriveService } from './GoogleDriveService';
 import type { SecurityService, SecurityConfigV3 } from './SecurityService';
+import { DatabaseService } from './DatabaseService';
 import { MIGRATIONS } from '../schema/migrations';
 
 const cron = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn() }));
@@ -86,7 +86,9 @@ describe('BackupService recoverable bundles', () => {
     function database(snapshotSource: string): DatabaseService {
         return {
             backupDatabase: vi.fn(async (destination: string) => fs.copyFileSync(snapshotSource, destination)),
-            logAudit: vi.fn(), getSettings: vi.fn(() => null), setDb: vi.fn()
+            logAudit: vi.fn(), getSettings: vi.fn(() => null), setDb: vi.fn(),
+            fence: vi.fn(async () => undefined), unfence: vi.fn(),
+            beginWork: vi.fn(), endWork: vi.fn()
         } as unknown as DatabaseService;
     }
     function sourceSecurity(): SecurityService {
@@ -285,56 +287,115 @@ describe('BackupService recoverable bundles', () => {
         expect(fs.readFileSync(recoveredPath).toString()).toBe('encrypted-old-live-data');
     });
 
-    it('drains an overlapping live write before closeDb and resumes the gate only after failure', async () => {
+    it('rejects overlapping API/IPC DB work with RESTORE_IN_PROGRESS and closes only after drain', async () => {
         await createBundle();
-        const userData = path.join(root, 'write-quiesce');
+        const db = new DatabaseService();
+        db.beginWork();
+        const userData = path.join(root, 'write-fence');
         const dbPath = path.join(userData, 'nalamdesk-test.db');
         fs.mkdirSync(userData, { recursive: true });
         fs.writeFileSync(dbPath, 'encrypted-old-live-data');
         fs.writeFileSync(path.join(userData, 'security.json'), JSON.stringify(liveConfig()));
-        const order: string[] = [];
-        let enteredQuiesce!: () => void;
-        const atQuiesce = new Promise<void>(resolve => { enteredQuiesce = resolve; });
-        let releaseWrite!: () => void;
-        const inFlightWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
         const live = {
             getDbPath: vi.fn(() => dbPath),
             getPortableVaultMetadata: vi.fn(() => portable),
             getDb: vi.fn(() => ({ pragma: vi.fn(() => 6) })),
-            closeDb: vi.fn(() => { order.push('close'); }),
+            closeDb: vi.fn(),
             initializeDevice: vi.fn(async () => ({}))
         } as unknown as SecurityService;
-        const resumeLiveWrites = vi.fn(() => { order.push('resume'); });
-        const interrupted = new BackupService(database(dbPath), drive(), live, userData, {
+        const overlapping: Error[] = [];
+        const interrupted = new BackupService(db, drive(), live, userData, {
             createIsolatedSecurityService: () => validator(),
-            quiesceLiveWrites: async () => {
-                order.push('quiesce-start');
-                enteredQuiesce();
-                await inFlightWrite;
-                order.push('quiesce-done');
+            onStep: step => {
+                if (step === 'restore-after-stage-validation') {
+                    queueMicrotask(() => {
+                        try { db.beginWork(); }
+                        catch (error: any) { overlapping.push(error); }
+                        db.endWork();
+                    });
+                }
+                if (step === 'restore-after-snapshot') throw new Error('INTERRUPTED_restore-after-snapshot');
             },
-            resumeLiveWrites,
-            onStep: step => { if (step === 'restore-after-snapshot') throw new Error('INTERRUPTED_restore-after-snapshot'); },
             onRestoreCommitted: vi.fn()
         });
-        const restore = interrupted.restoreLocalBackup(bundle, 'correct-code');
-        await atQuiesce;
-        expect(live.closeDb).not.toHaveBeenCalled();
-        releaseWrite();
-        await expect(restore).rejects.toThrow('INTERRUPTED');
-        expect(order).toEqual(['quiesce-start', 'quiesce-done', 'close', 'resume']);
-        expect(resumeLiveWrites).toHaveBeenCalledOnce();
+        await expect(interrupted.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('INTERRUPTED');
+        expect(overlapping).toHaveLength(1);
+        expect(overlapping[0].message).toBe('RESTORE_IN_PROGRESS');
+        expect(live.closeDb).toHaveBeenCalled();
+        expect(() => { db.beginWork(); db.endWork(); }).not.toThrow();
     });
 
-    it('keeps the live write gate closed after a successful restore', async () => {
+    it('aborts restore on drain timeout without closing the vault', async () => {
         await createBundle();
-        const resumeLiveWrites = vi.fn();
-        const { service, committed } = targetService({ existing: true });
-        (service as any).options.quiesceLiveWrites = async () => undefined;
-        (service as any).options.resumeLiveWrites = resumeLiveWrites;
+        const db = new DatabaseService();
+        db.beginWork();
+        const userData = path.join(root, 'drain-timeout');
+        const dbPath = path.join(userData, 'nalamdesk-test.db');
+        fs.mkdirSync(userData, { recursive: true });
+        fs.writeFileSync(dbPath, 'encrypted-old-live-data');
+        fs.writeFileSync(path.join(userData, 'security.json'), JSON.stringify(liveConfig()));
+        const live = {
+            getDbPath: vi.fn(() => dbPath),
+            getPortableVaultMetadata: vi.fn(() => portable),
+            getDb: vi.fn(() => ({ pragma: vi.fn(() => 6) })),
+            closeDb: vi.fn(),
+            initializeDevice: vi.fn(async () => ({}))
+        } as unknown as SecurityService;
+        const service = new BackupService(db, drive(), live, userData, {
+            createIsolatedSecurityService: () => validator(),
+            drainTimeoutMs: 20,
+            onRestoreCommitted: vi.fn()
+        });
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('RESTORE_DRAIN_TIMEOUT');
+        expect(live.closeDb).not.toHaveBeenCalled();
+        expect(live.getDb().pragma()).toBe(6);
+        db.endWork();
+        expect(() => { db.beginWork(); db.endWork(); }).not.toThrow();
+    });
+
+    it('unfences immediately when restore throws before closeDb', async () => {
+        await createBundle();
+        const db = new DatabaseService();
+        const userData = path.join(root, 'throw-before-close');
+        const dbPath = path.join(userData, 'nalamdesk-test.db');
+        fs.mkdirSync(userData, { recursive: true });
+        fs.writeFileSync(dbPath, 'encrypted-old-live-data');
+        fs.writeFileSync(path.join(userData, 'security.json'), JSON.stringify(liveConfig()));
+        const live = {
+            getDbPath: vi.fn(() => dbPath),
+            getPortableVaultMetadata: vi.fn(() => portable),
+            getDb: vi.fn(() => ({ pragma: vi.fn(() => 6) })),
+            closeDb: vi.fn(),
+            initializeDevice: vi.fn(async () => ({}))
+        } as unknown as SecurityService;
+        const service = new BackupService(db, drive(), live, userData, {
+            createIsolatedSecurityService: () => validator(),
+            onStep: step => { if (step === 'restore-before-live-close') throw new Error('INTERRUPTED_restore-before-live-close'); },
+            onRestoreCommitted: vi.fn()
+        });
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('INTERRUPTED_restore-before-live-close');
+        expect(live.closeDb).not.toHaveBeenCalled();
+        expect(() => { db.beginWork(); db.endWork(); }).not.toThrow();
+        expect(live.getDb().pragma()).toBe(6);
+    });
+
+    it('keeps the DatabaseService fence closed after a successful restore', async () => {
+        await createBundle();
+        const db = new DatabaseService();
+        const { userData } = targetService({ existing: true });
+        const dbPath = path.join(userData, 'nalamdesk-test.db');
+        const live = {
+            getDbPath: vi.fn(() => dbPath), getDb: vi.fn(() => null), closeDb: vi.fn(),
+            initializeDevice: vi.fn(async () => ({}))
+        } as unknown as SecurityService;
+        const committed = vi.fn();
+        const service = new BackupService(db, drive(), live, userData, {
+            createIsolatedSecurityService: () => validator(),
+            onRestoreCommitted: committed
+        });
         await expect(service.restoreLocalBackup(bundle, 'correct-code')).resolves.toMatchObject({ success: true });
         expect(committed).toHaveBeenCalledOnce();
-        expect(resumeLiveWrites).not.toHaveBeenCalled();
+        expect(() => db.beginWork()).toThrow('RESTORE_IN_PROGRESS');
     });
 
     it.each(['restore-after-database-replace', 'restore-after-config-replace'] as BackupStep[])(

@@ -135,9 +135,7 @@ const backupService = new BackupService(databaseService, googleDriveService, sec
     appVersion: app.getVersion(),
     // Restore validation must not reconfigure or close the live vault.
     createIsolatedSecurityService: () => new SecurityService(new ElectronSafeStorageDeviceKeyStore()),
-    onRestoreCommitted: () => sessionService.clearSession(),
-    quiesceLiveWrites: () => apiServer.quiesceWrites(),
-    resumeLiveWrites: () => apiServer.resumeWrites()
+    onRestoreCommitted: () => sessionService.clearSession()
 });
 const authorizedRestorePaths = new Set<string>();
 const restoreOperationGate = new RestoreOperationGate();
@@ -540,32 +538,40 @@ ipcMain.handle('auth:login', async (event, credentials) => {
 
 // ... (Database IPC Handlers)
 
+function handleDb(channel: string, handler: (...args: any[]) => any) {
+    ipcMain.handle(channel, async (...args) => {
+        databaseService.beginWork();
+        try { return await handler(...args); }
+        finally { databaseService.endWork(); }
+    });
+}
+
 // Dashboard / Stats
-ipcMain.handle('db:getDashboardStats', () => {
+handleDb('db:getDashboardStats', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getDashboardStats();
 });
 
 // Patients
-ipcMain.handle('db:getPatients', (_, query) => {
+handleDb('db:getPatients', (_, query) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getPatients(query);
 });
-ipcMain.handle('db:getPatientById', (_, id) => {
+handleDb('db:getPatientById', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getPatientById(id);
 });
-ipcMain.handle('db:savePatient', (_, patient) => {
+handleDb('db:savePatient', (_, patient) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     // Basic RBAC check (doctors/receptionists) - simplified for now
     if (!['doctor', 'receptionist', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.savePatient(patient);
 });
-ipcMain.handle('db:deletePatient', (_, id) => {
+handleDb('db:deletePatient', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
@@ -573,123 +579,123 @@ ipcMain.handle('db:deletePatient', (_, id) => {
 });
 
 // Visits
-ipcMain.handle('db:getVisits', (_, patientId) => {
+handleDb('db:getVisits', (_, patientId) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getVisits(patientId);
 });
-ipcMain.handle('db:getAllVisits', (_, limit) => {
+handleDb('db:getAllVisits', (_, limit) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getAllVisits(limit);
 });
-ipcMain.handle('db:saveVisit', (_, visit) => {
+handleDb('db:saveVisit', (_, visit) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.saveVisit(visit);
 });
-ipcMain.handle('db:beginConsultation', (_, input) => {
+handleDb('db:beginConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.beginConsultation(input, user.id);
 });
-ipcMain.handle('db:getActiveConsultation', (_, patientId) => {
+handleDb('db:getActiveConsultation', (_, patientId) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.getActiveConsultation(patientId, user.id);
 });
-ipcMain.handle('db:saveConsultationProgress', (_, input) => {
+handleDb('db:saveConsultationProgress', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.saveConsultationProgress(input, user.id);
 });
-ipcMain.handle('db:completeConsultation', (_, input) => {
+handleDb('db:completeConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.completeConsultation(input, user.id);
 });
-ipcMain.handle('db:postponeConsultation', (_, input) => {
+handleDb('db:postponeConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.postponeConsultation(input, user.id);
 });
-ipcMain.handle('db:resumeConsultation', (_, input) => {
+handleDb('db:resumeConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.resumeConsultation(input, user.id);
 });
-ipcMain.handle('db:beginNextConsultation', (_, input) => {
+handleDb('db:beginNextConsultation', (_, input) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.beginNextConsultation(input, user.id);
 });
-ipcMain.handle('db:deleteVisit', (_, id) => {
+handleDb('db:deleteVisit', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
     return databaseService.deleteVisit(id);
 });
-ipcMain.handle('db:getVitals', (_, patientId) => {
+handleDb('db:getVitals', (_, patientId) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getVitals(patientId);
 });
-ipcMain.handle('db:saveVitals', (_, vitals) => {
+handleDb('db:saveVitals', (_, vitals) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.saveVitals(vitals);
 });
 
 // Users
-ipcMain.handle('db:getUsers', () => {
+handleDb('db:getUsers', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
     return databaseService.getUsers();
 });
-ipcMain.handle('db:saveUser', (_, userData) => {
+handleDb('db:saveUser', (_, userData) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
     return databaseService.saveUser(userData, user.id);
 });
-ipcMain.handle('db:deleteUser', (_, id) => {
+handleDb('db:deleteUser', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
     return databaseService.deleteUser(id);
 });
-ipcMain.handle('db:getDoctors', () => {
+handleDb('db:getDoctors', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getDoctors();
 });
-ipcMain.handle('db:getAllRoles', () => {
+handleDb('db:getAllRoles', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getAllRoles();
 })
 
 // Settings
-ipcMain.handle('db:getSettings', () => {
+handleDb('db:getSettings', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     // if (user.role !== 'admin') throw new Error('Forbidden'); // Allow reading settings?
     return databaseService.getSettings();
 });
-ipcMain.handle('db:getPublicSettings', () => {
+handleDb('db:getPublicSettings', () => {
     // Public endpoint - no auth required (used for Login screen)
     return databaseService.getPublicSettings();
 });
-ipcMain.handle('db:saveSettings', async (_, settings) => {
+handleDb('db:saveSettings', async (_, settings) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
@@ -713,34 +719,34 @@ ipcMain.handle('db:saveSettings', async (_, settings) => {
 });
 
 // Queue IPC Handlers
-ipcMain.handle('db:getQueue', () => {
+handleDb('db:getQueue', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getQueue();
 });
-ipcMain.handle('db:addToQueue', (_, { patientId, priority }) => {
+handleDb('db:addToQueue', (_, { patientId, priority }) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.addToQueue(patientId, priority, user.id);
 });
-ipcMain.handle('db:updateQueueStatus', (_, { id, status }) => {
+handleDb('db:updateQueueStatus', (_, { id, status }) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.updateQueueStatus(id, status, user.id);
 });
-ipcMain.handle('db:updateQueueStatusByPatientId', (_, { patientId, status }) => {
+handleDb('db:updateQueueStatusByPatientId', (_, { patientId, status }) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.updateQueueStatusByPatientId(patientId, status, user.id);
 });
-ipcMain.handle('db:removeFromQueue', (_, id) => {
+handleDb('db:removeFromQueue', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.removeFromQueue(id, user.id);
 });
 
 // Audit IPC Handlers
-ipcMain.handle('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));
+handleDb('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));
 
 // Cloud IPC Handlers
 // Cloud IPC Handlers
@@ -781,12 +787,12 @@ ipcMain.handle('cloud:getPublishedSlots', (_, date) => {
 
 // Appointment Request IPC
 // Appointment Request IPC
-ipcMain.handle('db:getAppointmentRequests', () => {
+handleDb('db:getAppointmentRequests', () => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getAppointmentRequests();
 });
-ipcMain.handle('db:updateAppointmentRequestStatus', (_, { id, status }) => {
+handleDb('db:updateAppointmentRequestStatus', (_, { id, status }) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.updateAppointmentRequestStatus(id, status);
@@ -794,12 +800,12 @@ ipcMain.handle('db:updateAppointmentRequestStatus', (_, { id, status }) => {
 
 // Appointments (Bookings) IPC
 // Appointments (Bookings) IPC
-ipcMain.handle('db:getAppointments', (_, date) => {
+handleDb('db:getAppointments', (_, date) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.getAppointments(date);
 });
-ipcMain.handle('db:saveAppointment', (_, appt) => {
+handleDb('db:saveAppointment', (_, appt) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.saveAppointment(appt);

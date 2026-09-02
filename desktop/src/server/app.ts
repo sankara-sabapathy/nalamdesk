@@ -3,7 +3,6 @@ import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
 import * as jwt from 'jsonwebtoken';
 import { DatabaseService } from '../main/services/DatabaseService';
-import { LiveWriteQuiesceGate } from '../main/services/LiveWriteQuiesceGate';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
@@ -41,7 +40,6 @@ export class ApiServer {
     private dbService: DatabaseService;
     private staticPath: string;
     private _started = false;
-    private readonly writeGate = new LiveWriteQuiesceGate();
     private oauthResolver: ((code: string) => void) | null = null;
     private oauthRejecter: ((err: Error) => void) | null = null;
     private oauthTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -213,11 +211,6 @@ export class ApiServer {
         });
     }
 
-    /** Stop accepting API writes and wait for in-flight ones before the vault closes. */
-    quiesceWrites(): Promise<void> { return this.writeGate.quiesce(); }
-    /** Re-open the API write gate after a failed restore reinstalls the live vault. */
-    resumeWrites(): void { this.writeGate.resume(); }
-
     async start(port: number = 3000, host: string = '0.0.0.0') {
         if (this._started) {
             console.warn('[API Server] Already started');
@@ -288,8 +281,13 @@ export class ApiServer {
             return reply.code(400).send({ error: 'Invalid input' });
         }
         const { username, password } = body;
-        if (!this.writeGate.tryEnter()) {
-            return reply.code(503).send({ error: 'RESTORE_IN_PROGRESS' });
+        try {
+            this.dbService.beginWork();
+        } catch (error: any) {
+            if (error?.message === 'RESTORE_IN_PROGRESS') {
+                return reply.code(503).send({ error: 'RESTORE_IN_PROGRESS' });
+            }
+            throw error;
         }
         try {
             let user;
@@ -323,7 +321,7 @@ export class ApiServer {
                 return reply.code(500).send({ error: 'Auth error' });
             }
         } finally {
-            this.writeGate.leave();
+            this.dbService.endWork();
         }
     }
 
@@ -343,8 +341,13 @@ export class ApiServer {
             return reply.code(404).send({ error: 'Method not found or not allowed' });
         }
 
-        if (!this.writeGate.tryEnter()) {
-            return reply.code(503).send({ error: 'RESTORE_IN_PROGRESS' });
+        try {
+            this.dbService.beginWork();
+        } catch (error: any) {
+            if (error?.message === 'RESTORE_IN_PROGRESS') {
+                return reply.code(503).send({ error: 'RESTORE_IN_PROGRESS' });
+            }
+            throw error;
         }
         try {
             // 2. RBAC Enforcement
@@ -373,7 +376,7 @@ export class ApiServer {
                 return reply.code(404).send({ error: 'Method not implemented' });
             }
         } finally {
-            this.writeGate.leave();
+            this.dbService.endWork();
         }
     }
 

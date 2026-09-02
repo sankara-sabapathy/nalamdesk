@@ -230,4 +230,26 @@ describe('DatabaseService', () => {
             expect(mockStatement.run).toHaveBeenCalledWith('nurse', JSON.stringify(['perm1']));
         });
     });
+
+    describe('restore fence', () => {
+        it('rejects new work with RESTORE_IN_PROGRESS and drains in-flight work', async () => {
+            service.beginWork();
+            const fenced = service.fence(1000);
+            expect(() => service.beginWork()).toThrow('RESTORE_IN_PROGRESS');
+            service.endWork();
+            await fenced;
+            expect(() => service.beginWork()).toThrow('RESTORE_IN_PROGRESS');
+            service.unfence();
+            expect(() => { service.beginWork(); service.endWork(); }).not.toThrow();
+        });
+
+        it('times out a stuck drain without unfencing', async () => {
+            service.beginWork();
+            await expect(service.fence(20)).rejects.toThrow('RESTORE_DRAIN_TIMEOUT');
+            expect(() => service.beginWork()).toThrow('RESTORE_IN_PROGRESS');
+            service.unfence();
+            service.endWork();
+            expect(() => { service.beginWork(); service.endWork(); }).not.toThrow();
+        });
+    });
 });
