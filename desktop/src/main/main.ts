@@ -7,6 +7,7 @@ import { SessionService } from './services/SessionService';
 import { BackupService } from './services/BackupService';
 import { selectRestoreBundle } from './services/BackupFileSelection';
 import { RestoreOperationGate } from './services/RestoreOperationGate';
+import { runDriveRestore } from './services/DriveRestore';
 import { requireExistingRestoreAuthorization } from './services/RestoreAuthorization';
 import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
@@ -863,21 +864,18 @@ ipcMain.handle('drive:backup', async () => {
 
 ipcMain.handle('drive:restore', async (_, fileId) => {
     try {
-        const dbPath = securityService.getDbPath();
-        if (!dbPath) throw new Error('DB not open');
-        securityService.closeDb();
-        await googleDriveService.downloadFile(fileId, dbPath);
-
-        // Restart app to reload DB (delay to allow IPC response)
-        setTimeout(() => {
-            app.relaunch();
-            app.exit(0);
-        }, 1500);
-
-        return { success: true, restartRequired: true };
+        return await runDriveRestore({
+            gate: restoreOperationGate,
+            dbService: databaseService,
+            getDbPath: () => securityService.getDbPath(),
+            closeDb: () => securityService.closeDb(),
+            downloadFile: (id, destination) => googleDriveService.downloadFile(id, destination),
+            fileId,
+            onCommitted: () => { setTimeout(() => { app.relaunch(); app.exit(0); }, 1500); }
+        });
     } catch (e: any) {
+        if (e?.message === 'RESTORE_IN_PROGRESS') throw e;
         console.error('Restore failed', e.message); // e might be object
-
         return { success: false, error: String(e) };
     }
 });
