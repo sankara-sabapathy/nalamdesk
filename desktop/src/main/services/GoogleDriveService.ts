@@ -143,7 +143,7 @@ export class GoogleDriveService {
         }
     }
 
-    async downloadFile(fileId: string, destPath: string) {
+    async downloadFile(fileId: string, destPath: string): Promise<void> {
         if (!this.tokens) throw new Error('Not authenticated');
 
         const dest = fs.createWriteStream(destPath);
@@ -155,7 +155,7 @@ export class GoogleDriveService {
         return new Promise((resolve, reject) => {
             res.data
                 .on('end', () => {
-                    resolve(true);
+                    resolve();
                 })
                 .on('error', (err: unknown) => {
                     reject(err);

@@ -1,8 +1,13 @@
 name: Feature Branch CI
 
-# Only run on pull requests to avoid duplicate runs
-# When a PR is open, both push and pull_request would trigger otherwise
+# PRs targeting master still run Feature CI. Also run on push to master so
+# squash-merges produce Electron artifacts. Restricting push to master avoids
+# duplicate runs on feature-branch commits (those already fire via pull_request).
+# Automated Release stays workflow_dispatch-only and is not used here.
 on:
+  push:
+    branches:
+      - master
   pull_request:
     branches:
       - master
