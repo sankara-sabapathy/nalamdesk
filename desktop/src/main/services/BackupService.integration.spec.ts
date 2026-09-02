@@ -234,6 +234,52 @@ describe.skipIf(!process.versions.electron)('BackupService SQLCipher integration
         recoverySecurity.closeDb();
     });
 
+    it('drains an overlapping API write before close so the pre-restore bundle includes it', async () => {
+        const incoming = await vault(path.join(root, 'incoming-api'), new BackupIntegrationStore(0x77), 'incoming');
+        await makeBundle(incoming); incoming.security.closeDb();
+        const targetStore = new BackupIntegrationStore(0x78);
+        const current = await vault(path.join(root, 'target-api'), targetStore, 'base-row');
+        let releaseWrite!: () => void;
+        const inFlightWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
+        const overlapping = (async () => {
+            await inFlightWrite;
+            current.security.getDb().prepare('INSERT INTO clinical_backup_test (value) VALUES (?)').run('api-write');
+        })();
+        const service = new BackupService(current.database, drive, current.security, current.directory, {
+            createIsolatedSecurityService: () => new SecurityService(targetStore),
+            onRestoreCommitted: vi.fn(),
+            quiesceLiveWrites: async () => {
+                releaseWrite();
+                await overlapping;
+            },
+            onStep: step => {
+                if (step === 'restore-before-live-close') {
+                    expect(current.security.getDb().prepare('SELECT value FROM clinical_backup_test ORDER BY rowid').all())
+                        .toEqual([{ value: 'base-row' }, { value: 'api-write' }]);
+                }
+                if (step === 'restore-after-config-replace') throw new Error('forced api-overlap interruption');
+            }
+        });
+        await expect(service.restoreLocalBackup(bundle, incoming.recoveryCode))
+            .rejects.toThrow('forced api-overlap interruption');
+        expect(current.security.getDb().prepare('SELECT value FROM clinical_backup_test ORDER BY rowid').all())
+            .toEqual([{ value: 'base-row' }, { value: 'api-write' }]);
+        const snapshots = fs.readdirSync(path.join(current.directory, 'backups'))
+            .filter(name => name.includes('pre-restore'));
+        expect(snapshots).toHaveLength(1);
+        current.security.closeDb();
+
+        const recoveryDirectory = path.join(root, 'api-overlap-recovery'); fs.mkdirSync(recoveryDirectory);
+        const recoveryStore = new BackupIntegrationStore(0x79);
+        const recoverySecurity = new SecurityService(recoveryStore);
+        await new BackupService(new DatabaseService(), drive, recoverySecurity, recoveryDirectory, {
+            createIsolatedSecurityService: () => new SecurityService(recoveryStore), onRestoreCommitted: vi.fn()
+        }).restoreLocalBackup(path.join(current.directory, 'backups', snapshots[0]), current.recoveryCode);
+        expect(recoverySecurity.getDb().prepare('SELECT value FROM clinical_backup_test ORDER BY rowid').all())
+            .toEqual([{ value: 'base-row' }, { value: 'api-write' }]);
+        recoverySecurity.closeDb();
+    });
+
     it('includes a final write committed immediately before the live vault closes', async () => {
         const incoming = await vault(path.join(root, 'incoming-close'), new BackupIntegrationStore(0x66), 'incoming');
         await makeBundle(incoming); incoming.security.closeDb();

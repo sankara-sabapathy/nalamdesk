@@ -135,7 +135,9 @@ const backupService = new BackupService(databaseService, googleDriveService, sec
     appVersion: app.getVersion(),
     // Restore validation must not reconfigure or close the live vault.
     createIsolatedSecurityService: () => new SecurityService(new ElectronSafeStorageDeviceKeyStore()),
-    onRestoreCommitted: () => sessionService.clearSession()
+    onRestoreCommitted: () => sessionService.clearSession(),
+    quiesceLiveWrites: () => apiServer.quiesceWrites(),
+    resumeLiveWrites: () => apiServer.resumeWrites()
 });
 const authorizedRestorePaths = new Set<string>();
 const restoreOperationGate = new RestoreOperationGate();

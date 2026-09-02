@@ -49,6 +49,10 @@ export interface BackupServiceOptions {
     platform?: NodeJS.Platform;
     /** Required restore commit boundary: invalidate every pre-restore session. */
     onRestoreCommitted?: () => void;
+    /** Stop accepting live API writes and drain in-flight ones before closeDb(). */
+    quiesceLiveWrites?: () => Promise<void>;
+    /** Re-open the live write gate after a failed restore reinstalls the vault. */
+    resumeLiveWrites?: () => void;
 }
 
 /** Offline bundle checksums detect corruption. Authenticity/recoverability is
@@ -247,6 +251,7 @@ export class BackupService {
             this.step('restore-after-stage-validation');
             this.saveJournal(journal);
 
+            await this.options.quiesceLiveWrites?.();
             // From this point until activation, no live write may commit outside
             // the rollback snapshot. Closing checkpoints WAL data into the base
             // file and makes the following durable copy transactionally final.
@@ -295,14 +300,18 @@ export class BackupService {
             catch (error) { console.error('[Backup] Restore committed; cleanup deferred to restart reconciliation.', error); }
             return { success: true, restartRequired: true, preRestoreSnapshot: journal.preRestoreSnapshot };
         } catch (error) {
-            validator?.closeDb();
-            const persisted = this.loadJournal();
-            if (persisted && ['live-files-replacing', 'live-files-replaced'].includes(persisted.phase)) await this.rollback(persisted);
-            else if (persisted) this.cleanup(persisted);
-            else this.cleanupStage(stageDirectory);
-            if (liveDatabaseClosed && !this.securityService.getDb() && journal.hadDatabase && journal.hadConfig) {
-                await this.securityService.initializeDevice(targetDatabase, this.userDataPath);
-                this.dbService.setDb(this.securityService.getDb());
+            try {
+                validator?.closeDb();
+                const persisted = this.loadJournal();
+                if (persisted && ['live-files-replacing', 'live-files-replaced'].includes(persisted.phase)) await this.rollback(persisted);
+                else if (persisted) this.cleanup(persisted);
+                else this.cleanupStage(stageDirectory);
+                if (liveDatabaseClosed && !this.securityService.getDb() && journal.hadDatabase && journal.hadConfig) {
+                    await this.securityService.initializeDevice(targetDatabase, this.userDataPath);
+                    this.dbService.setDb(this.securityService.getDb());
+                }
+            } finally {
+                this.options.resumeLiveWrites?.();
             }
             throw error;
         }

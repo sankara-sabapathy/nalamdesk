@@ -285,6 +285,58 @@ describe('BackupService recoverable bundles', () => {
         expect(fs.readFileSync(recoveredPath).toString()).toBe('encrypted-old-live-data');
     });
 
+    it('drains an overlapping live write before closeDb and resumes the gate only after failure', async () => {
+        await createBundle();
+        const userData = path.join(root, 'write-quiesce');
+        const dbPath = path.join(userData, 'nalamdesk-test.db');
+        fs.mkdirSync(userData, { recursive: true });
+        fs.writeFileSync(dbPath, 'encrypted-old-live-data');
+        fs.writeFileSync(path.join(userData, 'security.json'), JSON.stringify(liveConfig()));
+        const order: string[] = [];
+        let enteredQuiesce!: () => void;
+        const atQuiesce = new Promise<void>(resolve => { enteredQuiesce = resolve; });
+        let releaseWrite!: () => void;
+        const inFlightWrite = new Promise<void>(resolve => { releaseWrite = resolve; });
+        const live = {
+            getDbPath: vi.fn(() => dbPath),
+            getPortableVaultMetadata: vi.fn(() => portable),
+            getDb: vi.fn(() => ({ pragma: vi.fn(() => 6) })),
+            closeDb: vi.fn(() => { order.push('close'); }),
+            initializeDevice: vi.fn(async () => ({}))
+        } as unknown as SecurityService;
+        const resumeLiveWrites = vi.fn(() => { order.push('resume'); });
+        const interrupted = new BackupService(database(dbPath), drive(), live, userData, {
+            createIsolatedSecurityService: () => validator(),
+            quiesceLiveWrites: async () => {
+                order.push('quiesce-start');
+                enteredQuiesce();
+                await inFlightWrite;
+                order.push('quiesce-done');
+            },
+            resumeLiveWrites,
+            onStep: step => { if (step === 'restore-after-snapshot') throw new Error('INTERRUPTED_restore-after-snapshot'); },
+            onRestoreCommitted: vi.fn()
+        });
+        const restore = interrupted.restoreLocalBackup(bundle, 'correct-code');
+        await atQuiesce;
+        expect(live.closeDb).not.toHaveBeenCalled();
+        releaseWrite();
+        await expect(restore).rejects.toThrow('INTERRUPTED');
+        expect(order).toEqual(['quiesce-start', 'quiesce-done', 'close', 'resume']);
+        expect(resumeLiveWrites).toHaveBeenCalledOnce();
+    });
+
+    it('keeps the live write gate closed after a successful restore', async () => {
+        await createBundle();
+        const resumeLiveWrites = vi.fn();
+        const { service, committed } = targetService({ existing: true });
+        (service as any).options.quiesceLiveWrites = async () => undefined;
+        (service as any).options.resumeLiveWrites = resumeLiveWrites;
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).resolves.toMatchObject({ success: true });
+        expect(committed).toHaveBeenCalledOnce();
+        expect(resumeLiveWrites).not.toHaveBeenCalled();
+    });
+
     it.each(['restore-after-database-replace', 'restore-after-config-replace'] as BackupStep[])(
         'rolls back the exact DB/config pair after interruption at %s', async failAt => {
             await createBundle();

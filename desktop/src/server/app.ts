@@ -3,6 +3,7 @@ import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
 import * as jwt from 'jsonwebtoken';
 import { DatabaseService } from '../main/services/DatabaseService';
+import { LiveWriteQuiesceGate } from '../main/services/LiveWriteQuiesceGate';
 import * as argon2 from 'argon2';
 import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
@@ -40,6 +41,7 @@ export class ApiServer {
     private dbService: DatabaseService;
     private staticPath: string;
     private _started = false;
+    private readonly writeGate = new LiveWriteQuiesceGate();
     private oauthResolver: ((code: string) => void) | null = null;
     private oauthRejecter: ((err: Error) => void) | null = null;
     private oauthTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -211,6 +213,11 @@ export class ApiServer {
         });
     }
 
+    /** Stop accepting API writes and wait for in-flight ones before the vault closes. */
+    quiesceWrites(): Promise<void> { return this.writeGate.quiesce(); }
+    /** Re-open the API write gate after a failed restore reinstalls the live vault. */
+    resumeWrites(): void { this.writeGate.resume(); }
+
     async start(port: number = 3000, host: string = '0.0.0.0') {
         if (this._started) {
             console.warn('[API Server] Already started');
@@ -281,35 +288,42 @@ export class ApiServer {
             return reply.code(400).send({ error: 'Invalid input' });
         }
         const { username, password } = body;
-        let user;
+        if (!this.writeGate.tryEnter()) {
+            return reply.code(503).send({ error: 'RESTORE_IN_PROGRESS' });
+        }
         try {
-            user = this.dbService.getUserByUsername(username);
-        } catch (e) {
-            return reply.code(503).send({ error: 'System initialization in progress. Please try again.' });
-        }
-
-        if (!user || user.active === 0) {
-            return reply.code(401).send({ error: 'Invalid credentials' });
-        }
-
-        // Admin IP Restriction
-        if (user.role === 'admin') {
-            const ip = request.ip;
-            if (process.env['STRICT_ADMIN_IP'] === 'true' && ip !== '127.0.0.1' && ip !== '::1') {
-                return reply.code(403).send({ error: 'Admin login restricted to Master System' });
+            let user;
+            try {
+                user = this.dbService.getUserByUsername(username);
+            } catch (e) {
+                return reply.code(503).send({ error: 'System initialization in progress. Please try again.' });
             }
-        }
 
-        // Verify Password
-        try {
-            if (await argon2.verify(user.password, password)) {
-                const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, JWT_SECRET, { expiresIn: '12h' });
-                return { token, user: { id: user.id, username: user.username, role: user.role, name: user.name } };
-            } else {
+            if (!user || user.active === 0) {
                 return reply.code(401).send({ error: 'Invalid credentials' });
             }
-        } catch (e) {
-            return reply.code(500).send({ error: 'Auth error' });
+
+            // Admin IP Restriction
+            if (user.role === 'admin') {
+                const ip = request.ip;
+                if (process.env['STRICT_ADMIN_IP'] === 'true' && ip !== '127.0.0.1' && ip !== '::1') {
+                    return reply.code(403).send({ error: 'Admin login restricted to Master System' });
+                }
+            }
+
+            // Verify Password
+            try {
+                if (await argon2.verify(user.password, password)) {
+                    const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, JWT_SECRET, { expiresIn: '12h' });
+                    return { token, user: { id: user.id, username: user.username, role: user.role, name: user.name } };
+                } else {
+                    return reply.code(401).send({ error: 'Invalid credentials' });
+                }
+            } catch (e) {
+                return reply.code(500).send({ error: 'Auth error' });
+            }
+        } finally {
+            this.writeGate.leave();
         }
     }
 
@@ -329,30 +343,37 @@ export class ApiServer {
             return reply.code(404).send({ error: 'Method not found or not allowed' });
         }
 
-        // 2. RBAC Enforcement
-        if (!this.checkPermission(user.role, method)) {
-            return reply.code(403).send({ error: 'Forbidden' });
+        if (!this.writeGate.tryEnter()) {
+            return reply.code(503).send({ error: 'RESTORE_IN_PROGRESS' });
         }
-
-        const dbAny = this.dbService as any;
-
-        // 3. Execution using Allowlist
-        if (typeof dbAny[method] === 'function') {
-            try {
-                const encounterCommands = new Set([
-                    'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress', 'completeConsultation',
-                    'postponeConsultation', 'resumeConsultation', 'beginNextConsultation'
-                ]);
-                const result = encounterCommands.has(method)
-                    ? await dbAny[method](...args, user.id)
-                    : await dbAny[method](...args);
-                return result;
-            } catch (e: any) {
-                console.error(`[IPC Error] method: ${method}`, e);
-                return reply.code(500).send({ error: 'Internal server error' });
+        try {
+            // 2. RBAC Enforcement
+            if (!this.checkPermission(user.role, method)) {
+                return reply.code(403).send({ error: 'Forbidden' });
             }
-        } else {
-            return reply.code(404).send({ error: 'Method not implemented' });
+
+            const dbAny = this.dbService as any;
+
+            // 3. Execution using Allowlist
+            if (typeof dbAny[method] === 'function') {
+                try {
+                    const encounterCommands = new Set([
+                        'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress', 'completeConsultation',
+                        'postponeConsultation', 'resumeConsultation', 'beginNextConsultation'
+                    ]);
+                    const result = encounterCommands.has(method)
+                        ? await dbAny[method](...args, user.id)
+                        : await dbAny[method](...args);
+                    return result;
+                } catch (e: any) {
+                    console.error(`[IPC Error] method: ${method}`, e);
+                    return reply.code(500).send({ error: 'Internal server error' });
+                }
+            } else {
+                return reply.code(404).send({ error: 'Method not implemented' });
+            }
+        } finally {
+            this.writeGate.leave();
         }
     }
 
