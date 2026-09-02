@@ -379,6 +379,34 @@ describe('BackupService recoverable bundles', () => {
         expect(live.getDb().pragma()).toBe(6);
     });
 
+    it('stays fenced when initializeDevice throws after closeDb', async () => {
+        await createBundle();
+        const db = new DatabaseService();
+        const userData = path.join(root, 'reopen-fails');
+        const dbPath = path.join(userData, 'nalamdesk-test.db');
+        fs.mkdirSync(userData, { recursive: true });
+        fs.writeFileSync(dbPath, 'encrypted-old-live-data');
+        fs.writeFileSync(path.join(userData, 'security.json'), JSON.stringify(liveConfig()));
+        let open: { pragma: ReturnType<typeof vi.fn> } | null = { pragma: vi.fn(() => 6) };
+        const live = {
+            getDbPath: vi.fn(() => dbPath),
+            getPortableVaultMetadata: vi.fn(() => portable),
+            getDb: vi.fn(() => open),
+            closeDb: vi.fn(() => { open = null; }),
+            initializeDevice: vi.fn(async () => { throw new Error('REOPEN_FAILED'); })
+        } as unknown as SecurityService;
+        const service = new BackupService(db, drive(), live, userData, {
+            createIsolatedSecurityService: () => validator(),
+            onStep: step => { if (step === 'restore-after-snapshot') throw new Error('INTERRUPTED_restore-after-snapshot'); },
+            onRestoreCommitted: vi.fn()
+        });
+        await expect(service.restoreLocalBackup(bundle, 'correct-code')).rejects.toThrow('REOPEN_FAILED');
+        expect(live.closeDb).toHaveBeenCalled();
+        expect(live.initializeDevice).toHaveBeenCalled();
+        expect(live.getDb()).toBeNull();
+        expect(() => db.beginWork()).toThrow('RESTORE_IN_PROGRESS');
+    });
+
     it('keeps the DatabaseService fence closed after a successful restore', async () => {
         await createBundle();
         const db = new DatabaseService();

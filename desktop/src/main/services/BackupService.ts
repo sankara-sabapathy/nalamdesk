@@ -299,19 +299,18 @@ export class BackupService {
             return { success: true, restartRequired: true, preRestoreSnapshot: journal.preRestoreSnapshot };
         } catch (error) {
             if (!liveDatabaseClosed) this.dbService.unfence();
-            try {
-                validator?.closeDb();
-                const persisted = this.loadJournal();
-                if (persisted && ['live-files-replacing', 'live-files-replaced'].includes(persisted.phase)) {
-                    await this.rollback(persisted);
-                } else if (persisted) this.cleanup(persisted);
-                else this.cleanupStage(stageDirectory);
-                if (liveDatabaseClosed && !this.securityService.getDb() && journal.hadDatabase && journal.hadConfig) {
+            validator?.closeDb();
+            const persisted = this.loadJournal();
+            if (persisted && ['live-files-replacing', 'live-files-replaced'].includes(persisted.phase)) {
+                await this.rollback(persisted);
+            } else if (persisted) this.cleanup(persisted);
+            else this.cleanupStage(stageDirectory);
+            if (liveDatabaseClosed && journal.hadDatabase && journal.hadConfig) {
+                if (!this.securityService.getDb()) {
                     await this.securityService.initializeDevice(targetDatabase, this.userDataPath);
                     this.dbService.setDb(this.securityService.getDb());
                 }
-            } finally {
-                if (liveDatabaseClosed) this.dbService.unfence();
+                if (this.securityService.getDb()) this.dbService.unfence();
             }
             throw error;
         }
