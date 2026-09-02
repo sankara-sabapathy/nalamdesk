@@ -491,7 +491,11 @@ async function handleAdminLogin(password: string): Promise<{ success: boolean; u
     return buildAuthenticatedLoginResult(sessionService.getUser()!, securityService);
 }
 
-ipcMain.handle('auth:login', async (event, credentials) => {
+function handleDb(channel: string, handler: (...args: any[]) => any) {
+    ipcMain.handle(channel, async (...args) => databaseService.runWork(() => handler(...args)));
+}
+
+handleDb('auth:login', async (event, credentials) => {
     try {
         const { username, password } = credentials;
 
@@ -531,20 +535,11 @@ ipcMain.handle('auth:login', async (event, credentials) => {
         return { success: false, error: 'INVALID_CREDENTIALS' };
 
     } catch (error: any) {
+        if (error?.message === 'RESTORE_IN_PROGRESS') throw error;
         console.error('Login failed:', error);
         return { success: false, error: 'UNKNOWN_ERROR' };
     }
 });
-
-// ... (Database IPC Handlers)
-
-function handleDb(channel: string, handler: (...args: any[]) => any) {
-    ipcMain.handle(channel, async (...args) => {
-        databaseService.beginWork();
-        try { return await handler(...args); }
-        finally { databaseService.endWork(); }
-    });
-}
 
 // Dashboard / Stats
 handleDb('db:getDashboardStats', () => {
@@ -812,7 +807,7 @@ handleDb('db:saveAppointment', (_, appt) => {
 });
 
 // Drive IPC Handlers
-ipcMain.handle('drive:authenticate', async (_, { clientId, clientSecret }) => {
+handleDb('drive:authenticate', async (_, { clientId, clientSecret }) => {
     if (!mainWindow) return { success: false, error: 'Main window not found' };
     try {
         // Configure credentials first
@@ -830,17 +825,19 @@ ipcMain.handle('drive:authenticate', async (_, { clientId, clientSecret }) => {
 
         return { success: true };
     } catch (e: any) {
+        if (e?.message === 'RESTORE_IN_PROGRESS') throw e;
         console.error('Drive auth failed', e);
         return { success: false, error: e.message || 'Authentication failed' };
     }
 });
 
-ipcMain.handle('drive:disconnect', async () => {
+handleDb('drive:disconnect', async () => {
     try {
         googleDriveService.setCredentials(null);
         databaseService.saveSettings({ drive_tokens: '' });
         return { success: true };
     } catch (e: any) {
+        if (e?.message === 'RESTORE_IN_PROGRESS') throw e;
         console.error('Drive disconnect failed', e);
         return { success: false, error: e.message };
     }

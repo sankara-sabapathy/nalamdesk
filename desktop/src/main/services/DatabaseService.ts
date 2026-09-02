@@ -44,6 +44,12 @@ export class DatabaseService {
         this.fenced = false;
     }
 
+    async runWork<T>(work: () => T | Promise<T>): Promise<T> {
+        this.beginWork();
+        try { return await work(); }
+        finally { this.endWork(); }
+    }
+
     private async createBackup(dbName: string) {
         if (!dbName || dbName === ':memory:') return;
 

@@ -243,6 +243,22 @@ describe('DatabaseService', () => {
             expect(() => { service.beginWork(); service.endWork(); }).not.toThrow();
         });
 
+        it('rejects auth:login and Drive settings work with RESTORE_IN_PROGRESS while fenced', async () => {
+            await service.fence();
+            const validateUser = vi.spyOn(service, 'validateUser');
+            const getSettings = vi.spyOn(service, 'getSettings');
+            const saveSettings = vi.spyOn(service, 'saveSettings');
+            await expect(service.runWork(() => service.validateUser('admin', 'password')))
+                .rejects.toThrow('RESTORE_IN_PROGRESS');
+            await expect(service.runWork(() => service.getSettings()))
+                .rejects.toThrow('RESTORE_IN_PROGRESS');
+            await expect(service.runWork(() => service.saveSettings({ drive_tokens: '' })))
+                .rejects.toThrow('RESTORE_IN_PROGRESS');
+            expect(validateUser).not.toHaveBeenCalled();
+            expect(getSettings).not.toHaveBeenCalled();
+            expect(saveSettings).not.toHaveBeenCalled();
+        });
+
         it('times out a stuck drain without unfencing', async () => {
             service.beginWork();
             await expect(service.fence(20)).rejects.toThrow('RESTORE_DRAIN_TIMEOUT');
