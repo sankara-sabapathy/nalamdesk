@@ -126,4 +126,20 @@ describe('QueueComponent', () => {
         }));
         expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
+
+    it('surfaces remove-from-queue failures in the in-app dialog instead of alert', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        mockDataService.invoke.mockRejectedValue(new Error('Cannot remove a queue entry with an active encounter'));
+        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await component.remove(1);
+
+        expect(alertSpy).not.toHaveBeenCalled();
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'error',
+            title: 'Error',
+            message: expect.stringContaining('Failed to remove from queue')
+        }));
+    });
 });

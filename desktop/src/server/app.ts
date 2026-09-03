@@ -51,7 +51,7 @@ export class ApiServer {
         this.dbService = dbService;
         this.staticPath = staticPath;
         this.devUiProxyUrl = devUiProxyUrl;
-        this.fastify = Fastify({ logger: !process.env['VITEST'] });
+        this.fastify = Fastify({ logger: true });
     }
 
     private async setup() {

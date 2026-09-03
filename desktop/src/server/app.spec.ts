@@ -27,12 +27,13 @@ describe('HTTP /api/ipc queue wrapper', () => {
         db = {
             beginWork: vi.fn(),
             endWork: vi.fn(),
-            getPermissions: vi.fn().mockReturnValue(['addToQueue', 'updateQueueStatus', 'removeFromQueue']),
+            getPermissions: vi.fn().mockReturnValue(['addToQueue', 'updateQueueStatus', 'removeFromQueue', 'beginConsultation']),
             addToQueue: vi.fn().mockReturnValue({ lastInsertRowid: 11 }),
             updateQueueStatus: vi.fn().mockReturnValue({ changes: 1 }),
             updateQueueStatusByPatientId: vi.fn().mockReturnValue({ changes: 1 }),
             removeFromQueue: vi.fn().mockReturnValue({ changes: 1 }),
-            getQueue: vi.fn().mockReturnValue([])
+            getQueue: vi.fn().mockReturnValue([]),
+            beginConsultation: vi.fn().mockReturnValue({ id: 70 })
         };
         server = new ApiServer(db, os.tmpdir());
     });
@@ -91,5 +92,17 @@ describe('HTTP /api/ipc queue wrapper', () => {
 
         expect(response.statusCode).toBe(200);
         expect(db.addToQueue).toHaveBeenCalledWith(1, 1, 15);
+    });
+
+    it('reuses setup across HTTP IPC calls and unpacks beginConsultation like Electron', async () => {
+        const first = await postIpc('addToQueue', [{ patientId: 1, priority: 1 }]);
+        const second = await postIpc('beginConsultation', [{ patientId: 1, queueEntryId: 9, startRequestId: 'req-1' }]);
+
+        expect(first.statusCode).toBe(200);
+        expect(second.statusCode).toBe(200);
+        expect(db.beginConsultation).toHaveBeenCalledWith(
+            { patientId: 1, queueEntryId: 9, startRequestId: 'req-1' },
+            7
+        );
     });
 });

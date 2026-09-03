@@ -472,4 +472,28 @@ describe('VisitComponent', () => {
         expect(component.canEditChart).toBe(false);
         expect(component.visitForm.enable).not.toHaveBeenCalled();
     });
+
+    it('unlocks SOAP and Rx together when editing a past visit, then relocks on reset', () => {
+        component.editVisit({ id: 42, diagnosis: 'Prior', prescription: [{ medicine: 'Para' }] });
+        expect(component.editingVisitId).toBe(42);
+        expect(component.canEditChart).toBe(true);
+        expect(component.isLiveConsultation).toBe(false);
+
+        component.resetForm();
+        expect(component.editingVisitId).toBeNull();
+        expect(component.canEditChart).toBe(false);
+    });
+
+    it('ignores prescription edits and copy-last-visit while the chart is read-only', () => {
+        component.history = [{ diagnosis: 'Flu', diagnosis_type: 'Final', prescription: [] }] as any;
+        component.updatePrescription([{ medicine: 'x' }]);
+        component.copyLastVisit();
+        expect(component.visitForm.patchValue).not.toHaveBeenCalledWith({ prescription: [{ medicine: 'x' }] });
+
+        component.chartWritable = true;
+        component.isConsulting = true;
+        component.encounterId = 7;
+        component.copyLastVisit();
+        expect(component.visitForm.patchValue).toHaveBeenCalledWith(expect.objectContaining({ diagnosis: 'Flu' }));
+    });
 });

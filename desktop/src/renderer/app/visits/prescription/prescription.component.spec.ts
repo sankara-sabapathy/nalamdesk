@@ -65,7 +65,7 @@ describe('PrescriptionComponent', () => {
         component.add();
         component.remove(0);
         component.emitChange();
-        expect(component.items().length).toBe(1);
+        expect(component.items()).toHaveLength(1);
         expect(component.changed.emit).not.toHaveBeenCalled();
     });
 });

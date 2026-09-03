@@ -52,6 +52,16 @@ describe('IPC DatabaseService argument unpacking', () => {
         expect(resolveDbMethodArgs('getPatients', [''], 7)).toEqual(['']);
     });
 
+    it('does not bind a non-object payload as patient_id', () => {
+        expect(resolveDbMethodArgs('addToQueue', [null], 7)).toEqual([undefined, undefined, 7]);
+        expect(resolveDbMethodArgs('addToQueue', ['1'], 7)).toEqual([undefined, undefined, 7]);
+    });
+
+    it('throws when the database method is missing', () => {
+        expect(() => invokeDbMethod({}, 'addToQueue', [{ patientId: 1, priority: 1 }], 7))
+            .toThrow('Method not implemented: addToQueue');
+    });
+
     it('invokes DatabaseService with Electron/HTTP-identical unpacked args', () => {
         const db = {
             addToQueue: vi.fn(),
