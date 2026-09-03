@@ -10,7 +10,7 @@ import { ColDef } from 'ag-grid-community';
   standalone: true,
   imports: [CommonModule, RouterModule, SharedTableComponent],
   template: `
-    <div class="h-full bg-gray-100 p-4 md:p-6 flex flex-col overflow-hidden">
+    <div class="h-full bg-gray-100 p-4 md:p-6 flex flex-col overflow-x-auto overflow-y-hidden">
       <div class="w-full">
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-3xl font-bold text-gray-800">Recent Visits</h1>
@@ -51,7 +51,7 @@ export class VisitListComponent implements OnInit {
       field: 'date',
       headerName: 'Date',
       flex: 1,
-      minWidth: 160,
+      minWidth: 120,
       valueFormatter: (params) => {
         if (!params.value) return '';
         return new Date(params.value).toLocaleString();
@@ -61,16 +61,16 @@ export class VisitListComponent implements OnInit {
       field: 'patient_name',
       headerName: 'Patient',
       flex: 1.5,
-      minWidth: 180,
+      minWidth: 140,
       cellClass: 'font-medium text-blue-600'
     },
-    { field: 'diagnosis', headerName: 'Diagnosis', flex: 2, minWidth: 250, wrapText: true, autoHeight: true },
-    { field: 'doctor_name', headerName: 'Doctor', flex: 1, minWidth: 150 },
+    { field: 'diagnosis', headerName: 'Diagnosis', flex: 2, minWidth: 150, wrapText: true, autoHeight: true },
+    { field: 'doctor_name', headerName: 'Doctor', flex: 1, minWidth: 110 },
     {
       field: 'amount_paid',
       headerName: 'Amount',
       flex: 0.8,
-      minWidth: 120,
+      minWidth: 110,
       type: 'rightAligned',
       valueFormatter: (params) => params.value ? '₹' + params.value : '₹0'
     }

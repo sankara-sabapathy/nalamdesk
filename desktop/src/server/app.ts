@@ -9,6 +9,7 @@ import * as dotenv from 'dotenv';
 import * as http from 'node:http';
 import { loadDevelopmentEnv } from '../shared/load-env';
 import { invokeDbMethod } from '../shared/ipc-db-args';
+import { hashUrlForPathname } from '../shared/hash-app-path';
 
 loadDevelopmentEnv();
 dotenv.config();
@@ -134,6 +135,11 @@ export class ApiServer {
         // SPA Fallback (prod: index.html; dev: proxy to ng serve for LAN access)
         this.fastify.setNotFoundHandler(async (req, reply) => {
             if (req.method === 'GET' && !req.url.startsWith('/api') && !req.url.startsWith('/oauth2callback')) {
+                const pathOnly = (req.url || '/').split('?')[0];
+                const hashed = hashUrlForPathname(pathOnly);
+                if (hashed) {
+                    return reply.redirect(hashed);
+                }
                 if (this.devUiProxyUrl) {
                     return this.proxyToDevUi(req, reply);
                 }
