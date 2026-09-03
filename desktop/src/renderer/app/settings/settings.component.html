@@ -262,6 +262,44 @@
                 </div>
             </div>
 
+            <!-- Local restore: same Welcome picker → restoreSystemBackup IPC. Electron only (#40). -->
+            <div *ngIf="isElectron" class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
+                <h3 class="text-lg font-medium text-gray-800 mb-2">Restore from Backup File</h3>
+                <p class="text-sm text-gray-500 mb-4">
+                    After first run, restore a local <span class="font-mono">.ndbackup</span> through the same
+                    gated Welcome flow (picker, recovery code, and current administrator password).
+                </p>
+                <button (click)="selectRestoreBundle()" class="btn btn-outline btn-sm mb-4"
+                    [disabled]="isRestoring">
+                    Choose Backup File…
+                </button>
+                <div *ngIf="restoreBundle" class="space-y-3">
+                    <div class="text-sm font-mono bg-gray-50 border border-gray-200 rounded px-3 py-2 text-gray-800">
+                        {{ restoreBundle.name }}
+                    </div>
+                    <div>
+                        <label for="settings-restore-recovery-code" class="block text-xs font-bold text-gray-500 uppercase mb-1">Recovery Code</label>
+                        <input id="settings-restore-recovery-code" type="password"
+                            [(ngModel)]="restoreRecoveryCode" autocomplete="off"
+                            class="input input-bordered input-sm w-full font-mono"
+                            placeholder="Required to validate the encrypted vault">
+                    </div>
+                    <div>
+                        <label for="settings-restore-admin-password" class="block text-xs font-bold text-gray-500 uppercase mb-1">Current Administrator Password</label>
+                        <input id="settings-restore-admin-password" type="password"
+                            [(ngModel)]="restoreAdminPassword" autocomplete="off"
+                            class="input input-bordered input-sm w-full"
+                            placeholder="Required to authorize restore of a live vault">
+                    </div>
+                    <button (click)="restoreLocalBackup()"
+                        [disabled]="isRestoring || !restoreRecoveryCode || !restoreAdminPassword || !restoreBundle"
+                        class="btn btn-error btn-sm">
+                        {{ isRestoring ? 'Restoring…' : 'Restore Vault' }}
+                    </button>
+                </div>
+                <p *ngIf="restoreError" aria-live="polite" class="text-red-600 text-sm mt-3">{{ restoreError }}</p>
+            </div>
+
             <!-- Google Drive Backup Section -->
             <div class="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 overflow-hidden">
                 <!-- Header -->

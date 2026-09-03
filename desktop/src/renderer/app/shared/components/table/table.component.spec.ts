@@ -66,4 +66,9 @@ describe('SharedTableComponent', () => {
         component.multiSelect = true;
         expect(component.multiSelect).toBe(true);
     });
+
+    it('exposes a visible horizontal overflow cue so trailing columns are not clipped', () => {
+        const gridWrap = fixture.nativeElement.querySelector('.flex-1.w-full');
+        expect(gridWrap.className).toContain('overflow-x-auto');
+    });
 });

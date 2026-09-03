@@ -9,6 +9,7 @@
     "src/renderer/main.ts"
   ],
   "include": [
-    "src/renderer/**/*.d.ts"
+    "src/renderer/**/*.d.ts",
+    "src/shared/hash-app-path.ts"
   ]
 }

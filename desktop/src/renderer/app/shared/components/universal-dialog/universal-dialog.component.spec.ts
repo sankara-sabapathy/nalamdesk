@@ -143,14 +143,11 @@ describe('UniversalDialogComponent', () => {
             expect(component.animateIn).toBe(false);
         });
 
-        it('should emit isOpenChange and cancelDialog after animation delay', () => {
+        it('should emit isOpenChange and cancelDialog immediately so OK and ✕ dismiss', () => {
             const isOpenChangeSpy = vi.spyOn(component.isOpenChange, 'emit');
             const cancelDialogSpy = vi.spyOn(component.cancelDialog, 'emit');
 
             component.close();
-            expect(isOpenChangeSpy).not.toHaveBeenCalled();
-
-            vi.advanceTimersByTime(200);
             expect(isOpenChangeSpy).toHaveBeenCalledWith(false);
             expect(cancelDialogSpy).toHaveBeenCalled();
         });
@@ -178,3 +175,54 @@ describe('UniversalDialogComponent', () => {
         });
     });
 });
+
+import { Component } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+
+@Component({
+    standalone: true,
+    imports: [UniversalDialogComponent],
+    template: `
+        <app-universal-dialog [isOpen]="true" title="Error" message="Failed to add to queue: Internal server error">
+            <div actions #actions>
+                <button type="button" class="projected-ok">OK</button>
+            </div>
+        </app-universal-dialog>
+    `
+})
+class DialogWithProjectedOkComponent { }
+
+@Component({
+    standalone: true,
+    imports: [UniversalDialogComponent],
+    template: `<app-universal-dialog [isOpen]="true" title="Error" message="Broken"></app-universal-dialog>`
+})
+class DialogWithoutActionsComponent { }
+
+describe('UniversalDialog projected actions', () => {
+    it('does not duplicate OK when actions are projected via a real ContentChild query', async () => {
+        await TestBed.configureTestingModule({
+            imports: [DialogWithProjectedOkComponent]
+        }).compileComponents();
+        const fixture: ComponentFixture<DialogWithProjectedOkComponent> = TestBed.createComponent(DialogWithProjectedOkComponent);
+        fixture.detectChanges();
+        const okButtons = fixture.nativeElement.querySelectorAll('button');
+        const okLabels = [...okButtons].filter((b: HTMLButtonElement) => b.textContent?.trim() === 'OK');
+        expect(okLabels.length).toBe(1);
+        expect(fixture.nativeElement.querySelector('[data-testid="default-ok"]')).toBeNull();
+        expect(fixture.nativeElement.querySelector('.projected-ok')).toBeTruthy();
+    });
+
+    it('shows a single default OK when no actions are projected', async () => {
+        await TestBed.configureTestingModule({
+            imports: [DialogWithoutActionsComponent]
+        }).compileComponents();
+        const fixture = TestBed.createComponent(DialogWithoutActionsComponent);
+        fixture.detectChanges();
+        const okLabels = [...fixture.nativeElement.querySelectorAll('button')]
+            .filter((b: HTMLButtonElement) => b.textContent?.trim() === 'OK');
+        expect(okLabels.length).toBe(1);
+        expect(fixture.nativeElement.querySelector('[data-testid="default-ok"]')).toBeTruthy();
+    });
+});
+

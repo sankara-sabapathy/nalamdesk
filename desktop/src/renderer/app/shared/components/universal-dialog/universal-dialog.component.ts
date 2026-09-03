@@ -60,6 +60,7 @@ import { CommonModule } from '@angular/common';
            <!-- Default Close Action if enabled -->
            <button *ngIf="showDefaultActions && !hasActionsContent" type="button" 
                    class="bg-blue-600 text-white px-4 py-2 rounded font-medium hover:bg-blue-700 w-full sm:w-auto shadow-sm"
+                   data-testid="default-ok"
                    (click)="close()">
              OK
            </button>
@@ -85,9 +86,9 @@ export class UniversalDialogComponent implements OnChanges, OnDestroy {
 
   animateIn = false;
 
-  // Check for projected content presence using attribute selectors
-  @ContentChild('[icon]', { read: ElementRef }) iconContent: ElementRef | undefined;
-  @ContentChild('[actions]', { read: ElementRef }) actionsContent: ElementRef | undefined;
+  // Template refs (#icon / #actions). CSS `[actions]` is not a ContentChild query.
+  @ContentChild('icon', { read: ElementRef }) iconContent: ElementRef | undefined;
+  @ContentChild('actions', { read: ElementRef }) actionsContent: ElementRef | undefined;
 
   private animateInTimerId: ReturnType<typeof setTimeout> | null = null;
 
@@ -126,11 +127,8 @@ export class UniversalDialogComponent implements OnChanges, OnDestroy {
 
   close() {
     this.animateIn = false;
-    setTimeout(() => {
-      // Do NOT mutate @Input directly
-      this.isOpenChange.emit(false);
-      this.cancelDialog.emit();
-    }, 200); // Wait for transition
+    this.isOpenChange.emit(false);
+    this.cancelDialog.emit();
   }
 
   onBackdropClick() {
