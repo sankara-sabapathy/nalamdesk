@@ -88,6 +88,50 @@ describe('PatientDetailsComponent', () => {
         });
     });
 
+    it('adds a missing queue entry then begins consultation', async () => {
+        let queued = false;
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'getQueue') {
+                return Promise.resolve(queued ? [{ id: 50, patient_id: 123, status: 'waiting' }] : []);
+            }
+            if (endpoint === 'addToQueue') {
+                queued = true;
+                return Promise.resolve({ lastInsertRowid: 50 });
+            }
+            if (endpoint === 'beginConsultation') return Promise.resolve({ id: 70, patient_id: 123 });
+            return Promise.resolve(null);
+        });
+        component.patientId = 123;
+        await component.startConsult();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('addToQueue', { patientId: 123, priority: 1 });
+        expect(mockDataService.invoke).toHaveBeenCalledWith('beginConsultation', expect.objectContaining({
+            patientId: 123,
+            queueEntryId: 50,
+            startRequestId: expect.any(String)
+        }));
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 123], {
+            state: { isConsulting: true, encounterId: 70 }
+        });
+    });
+
+    it('surfaces start consultation failures in the in-app dialog instead of alert', async () => {
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'getQueue') return Promise.resolve([]);
+            if (endpoint === 'addToQueue') return Promise.reject(new Error('Internal server error'));
+            return Promise.resolve(null);
+        });
+        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        component.patientId = 123;
+        await component.startConsult();
+        expect(alertSpy).not.toHaveBeenCalled();
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'error',
+            title: 'Error'
+        }));
+        expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
     it('should open and close modal', () => {
         const visit = { id: 1, date: '2025-01-01' };
         component.viewVisit(visit);

@@ -58,4 +58,14 @@ describe('PrescriptionComponent', () => {
         component.initialData = data;
         expect(component.items()).toEqual(data);
     });
+
+    it('disables add, remove, and change emission in read-only mode', () => {
+        vi.spyOn(component.changed, 'emit');
+        component.disabled = true;
+        component.add();
+        component.remove(0);
+        component.emitChange();
+        expect(component.items().length).toBe(1);
+        expect(component.changed.emit).not.toHaveBeenCalled();
+    });
 });

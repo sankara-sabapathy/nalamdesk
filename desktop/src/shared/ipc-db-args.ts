@@ -1,0 +1,62 @@
+/**
+ * Maps renderer IPC payloads onto DatabaseService arguments.
+ * Electron handlers (`main.ts`) and the HTTP `/api/ipc` wrapper must stay in lockstep.
+ *
+ * Renderer `DataService.invoke(method, ...args)` sends `args` as an array. Queue
+ * commands pass a single object (or an id); DatabaseService expects unpacked
+ * scalars plus the authenticated user id.
+ */
+
+function payloadObject(value: unknown): Record<string, unknown> {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+    }
+    return {};
+}
+
+const ENCOUNTER_METHODS = new Set([
+    'beginConsultation',
+    'getActiveConsultation',
+    'saveConsultationProgress',
+    'completeConsultation',
+    'postponeConsultation',
+    'resumeConsultation',
+    'beginNextConsultation'
+]);
+
+export function resolveDbMethodArgs(method: string, args: unknown[], actingUserId: number): unknown[] {
+    switch (method) {
+        case 'addToQueue': {
+            const payload = payloadObject(args[0]);
+            return [payload['patientId'], payload['priority'], actingUserId];
+        }
+        case 'updateQueueStatus': {
+            const payload = payloadObject(args[0]);
+            return [payload['id'], payload['status'], actingUserId];
+        }
+        case 'updateQueueStatusByPatientId': {
+            const payload = payloadObject(args[0]);
+            return [payload['patientId'], payload['status'], actingUserId];
+        }
+        case 'removeFromQueue':
+            return [args[0], actingUserId];
+        default:
+            if (ENCOUNTER_METHODS.has(method)) {
+                return [...args, actingUserId];
+            }
+            return args;
+    }
+}
+
+export function invokeDbMethod(
+    db: object,
+    method: string,
+    args: unknown[],
+    actingUserId: number
+): unknown {
+    const fn = (db as Record<string, unknown>)[method];
+    if (typeof fn !== 'function') {
+        throw new Error(`Method not implemented: ${method}`);
+    }
+    return (fn as (...fnArgs: unknown[]) => unknown).apply(db, resolveDbMethodArgs(method, args, actingUserId));
+}

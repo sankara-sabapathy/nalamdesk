@@ -61,6 +61,20 @@ describe('DataService', () => {
             }));
         });
 
+        it('posts addToQueue with the same object payload Electron IPC receives', async () => {
+            const mockFetch = vi.fn().mockResolvedValue({
+                ok: true,
+                headers: { get: () => 'application/json' },
+                json: async () => ({ lastInsertRowid: 1 })
+            });
+            global.fetch = mockFetch;
+
+            await service.invoke('addToQueue', { patientId: 42, priority: 2 });
+            expect(mockFetch).toHaveBeenCalledWith('/api/ipc/addToQueue', expect.objectContaining({
+                body: JSON.stringify([{ patientId: 42, priority: 2 }])
+            }));
+        });
+
         it('should throw if not authenticated', async () => {
             mockAuthService.getToken.mockReturnValue(null);
             await expect(service.invoke('any')).rejects.toThrow('Not authenticated');

@@ -21,6 +21,7 @@ import { CredentialRotationService } from './services/CredentialRotationService'
 import { verifyPersistedActiveAdmin } from './services/AdminCredentialVerifier';
 import { acknowledgeRecoveryCodeForActiveAdmin } from './services/RecoveryCodeAcknowledgement';
 import { ApiServer } from '../server/app';
+import { invokeDbMethod } from '../shared/ipc-db-args';
 import {
     DEV_APP_NAME,
     getApiPort,
@@ -720,25 +721,25 @@ handleDb('db:getQueue', () => {
     if (!user) throw new Error('Unauthorized');
     return databaseService.getQueue();
 });
-handleDb('db:addToQueue', (_, { patientId, priority }) => {
+handleDb('db:addToQueue', (_, data) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
-    return databaseService.addToQueue(patientId, priority, user.id);
+    return invokeDbMethod(databaseService, 'addToQueue', [data], user.id);
 });
-handleDb('db:updateQueueStatus', (_, { id, status }) => {
+handleDb('db:updateQueueStatus', (_, data) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
-    return databaseService.updateQueueStatus(id, status, user.id);
+    return invokeDbMethod(databaseService, 'updateQueueStatus', [data], user.id);
 });
-handleDb('db:updateQueueStatusByPatientId', (_, { patientId, status }) => {
+handleDb('db:updateQueueStatusByPatientId', (_, data) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
-    return databaseService.updateQueueStatusByPatientId(patientId, status, user.id);
+    return invokeDbMethod(databaseService, 'updateQueueStatusByPatientId', [data], user.id);
 });
 handleDb('db:removeFromQueue', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
-    return databaseService.removeFromQueue(id, user.id);
+    return invokeDbMethod(databaseService, 'removeFromQueue', [id], user.id);
 });
 
 // Audit IPC Handlers

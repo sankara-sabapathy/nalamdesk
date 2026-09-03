@@ -8,6 +8,7 @@ import * as crypto from 'crypto';
 import * as dotenv from 'dotenv';
 import * as http from 'node:http';
 import { loadDevelopmentEnv } from '../shared/load-env';
+import { invokeDbMethod } from '../shared/ipc-db-args';
 
 loadDevelopmentEnv();
 dotenv.config();
@@ -50,7 +51,7 @@ export class ApiServer {
         this.dbService = dbService;
         this.staticPath = staticPath;
         this.devUiProxyUrl = devUiProxyUrl;
-        this.fastify = Fastify({ logger: true });
+        this.fastify = Fastify({ logger: !process.env['VITEST'] });
     }
 
     private async setup() {
@@ -211,6 +212,16 @@ export class ApiServer {
         });
     }
 
+    private setupCompleted = false;
+
+    private async ensureSetup() {
+        if (this.setupCompleted) {
+            return;
+        }
+        await this.setup();
+        this.setupCompleted = true;
+    }
+
     async start(port: number = 3000, host: string = '0.0.0.0') {
         if (this._started) {
             console.warn('[API Server] Already started');
@@ -219,13 +230,29 @@ export class ApiServer {
         this._started = true;
 
         try {
-            await this.setup();
+            await this.ensureSetup();
             await this.fastify.listen({ port, host });
             console.log(`API Server running on http://${host}:${port}`);
         } catch (err) {
             this._started = false;
             console.error('[API Server] Failed to start:', err);
             throw err;
+        }
+    }
+
+    /** Register routes without binding a port (HTTP IPC tests). */
+    async inject(opts: Parameters<FastifyInstance['inject']>[0]) {
+        await this.ensureSetup();
+        await this.fastify.ready();
+        return this.fastify.inject(opts);
+    }
+
+    async close() {
+        try {
+            await this.fastify.close();
+        } finally {
+            this._started = false;
+            this.setupCompleted = false;
         }
     }
 
@@ -357,16 +384,10 @@ export class ApiServer {
 
             const dbAny = this.dbService as any;
 
-            // 3. Execution using Allowlist
+            // 3. Execution using Allowlist — same arg unpacking as Electron IPC
             if (typeof dbAny[method] === 'function') {
                 try {
-                    const encounterCommands = new Set([
-                        'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress', 'completeConsultation',
-                        'postponeConsultation', 'resumeConsultation', 'beginNextConsultation'
-                    ]);
-                    const result = encounterCommands.has(method)
-                        ? await dbAny[method](...args, user.id)
-                        : await dbAny[method](...args);
+                    const result = await invokeDbMethod(dbAny, method, args, user.id);
                     return result;
                 } catch (e: any) {
                     console.error(`[IPC Error] method: ${method}`, e);

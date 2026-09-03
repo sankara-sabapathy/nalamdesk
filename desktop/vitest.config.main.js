@@ -2,7 +2,7 @@ module.exports = {
     test: {
         globals: true,
         environment: 'node',
-        include: ['src/main/**/*.spec.ts'],
+        include: ['src/main/**/*.spec.ts', 'src/shared/**/*.spec.ts', 'src/server/**/*.spec.ts'],
         reporters: ['default', 'json', 'html'],
         coverage: {
             provider: 'v8',

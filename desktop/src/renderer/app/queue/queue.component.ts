@@ -1,10 +1,11 @@
 
-import { Component, OnInit, OnDestroy, signal, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { DataService } from '../services/api.service';
 import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
 import { newRequestId } from '../services/request-id';
+import { DialogService } from '../shared/services/dialog.service';
 
 @Component({
   // ... (omitted for brevity, keeping same template)
@@ -151,7 +152,8 @@ export class QueueComponent implements OnInit, OnDestroy {
 
   constructor(
     private router: Router,
-    private dataService: DataService
+    private dataService: DataService,
+    private dialogService: DialogService
   ) { }
 
   ngOnInit() {
@@ -198,7 +200,13 @@ export class QueueComponent implements OnInit, OnDestroy {
       });
     } catch (e) {
       console.error('Could not start consultation', e);
-      alert('Failed to start consultation');
+      await this.dialogService.open({
+        title: 'Error',
+        message: e instanceof Error && e.message
+          ? `Failed to start consultation: ${e.message}`
+          : 'Failed to start consultation',
+        type: 'error'
+      });
     }
   }
 
@@ -209,7 +217,13 @@ export class QueueComponent implements OnInit, OnDestroy {
         this.refreshQueue();
       } catch (e) {
         console.error('Remove failed', e);
-        alert('Failed to remove from queue');
+        await this.dialogService.open({
+          title: 'Error',
+          message: e instanceof Error && e.message
+            ? `Failed to remove from queue: ${e.message}`
+            : 'Failed to remove from queue',
+          type: 'error'
+        });
       }
     }
   }
