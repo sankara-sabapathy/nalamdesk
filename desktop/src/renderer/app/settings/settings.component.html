@@ -262,8 +262,8 @@
                 </div>
             </div>
 
-            <!-- Local restore: same Welcome picker → restoreSystemBackup IPC -->
-            <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
+            <!-- Local restore: same Welcome picker → restoreSystemBackup IPC. Electron only (#40). -->
+            <div *ngIf="isElectron" class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mb-6">
                 <h3 class="text-lg font-medium text-gray-800 mb-2">Restore from Backup File</h3>
                 <p class="text-sm text-gray-500 mb-4">
                     After first run, restore a local <span class="font-mono">.ndbackup</span> through the same

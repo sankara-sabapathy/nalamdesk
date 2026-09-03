@@ -173,4 +173,16 @@ describe('SettingsComponent Validation', () => {
         expect((window as any).electron.restoreSystemBackup).not.toHaveBeenCalled();
         expect(component.restoreError).toContain('Recovery Code');
     });
+
+    it('does not expose Welcome restore on non-Electron web sessions', async () => {
+        component.isElectron = false;
+        (window as any).electron = {
+            backup: { selectRestoreBundle: vi.fn() },
+            restoreSystemBackup: vi.fn()
+        };
+        await component.selectRestoreBundle();
+        await component.restoreLocalBackup();
+        expect((window as any).electron.backup.selectRestoreBundle).not.toHaveBeenCalled();
+        expect((window as any).electron.restoreSystemBackup).not.toHaveBeenCalled();
+    });
 });
