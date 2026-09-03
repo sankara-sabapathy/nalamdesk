@@ -26,4 +26,13 @@ describe('preload bridge surface', () => {
         await api.backup.selectRestoreBundle();
         expect(electron.invoke).toHaveBeenCalledWith('backup:selectRestoreBundle');
     });
+
+    it('sends queue writes with the renderer object payload Electron IPC unpacks', async () => {
+        await api.db.addToQueue({ patientId: 42, priority: 2 });
+        await api.db.updateQueueStatus({ id: 9, status: 'waiting' });
+        await api.db.removeFromQueue(9);
+        expect(electron.invoke).toHaveBeenCalledWith('db:addToQueue', { patientId: 42, priority: 2 });
+        expect(electron.invoke).toHaveBeenCalledWith('db:updateQueueStatus', { id: 9, status: 'waiting' });
+        expect(electron.invoke).toHaveBeenCalledWith('db:removeFromQueue', 9);
+    });
 });

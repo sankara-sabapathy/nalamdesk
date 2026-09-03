@@ -83,7 +83,7 @@ interface Visit {
               </div>
 
               <!-- COPY ACTION -->
-              <button *ngIf="!activeEncounterReadOnly" (click)="copyLastVisit()" class="w-full py-1.5 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded hover:bg-blue-100 hover:text-blue-900 transition flex items-center justify-center gap-2 shadow-sm">
+              <button *ngIf="canEditChart" (click)="copyLastVisit()" class="w-full py-1.5 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded hover:bg-blue-100 hover:text-blue-900 transition flex items-center justify-center gap-2 shadow-sm">
                 <span>📋</span> Copy to Current
               </button>
            </div>
@@ -124,14 +124,14 @@ interface Visit {
                </button>
 
                <h1 class="text-lg md:text-xl font-bold text-gray-800 truncate">
-                 {{ editingVisitId ? 'Editing Past Visit' : 'Current Consultation' }}
+                 {{ editingVisitId ? 'Editing Past Visit' : (isLiveConsultation ? 'Current Consultation' : 'Visit') }}
                </h1>
            </div>
 
            <div class="flex flex-wrap gap-2 items-center justify-end">
               <button *ngIf="editingVisitId" (click)="deleteVisit()" class="border border-red-200 text-red-600 bg-white hover:bg-red-50 px-3 py-1 rounded text-sm font-medium transition">Delete</button>
               <button *ngIf="editingVisitId" (click)="resetForm()" class="border border-blue-200 text-blue-600 bg-white hover:bg-blue-50 px-3 py-1 rounded text-sm font-medium transition">New Visit</button>
-              <div class="text-right flex items-center gap-2" *ngIf="!editingVisitId">
+              <div class="text-right flex items-center gap-2" *ngIf="isLiveConsultation">
                   <div class="hidden md:block text-xs text-gray-500 uppercase tracking-wider font-bold">Status</div>
                   <div class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-bold gap-1 flex items-center">
                     <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span> LIVE
@@ -206,7 +206,8 @@ interface Visit {
                     </div>
                     
                     <app-prescription 
-                        [initialData]="currentPrescription" 
+                        [initialData]="currentPrescription"
+                        [disabled]="!canEditChart"
                         (changed)="updatePrescription($event)">
                     </app-prescription>
 
@@ -228,25 +229,25 @@ interface Visit {
                <button type="button" (click)="printPrescription()" class="px-4 py-2 rounded text-gray-600 hover:bg-gray-100 font-medium transition flex-1 md:flex-none justify-center">
                  Print
                </button>
-               <button *ngIf="isConsulting" type="button" (click)="postponeConsult()" class="px-4 py-2 rounded text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50 font-medium transition flex-1 md:flex-none justify-center">
+               <button *ngIf="isLiveConsultation" type="button" (click)="postponeConsult()" class="px-4 py-2 rounded text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50 font-medium transition flex-1 md:flex-none justify-center">
                  ⏸ Postpone
                </button>
             </div>
 
             <div class="flex flex-col md:flex-row gap-3 items-center w-full md:w-auto">
-               <ng-container *ngIf="isConsulting || editingVisitId; else noConsult">
+               <ng-container *ngIf="canEditChart; else noConsult">
                   <!-- Classic Save -->
                    <button type="submit" (click)="saveVisit()" [disabled]="!visitForm.valid || actionInFlight" class="hidden md:block px-4 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition disabled:opacity-50 font-medium">
                      Save Progress
                    </button>
                    
                    <!-- Finish & Exit -->
-                   <button *ngIf="isConsulting" type="button" (click)="endConsult()" [disabled]="!visitForm.valid || actionInFlight" class="hidden md:block px-4 py-2 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 transition disabled:opacity-50 font-medium">
+                   <button *ngIf="isLiveConsultation" type="button" (click)="endConsult()" [disabled]="!visitForm.valid || actionInFlight" class="hidden md:block px-4 py-2 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 transition disabled:opacity-50 font-medium">
                      Finish & Exit
                    </button>
 
                    <!-- HERO ACTION: FINISH & NEXT -->
-                   <button *ngIf="isConsulting" type="button" (click)="finishAndNext()" [disabled]="!visitForm.valid || actionInFlight" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2">
+                   <button *ngIf="isLiveConsultation" type="button" (click)="finishAndNext()" [disabled]="!visitForm.valid || actionInFlight" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2">
                      <span>✓ Finish & Next</span> 
                    </button>
                    
@@ -277,6 +278,7 @@ export class VisitComponent implements OnInit {
   activeEncounterReadOnly = false;
   consultationLoadError: string | null = null;
   actionInFlight = false;
+  chartWritable = false;
   private consultationStartPending = false;
   private startRequestId: string | null = null;
   private nextStartRequestId: string | null = null;
@@ -322,6 +324,23 @@ export class VisitComponent implements OnInit {
     });
   }
 
+  get isLiveConsultation(): boolean {
+    return this.chartWritable && this.isConsulting && this.encounterId != null && !this.activeEncounterReadOnly;
+  }
+
+  get canEditChart(): boolean {
+    return this.chartWritable && !this.activeEncounterReadOnly && (this.isConsulting || this.editingVisitId != null);
+  }
+
+  private setChartWritable(writable: boolean) {
+    this.chartWritable = writable;
+    if (writable) {
+      this.visitForm.enable();
+    } else {
+      this.visitForm.disable();
+    }
+  }
+
   editVisit(visit: any) {
     // Historical editing and active completion are deliberately separate modes.
     if (this.isConsulting || this.encounterId || this.activeEncounterReadOnly) return;
@@ -341,7 +360,7 @@ export class VisitComponent implements OnInit {
       this.currentPrescription = [];
       this.visitForm.patchValue({ prescription: [] });
     }
-    this.visitForm.enable();
+    this.setChartWritable(true);
 
     // On mobile, close drawer after selection
     this.showMobileHistory = false;
@@ -351,12 +370,15 @@ export class VisitComponent implements OnInit {
     this.editingVisitId = null;
     this.visitForm.reset({ amount_paid: 0, prescription: [] });
     this.currentPrescription = [];
+    if (!this.isConsulting || this.activeEncounterReadOnly) {
+      this.setChartWritable(false);
+    }
   }
 
   async loadData() {
     this.consultationLoadError = null;
     try {
-      this.visitForm.disable();
+      this.setChartWritable(false);
       let activeEncounterReadDenied = false;
       const activeEncounterRequest = this.dataService.invoke<any>('getActiveConsultation', this.patientId)
         .catch(error => {
@@ -416,7 +438,7 @@ export class VisitComponent implements OnInit {
 
         // Enable only after the exact linked queue entry has been reclaimed.
         if (resumedEncounter) {
-          this.visitForm.enable();
+          this.setChartWritable(true);
 
           // Auto-Fill Vitals into Objective if empty
           if (this.patientVitals && !this.visitForm.get('examination_notes')?.value) {
@@ -441,10 +463,10 @@ export class VisitComponent implements OnInit {
         this.ngZone.run(() => {
           this.encounterId = encounter.id;
           this.patchEncounter(encounter);
-          this.visitForm.enable();
+          this.setChartWritable(true);
         });
       } else if (!resumedEncounter && !this.editingVisitId) {
-        this.visitForm.disable();
+        this.setChartWritable(false);
       }
     } catch (e) {
       console.error(e);
@@ -456,7 +478,7 @@ export class VisitComponent implements OnInit {
         } else {
           this.consultationLoadError = 'Could not load the consultation. Retry when the connection is available.';
         }
-        this.visitForm.disable();
+        this.setChartWritable(false);
       });
     }
   }
@@ -467,6 +489,7 @@ export class VisitComponent implements OnInit {
   }
 
   updatePrescription(items: any[]) {
+    if (!this.canEditChart) return;
     this.visitForm.patchValue({ prescription: items });
   }
 
@@ -613,16 +636,14 @@ export class VisitComponent implements OnInit {
   }
 
   copyLastVisit() {
-    if (this.history.length > 0) {
-      const last = this.history[0];
-      this.visitForm.patchValue({
-        diagnosis: last.diagnosis,
-        diagnosis_type: last.diagnosis_type,
-        prescription: last.prescription
-      });
-      this.currentPrescription = last.prescription || [];
-      // Optional: Notify user
-    }
+    if (!this.canEditChart || this.history.length === 0) return;
+    const last = this.history[0];
+    this.visitForm.patchValue({
+      diagnosis: last.diagnosis,
+      diagnosis_type: last.diagnosis_type,
+      prescription: last.prescription
+    });
+    this.currentPrescription = last.prescription || [];
   }
 
   async postponeConsult() {

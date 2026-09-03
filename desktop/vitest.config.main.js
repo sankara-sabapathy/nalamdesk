@@ -2,16 +2,18 @@ module.exports = {
     test: {
         globals: true,
         environment: 'node',
-        include: ['src/main/**/*.spec.ts'],
+        include: ['src/main/**/*.spec.ts', 'src/shared/**/*.spec.ts', 'src/server/**/*.spec.ts'],
         reporters: ['default', 'json', 'html'],
         coverage: {
             provider: 'v8',
             reporter: ['text', 'json', 'html', 'lcov'],
             reportsDirectory: './coverage/main',
-            include: ['src/main/**/*.ts'],
+            include: ['src/main/**/*.ts', 'src/shared/**/*.ts', 'src/server/**/*.ts'],
             exclude: [
                 'src/main/**/*.spec.ts',
                 'src/main/**/*.test.ts',
+                'src/shared/**/*.spec.ts',
+                'src/server/**/*.spec.ts',
                 '**/node_modules/**',
                 '**/dist/**',
             ],

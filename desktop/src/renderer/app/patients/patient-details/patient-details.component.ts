@@ -583,7 +583,13 @@ export class PatientDetailsComponent implements OnInit {
             });
         } catch (e) {
             console.error('Failed to start consultation', e);
-            alert('Failed to start consultation');
+            await this.dialogService.open({
+                title: 'Error',
+                message: e instanceof Error && e.message
+                    ? `Failed to start consultation: ${e.message}`
+                    : 'Failed to start consultation',
+                type: 'error'
+            });
         } finally {
             this.startingConsult = false;
         }

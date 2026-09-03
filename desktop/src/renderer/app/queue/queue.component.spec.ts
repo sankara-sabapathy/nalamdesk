@@ -22,6 +22,7 @@ describe('QueueComponent', () => {
     let component: QueueComponent;
     let mockDataService: any;
     let mockRouter: any;
+    let mockDialogService: any;
 
     beforeEach(() => {
         mockDataService = {
@@ -42,7 +43,11 @@ describe('QueueComponent', () => {
             navigate: vi.fn()
         };
 
-        component = new QueueComponent(mockRouter, mockDataService);
+        mockDialogService = {
+            open: vi.fn().mockResolvedValue(true)
+        };
+
+        component = new QueueComponent(mockRouter, mockDataService, mockDialogService);
     });
 
     it('should resume the exact linked encounter for a postponed queue item', async () => {
@@ -98,7 +103,6 @@ describe('QueueComponent', () => {
             return Promise.resolve(null);
         });
         vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
 
         await component.startConsult(item);
         await component.startConsult(item);
@@ -106,5 +110,36 @@ describe('QueueComponent', () => {
         expect(requestIds).toHaveLength(2);
         expect(requestIds[1]).toBe(requestIds[0]);
         expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 11], expect.objectContaining({ state: expect.objectContaining({ encounterId: 101 }) }));
+    });
+
+    it('surfaces start-consultation failures in the in-app dialog instead of alert', async () => {
+        mockDataService.invoke.mockRejectedValue(new Error('Queue entry was not created'));
+        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await component.startConsult({ id: 1, patient_id: 11 });
+
+        expect(alertSpy).not.toHaveBeenCalled();
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'error',
+            title: 'Error'
+        }));
+        expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('surfaces remove-from-queue failures in the in-app dialog instead of alert', async () => {
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        mockDataService.invoke.mockRejectedValue(new Error('Cannot remove a queue entry with an active encounter'));
+        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await component.remove(1);
+
+        expect(alertSpy).not.toHaveBeenCalled();
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'error',
+            title: 'Error',
+            message: expect.stringContaining('Failed to remove from queue')
+        }));
     });
 });

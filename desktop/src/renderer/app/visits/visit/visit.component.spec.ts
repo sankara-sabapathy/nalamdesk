@@ -420,4 +420,80 @@ describe('VisitComponent', () => {
         expect(calls).toHaveLength(1);
         expect(calls[0][1]).toEqual({ encounterId: 7, visit: undefined });
     });
+
+    it('does not present LIVE writable chart when opened without beginConsultation', async () => {
+        component.patientId = 1;
+        await component.loadData();
+
+        expect(component.isConsulting).toBe(false);
+        expect(component.encounterId).toBeNull();
+        expect(component.isLiveConsultation).toBe(false);
+        expect(component.canEditChart).toBe(false);
+        expect(component.visitForm.enable).not.toHaveBeenCalled();
+        expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'beginConsultation')).toBe(false);
+    });
+
+    it('shows a writable LIVE consultation after a started encounter is resumed', async () => {
+        component.patientId = 1;
+        const activeEncounter = { id: 7, patient_id: 1, status: 'in-progress', prescription: [] };
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getActiveConsultation') return Promise.resolve(activeEncounter);
+            if (method === 'resumeConsultation') return Promise.resolve(activeEncounter);
+            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
+            if (method === 'getVitals') return Promise.resolve({});
+            return Promise.resolve([]);
+        });
+
+        await component.loadData();
+
+        expect(component.isConsulting).toBe(true);
+        expect(component.encounterId).toBe(7);
+        expect(component.isLiveConsultation).toBe(true);
+        expect(component.canEditChart).toBe(true);
+        expect(component.visitForm.enable).toHaveBeenCalled();
+    });
+
+    it('keeps SOAP and Rx read-only together when another practitioner owns the encounter', async () => {
+        component.patientId = 1;
+        component.isConsulting = true;
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getVisits') return Promise.resolve([]);
+            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
+            if (method === 'getVitals') return Promise.resolve({});
+            if (method === 'getActiveConsultation') return Promise.reject(new Error('Only the responsible practitioner can access this encounter'));
+            return Promise.resolve(null);
+        });
+
+        await component.loadData();
+
+        expect(component.activeEncounterReadOnly).toBe(true);
+        expect(component.isLiveConsultation).toBe(false);
+        expect(component.canEditChart).toBe(false);
+        expect(component.visitForm.enable).not.toHaveBeenCalled();
+    });
+
+    it('unlocks SOAP and Rx together when editing a past visit, then relocks on reset', () => {
+        component.editVisit({ id: 42, diagnosis: 'Prior', prescription: [{ medicine: 'Para' }] });
+        expect(component.editingVisitId).toBe(42);
+        expect(component.canEditChart).toBe(true);
+        expect(component.isLiveConsultation).toBe(false);
+
+        component.resetForm();
+        expect(component.editingVisitId).toBeNull();
+        expect(component.canEditChart).toBe(false);
+    });
+
+    it('ignores prescription edits and copy-last-visit while the chart is read-only', () => {
+        component.history = [{ diagnosis: 'Flu', diagnosis_type: 'Final', prescription: [] }] as any;
+        component.updatePrescription([{ medicine: 'x' }]);
+        component.copyLastVisit();
+        expect(component.visitForm.patchValue).not.toHaveBeenCalledWith({ prescription: [{ medicine: 'x' }] });
+
+        component.chartWritable = true;
+        component.isConsulting = true;
+        component.encounterId = 7;
+        component.copyLastVisit();
+        expect(component.visitForm.patchValue).toHaveBeenCalledWith(expect.objectContaining({ diagnosis: 'Flu' }));
+    });
 });
