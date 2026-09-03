@@ -17,4 +17,12 @@ describe('renderer hash rewrite', () => {
         expect(replace).toHaveBeenCalledWith('/#/settings');
         expect(localStorage.getItem('nalamdesk_user')).toContain('admin');
     });
+
+    it('preserves search on rewrite', () => {
+        const replace = vi.fn();
+        expect(rewriteNonHashAppPath({
+            pathname: '/settings', hash: '', search: '?tab=active', replace
+        })).toBe(true);
+        expect(replace).toHaveBeenCalledWith('/#/settings?tab=active');
+    });
 });
