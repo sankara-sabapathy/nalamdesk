@@ -1,4 +1,4 @@
-import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import Fastify, { FastifyInstance, FastifyRequest, FastifyReply, InjectOptions } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import fastifyCors from '@fastify/cors';
 import * as jwt from 'jsonwebtoken';
@@ -241,7 +241,7 @@ export class ApiServer {
     }
 
     /** Register routes without binding a port (HTTP IPC tests). */
-    async inject(opts: Parameters<FastifyInstance['inject']>[0]) {
+    async inject(opts: InjectOptions | string) {
         await this.ensureSetup();
         await this.fastify.ready();
         return this.fastify.inject(opts);
