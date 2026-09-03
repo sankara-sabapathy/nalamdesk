@@ -135,8 +135,11 @@ export class ApiServer {
         // SPA Fallback (prod: index.html; dev: proxy to ng serve for LAN access)
         this.fastify.setNotFoundHandler(async (req, reply) => {
             if (req.method === 'GET' && !req.url.startsWith('/api') && !req.url.startsWith('/oauth2callback')) {
-                const pathOnly = (req.url || '/').split('?')[0];
-                const hashed = hashUrlForPathname(pathOnly);
+                const raw = req.url || '/';
+                const queryIndex = raw.indexOf('?');
+                const pathOnly = queryIndex === -1 ? raw : raw.slice(0, queryIndex);
+                const search = queryIndex === -1 ? '' : raw.slice(queryIndex);
+                const hashed = hashUrlForPathname(pathOnly, search);
                 if (hashed) {
                     return reply.redirect(hashed);
                 }

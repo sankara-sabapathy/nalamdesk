@@ -23,6 +23,14 @@ describe('hash SPA path rewrite', () => {
         expect(isHashSpaAppPath('/oauth2callback')).toBe(false);
     });
 
+    it('does not hang on a long unmatched GET', () => {
+        const junk = `/${'a'.repeat(20_000)}${'/x'.repeat(2_000)}`;
+        const started = Date.now();
+        expect(hashUrlForPathname(junk)).toBeNull();
+        expect(isHashSpaAppPath(junk)).toBe(false);
+        expect(Date.now() - started).toBeLessThan(50);
+    });
+
     it('rewrites a location before Angular maps an empty hash to login', () => {
         const replace = vi.fn();
         expect(rewriteNonHashAppPath({

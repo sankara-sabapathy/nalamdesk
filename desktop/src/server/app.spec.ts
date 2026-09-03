@@ -136,4 +136,10 @@ describe('hash SPA fallback', () => {
         expect(response.statusCode).toBe(404);
         expect(response.headers.location).toBeUndefined();
     });
+
+    it('preserves query string on rewrite', async () => {
+        const response = await server.inject({ method: 'GET', url: '/patients?editId=5' });
+        expect(response.statusCode).toBe(302);
+        expect(response.headers.location).toBe('/#/patients?editId=5');
+    });
 });
