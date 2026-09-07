@@ -3,7 +3,7 @@
  */
 import '@angular/compiler';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DashboardComponent } from './dashboard.component';
+import { DashboardComponent, greetingForLocalHour } from './dashboard.component';
 import { DataService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { Router } from '@angular/router';
@@ -67,5 +67,21 @@ describe('DashboardComponent', () => {
         await component.loadData();
 
         expect(spy).toHaveBeenCalled();
+    });
+
+    it('greets Morning before noon, Afternoon before 17, Evening otherwise', () => {
+        expect(greetingForLocalHour(0)).toBe('Morning');
+        expect(greetingForLocalHour(11)).toBe('Morning');
+        expect(greetingForLocalHour(12)).toBe('Afternoon');
+        expect(greetingForLocalHour(16)).toBe('Afternoon');
+        expect(greetingForLocalHour(17)).toBe('Evening');
+        expect(greetingForLocalHour(18)).toBe('Evening');
+        expect(greetingForLocalHour(23)).toBe('Evening');
+    });
+
+    it('does not say Good Morning at 18:39 local time', () => {
+        component.currentTime = new Date(2026, 8, 3, 18, 39, 0);
+        expect(component.getTimeOfDay()).toBe('Evening');
+        expect(component.getTimeOfDay()).not.toBe('Morning');
     });
 });

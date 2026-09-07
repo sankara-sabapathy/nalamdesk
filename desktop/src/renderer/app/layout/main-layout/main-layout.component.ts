@@ -1,6 +1,7 @@
-import { Component, ViewChild, ElementRef, NgZone, OnInit } from '@angular/core';
+import { Component, ViewChild, ElementRef, NgZone, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterOutlet, RouterModule, Router } from '@angular/router';
+import { NavigationStart, RouterOutlet, RouterModule, Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { UniversalDialogComponent } from '../../shared/components/universal-dialog/universal-dialog.component';
 import { DialogService } from '../../shared/services/dialog.service';
 import { AuthService } from '../../services/auth.service';
@@ -158,7 +159,7 @@ import { RuntimeService } from '../../services/runtime.service';
       (cancelDialog)="dialogService.close()"
       (isOpenChange)="!$event ? dialogService.close() : null">
       
-      <div actions class="flex gap-2 w-full justify-end">
+      <div actions #actions class="flex gap-2 w-full justify-end">
          <button *ngIf="dialogService.options().type === 'confirm'" 
                  class="px-4 py-2 rounded text-blue-600 border border-blue-200 hover:bg-blue-50 transition" (click)="dialogService.close()">
            {{ dialogService.options().cancelText }}
@@ -186,9 +187,10 @@ import { RuntimeService } from '../../services/runtime.service';
     }
   `]
 })
-export class MainLayoutComponent implements OnInit {
+export class MainLayoutComponent implements OnInit, OnDestroy {
   queueCount = 0; // TODO: Connect to service
   currentUser: any = null;
+  private routerSub?: Subscription;
 
   @ViewChild('drawerCheckbox') drawerCheckbox!: ElementRef<HTMLInputElement>;
 
@@ -206,6 +208,15 @@ export class MainLayoutComponent implements OnInit {
     if (!!(globalThis as any).electron) {
       this.runtime.init();
     }
+    this.routerSub = this.router.events.subscribe(event => {
+      if (event instanceof NavigationStart) {
+        this.dialogService.close();
+      }
+    });
+  }
+
+  ngOnDestroy() {
+    this.routerSub?.unsubscribe();
   }
 
   isCopied = false;

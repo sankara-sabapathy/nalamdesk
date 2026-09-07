@@ -62,7 +62,7 @@ import { ColDef, GridOptions } from 'ag-grid-community';
           </div>
       </div>
 
-      <div class="flex-1 w-full overflow-hidden relative">
+      <div class="flex-1 w-full overflow-x-auto overflow-y-hidden relative">
         <ag-grid-angular
             class="h-full w-full ag-theme-quartz"
             [rowData]="rowData"

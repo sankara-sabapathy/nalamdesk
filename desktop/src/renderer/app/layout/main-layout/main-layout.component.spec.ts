@@ -1,5 +1,7 @@
 import { MainLayoutComponent } from './main-layout.component';
-import { vi, describe, xdescribe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { Subject } from 'rxjs';
+import { NavigationStart, NavigationEnd } from '@angular/router';
 
 describe('MainLayoutComponent', () => {
     let component: MainLayoutComponent;
@@ -17,7 +19,8 @@ describe('MainLayoutComponent', () => {
 
         mockRouter = {
             navigate: vi.fn(),
-            url: '/dashboard'
+            url: '/dashboard',
+            events: { subscribe: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }) }
         };
 
         mockDialogService = {
@@ -66,5 +69,24 @@ describe('MainLayoutComponent', () => {
         component.logout();
         expect(mockAuthService.logout).toHaveBeenCalled();
         expect(mockRouter.navigate).toHaveBeenCalledWith(['/login']);
+    });
+
+    it('clears the shell error when a child route starts', () => {
+        const events = new Subject();
+        mockRouter.events = events;
+        const layout = new MainLayoutComponent(
+            mockRouter,
+            mockDialogService,
+            mockAuthService,
+            mockNgZone,
+            mockRuntimeService
+        );
+        layout.ngOnInit();
+        events.next(new NavigationStart(1, '/visits'));
+        expect(mockDialogService.close).toHaveBeenCalled();
+        mockDialogService.close.mockClear();
+        events.next(new NavigationEnd(1, '/visits', '/visits'));
+        expect(mockDialogService.close).not.toHaveBeenCalled();
+        layout.ngOnDestroy();
     });
 });

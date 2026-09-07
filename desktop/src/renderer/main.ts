@@ -1,7 +1,9 @@
 import { bootstrapApplication } from '@angular/platform-browser';
 import { appConfig } from './app/app.config';
 import { AppComponent } from './app/app.component';
+import { rewriteNonHashAppPath } from './app/hash-location-rewrite';
 
-
-bootstrapApplication(AppComponent, appConfig)
-  .catch((err) => console.error(err));
+if (!rewriteNonHashAppPath(window.location)) {
+  bootstrapApplication(AppComponent, appConfig)
+    .catch((err) => console.error(err));
+}

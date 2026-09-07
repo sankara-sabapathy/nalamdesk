@@ -115,4 +115,74 @@ describe('SettingsComponent Validation', () => {
         expect(component.newRecoveryCode).toBe('AAAA-BBBB-CCCC-DDDD');
         expect(component.showRecoveryModal).toBe(true);
     });
+
+    it('selects a Welcome-style restore bundle through the existing picker IPC', async () => {
+        component.isElectron = true;
+        (window as any).electron = {
+            backup: { selectRestoreBundle: vi.fn(async () => ({
+                path: '/external/clinic.ndbackup', name: 'clinic.ndbackup'
+            })) }
+        };
+        await component.selectRestoreBundle();
+        expect(component.restoreBundle).toMatchObject({ name: 'clinic.ndbackup', path: '/external/clinic.ndbackup' });
+        expect(component.restoreError).toBe('');
+    });
+
+    it('restores through restoreSystemBackup with recovery code and live-vault admin auth', async () => {
+        component.isElectron = true;
+        component.restoreBundle = { path: '/external/clinic.ndbackup', name: 'clinic.ndbackup' };
+        component.restoreRecoveryCode = 'AAAA-BBBB-CCCC-DDDD';
+        component.restoreAdminPassword = 'admin-secret';
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const restoreSystemBackup = vi.fn(async () => ({ success: true, restartRequired: true }));
+        (window as any).electron = { restoreSystemBackup };
+        await component.restoreLocalBackup();
+        expect(restoreSystemBackup).toHaveBeenCalledWith({
+            path: '/external/clinic.ndbackup',
+            recoveryCode: 'AAAA-BBBB-CCCC-DDDD',
+            currentAdminPassword: 'admin-secret'
+        });
+        expect(component.restoreRecoveryCode).toBe('');
+        expect(component.restoreAdminPassword).toBe('');
+    });
+
+    it('does not invent a second restore pipeline for a live vault', async () => {
+        component.isElectron = true;
+        component.restoreBundle = { path: '/external/clinic.ndbackup', name: 'clinic.ndbackup' };
+        component.restoreRecoveryCode = 'CODE';
+        component.restoreAdminPassword = 'secret';
+        vi.spyOn(window, 'confirm').mockReturnValue(true);
+        const restoreSystemBackup = vi.fn(async () => ({ success: false, error: 'INVALID_ADMIN_CREDENTIAL' }));
+        (window as any).electron = {
+            restoreSystemBackup,
+            drive: { restore: vi.fn() }
+        };
+        await component.restoreLocalBackup();
+        expect(restoreSystemBackup).toHaveBeenCalled();
+        expect((window as any).electron.drive.restore).not.toHaveBeenCalled();
+        expect(component.restoreError).toContain('administrator password');
+        expect(component.isRestoring).toBe(false);
+    });
+
+    it('requires a recovery code before calling restore IPC', async () => {
+        component.isElectron = true;
+        component.restoreBundle = { path: '/external/clinic.ndbackup', name: 'clinic.ndbackup' };
+        component.restoreAdminPassword = 'secret';
+        (window as any).electron = { restoreSystemBackup: vi.fn() };
+        await component.restoreLocalBackup();
+        expect((window as any).electron.restoreSystemBackup).not.toHaveBeenCalled();
+        expect(component.restoreError).toContain('Recovery Code');
+    });
+
+    it('does not expose Welcome restore on non-Electron web sessions', async () => {
+        component.isElectron = false;
+        (window as any).electron = {
+            backup: { selectRestoreBundle: vi.fn() },
+            restoreSystemBackup: vi.fn()
+        };
+        await component.selectRestoreBundle();
+        await component.restoreLocalBackup();
+        expect((window as any).electron.backup.selectRestoreBundle).not.toHaveBeenCalled();
+        expect((window as any).electron.restoreSystemBackup).not.toHaveBeenCalled();
+    });
 });

@@ -79,6 +79,11 @@ export class SettingsComponent implements OnInit {
   message = '';
   success = false;
   backups: any[] = [];
+  restoreBundle: { path: string; name: string } | null = null;
+  restoreRecoveryCode = '';
+  restoreAdminPassword = '';
+  restoreError = '';
+  isRestoring = false;
 
 
   // Audit Log Column Definitions
@@ -647,6 +652,65 @@ export class SettingsComponent implements OnInit {
         this.isBackupLoading = false;
         alert('Restore Error: ' + e.message);
       });
+    }
+  }
+
+  async selectRestoreBundle() {
+    if (!this.isElectron) return;
+    try {
+      const selected = await window.electron.backup.selectRestoreBundle();
+      if (!selected) return;
+      const legacy = selected.name.toLowerCase().endsWith('.db');
+      this.ngZone.run(() => {
+        this.restoreBundle = selected;
+        this.restoreError = legacy
+          ? 'This legacy backup can be identified, but cannot recover a live vault.'
+          : '';
+      });
+    } catch (e: any) {
+      this.ngZone.run(() => {
+        this.restoreError = e?.message || 'Unable to select the backup file.';
+      });
+    }
+  }
+
+  async restoreLocalBackup() {
+    if (!this.isElectron || !this.restoreBundle) return;
+    if (this.restoreBundle.name.toLowerCase().endsWith('.db')) {
+      this.restoreError = 'This legacy database-only backup is missing recovery metadata and cannot be restored on a live vault.';
+      return;
+    }
+    if (!this.restoreRecoveryCode) {
+      this.restoreError = 'Enter the Recovery Code for this backup.';
+      return;
+    }
+    if (!this.restoreAdminPassword) {
+      this.restoreError = 'Enter the current administrator password.';
+      return;
+    }
+    if (!confirm('The backup will be validated first. Your current vault will be snapshotted before replacement. Continue?')) return;
+
+    this.isRestoring = true;
+    this.restoreError = '';
+    try {
+      const result = await window.electron.restoreSystemBackup({
+        path: this.restoreBundle.path,
+        recoveryCode: this.restoreRecoveryCode,
+        currentAdminPassword: this.restoreAdminPassword
+      });
+      this.restoreRecoveryCode = '';
+      this.restoreAdminPassword = '';
+      if (!result.success) throw new Error(result.error || 'Restore failed');
+    } catch (e: any) {
+      this.isRestoring = false;
+      const code = e?.message || 'Restore failed';
+      this.restoreError = code === 'LEGACY_DATABASE_ONLY_BACKUP'
+        ? 'This legacy database-only backup is missing recovery metadata and cannot be restored on a live vault.'
+        : code === 'INVALID_RECOVERY_CODE'
+          ? 'The Recovery Code is incorrect for this backup.'
+          : code === 'INVALID_ADMIN_CREDENTIAL'
+            ? 'The administrator password is incorrect.'
+            : `Restore failed: ${code}`;
     }
   }
 

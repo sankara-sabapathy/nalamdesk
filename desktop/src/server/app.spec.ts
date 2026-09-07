@@ -106,3 +106,40 @@ describe('HTTP /api/ipc queue wrapper', () => {
         );
     });
 });
+
+describe('hash SPA fallback', () => {
+    let server: ApiServer;
+
+    beforeEach(() => {
+        server = new ApiServer({} as any, os.tmpdir());
+    });
+
+    afterEach(async () => {
+        await server.close();
+    });
+
+    it('rewrites /settings to /#/settings before the empty-hash login map', async () => {
+        const response = await server.inject({ method: 'GET', url: '/settings' });
+        expect(response.statusCode).toBe(302);
+        expect(response.headers.location).toBe('/#/settings');
+    });
+
+    it('rewrites other app paths the same way', async () => {
+        const queue = await server.inject({ method: 'GET', url: '/queue' });
+        const visits = await server.inject({ method: 'GET', url: '/visits' });
+        expect(queue.headers.location).toBe('/#/queue');
+        expect(visits.headers.location).toBe('/#/visits');
+    });
+
+    it('does not rewrite API routes', async () => {
+        const response = await server.inject({ method: 'GET', url: '/api/missing' });
+        expect(response.statusCode).toBe(404);
+        expect(response.headers.location).toBeUndefined();
+    });
+
+    it('preserves query string on rewrite', async () => {
+        const response = await server.inject({ method: 'GET', url: '/patients?editId=5' });
+        expect(response.statusCode).toBe(302);
+        expect(response.headers.location).toBe('/#/patients?editId=5');
+    });
+});

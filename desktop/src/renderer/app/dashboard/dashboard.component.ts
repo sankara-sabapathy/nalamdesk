@@ -7,6 +7,13 @@ import { AuthService } from '../services/auth.service';
 import { CloudService } from '../services/cloud.service';
 import { PatientService } from '../services/patient.service';
 
+/** Local wall-clock greeting. Morning < 12, afternoon < 17, else evening. */
+export function greetingForLocalHour(hour: number): string {
+  if (hour < 12) return 'Morning';
+  if (hour < 17) return 'Afternoon';
+  return 'Evening';
+}
+
 @Component({
   // ... (template omitted, same as before) 
   selector: 'app-dashboard',
@@ -223,10 +230,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getTimeOfDay(): string {
-    const hr = this.currentTime.getHours();
-    if (hr < 12) return 'Morning';
-    if (hr < 18) return 'Afternoon';
-    return 'Evening';
+    return greetingForLocalHour(this.currentTime.getHours());
   }
 
   async loadData() {
