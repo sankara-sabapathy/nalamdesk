@@ -547,6 +547,16 @@ describe('VisitComponent', () => {
         fromQuery.ngOnInit();
         expect(fromQuery.viewMode).toBe(true);
         expect(fromQuery.viewVisitId).toBe(88);
+
+        mockRoute = {
+            params: of({ id: 1 }),
+            queryParams: of({ mode: 'view' }),
+            snapshot: { queryParams: { mode: 'view' } }
+        };
+        const viewWithoutId = new VisitComponent(mockRoute, mockRouter, mockFb, mockNgZone, mockPdfService, mockDataService, mockAuthService);
+        viewWithoutId.ngOnInit();
+        expect(viewWithoutId.viewMode).toBe(true);
+        expect(viewWithoutId.viewVisitId).toBeNull();
     });
 
     it('clears view mode when the same visit route is reused without view query params', async () => {
@@ -599,6 +609,39 @@ describe('VisitComponent', () => {
         expect(reused.viewVisitId).toBe(88);
         expect(reused.viewedVisit).toEqual(expect.objectContaining({ diagnosis: 'Flu' }));
         expect(reused.canEditChart).toBe(false);
+    });
+
+    it('prints via PdfService and skips download when no visit snapshot is loaded', async () => {
+        component.patient = { id: 1, name: 'John', age: 30, gender: 'Male' };
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getPublicSettings') return Promise.resolve({ doctor_name: 'Dr. Clinic', license_key: 'LIC-9' });
+            return Promise.resolve(null);
+        });
+        mockAuthService.getUser.mockReturnValue({});
+
+        await component.printPrescription();
+        expect(mockPdfService.generatePrescription).toHaveBeenCalled();
+
+        mockPdfService.generatePrescription.mockClear();
+        component.viewedVisit = null;
+        await component.downloadVisitPdf();
+        expect(mockPdfService.generatePrescription).not.toHaveBeenCalled();
+    });
+
+    it('surfaces an error when the viewed visit id is missing from history', async () => {
+        component.patientId = 1;
+        component.viewMode = true;
+        component.viewVisitId = 99;
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getVisits') return Promise.resolve([{ id: 42, status: 'finished', diagnosis: 'Other' }]);
+            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
+            if (method === 'getVitals') return Promise.resolve({});
+            return Promise.resolve(null);
+        });
+        await component.loadData();
+        expect(component.viewedVisit).toBeNull();
+        expect(component.consultationLoadError).toContain('Could not load this visit');
+        expect(component.canEditChart).toBe(false);
     });
 
     it('downloads a PDF from the loaded visit snapshot, not the empty form', async () => {
