@@ -221,6 +221,14 @@ describe('SettingsComponent Validation', () => {
         expect(component.appVersion).not.toBe('v0.0.0');
     });
 
+    it('falls back to a blank footer when display and version are empty', async () => {
+        component.isElectron = true;
+        component.appVersion = 'stale';
+        (window as any).electron = { getAppVersion: vi.fn(async () => ({ display: '', version: '' })) };
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('');
+    });
+
     it('keeps a blank footer when packaged version IPC fails', async () => {
         const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
         component.isElectron = true;
