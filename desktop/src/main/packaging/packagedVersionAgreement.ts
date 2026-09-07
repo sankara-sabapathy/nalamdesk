@@ -30,10 +30,10 @@ export function assertPackagedVersionAgreement(input: PackagedVersionAgreementIn
         throw new Error(`build-identity.json version ${identity.version} does not match package.json ${version}`);
     }
 
-    const displayed = input.displayedVersion
-        || displayedVersionFromManifest(version, identity, false);
-    if (!displayed.startsWith(version)) {
-        throw new Error(`Displayed version ${JSON.stringify(displayed)} does not start with manifest ${version}`);
+    const expectedDisplayed = displayedVersionFromManifest(version, identity, false);
+    const displayed = input.displayedVersion ?? expectedDisplayed;
+    if (displayed !== expectedDisplayed) {
+        throw new Error(`Displayed version ${JSON.stringify(displayed)} does not match expected ${expectedDisplayed}`);
     }
 
     if (platform === 'linux') {

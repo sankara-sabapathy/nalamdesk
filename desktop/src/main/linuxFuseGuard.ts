@@ -65,7 +65,7 @@ APPIMAGE="$DIR/${input.appImageFileName}"
 if [ -e /lib/x86_64-linux-gnu/libfuse.so.2 ] || [ -e /usr/lib/x86_64-linux-gnu/libfuse.so.2 ] || [ -e /lib/libfuse.so.2 ] || [ -e /usr/lib/libfuse.so.2 ] || [ -e /lib64/libfuse.so.2 ] || [ -e /usr/lib64/libfuse.so.2 ]; then
   exec "$APPIMAGE" "$@"
 fi
-printf '%s\\n' ${quotedMessage} >&2
+printf '%b\\n' ${quotedMessage} >&2
 exit 1
 `;
 }

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
     appImageFuseGuardScript,
@@ -32,6 +33,12 @@ describe('Linux FUSE / .deb clinic path', () => {
         expect(script).toContain('NalamDesk-0.0.8.AppImage');
         expect(script).toContain('libfuse.so.2');
         expect(script).toContain('nalamdesk-desktop_0.0.8_amd64.deb');
+        expect(script).toContain("printf '%b\\n'");
         expect(script).toContain('exit 1');
+
+        const printfLine = script.split('\n').find((line) => line.startsWith('printf '));
+        expect(printfLine).toBeTruthy();
+        const output = execFileSync('sh', ['-c', printfLine!.replace(/\s*>&2\s*$/, '')], { encoding: 'utf8' });
+        expect(output).toMatch(/Install the clinic \.deb package instead:\n {2}sudo apt install \.\/nalamdesk-desktop_0\.0\.8_amd64\.deb\n/);
     });
 });

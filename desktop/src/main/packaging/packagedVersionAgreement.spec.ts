@@ -51,6 +51,16 @@ describe('packaged version agreement', () => {
         })).toThrow(/Displayed version/);
     });
 
+    it('rejects a displayed version with a mismatched commit suffix', () => {
+        expect(() => assertPackagedVersionAgreement({
+            version: '0.0.8',
+            identity: { version: '0.0.8', commit: 'abc1234def' },
+            artifactNames: ['nalamdesk-desktop_0.0.8_amd64.deb'],
+            platform: 'linux',
+            displayedVersion: '0.0.8 (development, deadbeef)'
+        })).toThrow(/does not match expected 0\.0\.8 \(abc1234\)/);
+    });
+
     it('requires a versioned artifact on macOS/Windows without redesigning those targets', () => {
         expect(() => assertPackagedVersionAgreement({
             version: '0.0.8',

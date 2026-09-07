@@ -865,6 +865,8 @@ ipcMain.handle('drive:isAuthenticated', () => {
 });
 
 ipcMain.handle('drive:backup', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     try {
         const dbPath = securityService.getDbPath();
         if (!dbPath) throw new Error('DB not open');
@@ -879,6 +881,8 @@ ipcMain.handle('drive:backup', async () => {
 });
 
 ipcMain.handle('drive:restore', async (_, fileId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     try {
         return await runDriveRestore({
             gate: restoreOperationGate,
@@ -897,6 +901,8 @@ ipcMain.handle('drive:restore', async (_, fileId) => {
 });
 
 ipcMain.handle('drive:listBackups', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     try {
         return await googleDriveService.listBackups();
     } catch (e) {
@@ -941,6 +947,8 @@ ipcMain.handle('backup:useDefaultPath', async () => {
 });
 
 ipcMain.handle('backup:runNow', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     // Manual trigger for testing
     console.log('[Main] Manual backup triggered via IPC');
     await backupService.performBackup();
@@ -948,6 +956,8 @@ ipcMain.handle('backup:runNow', async () => {
 });
 
 ipcMain.handle('backup:listSystemBackups', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     return backupService.listSystemBackups();
 });
 

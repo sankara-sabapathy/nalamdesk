@@ -52,7 +52,7 @@ npm run dist:linux   # Linux .deb (primary clinic artifact) + AppImage (secondar
 Linux clinic install is the `.deb`:
 
 ```bash
-sudo apt install ./nalamdesk-desktop_<version>_amd64.deb
+sudo apt install ./nalamdesk-desktop_*_amd64.deb
 ```
 
 The AppImage requires FUSE 2 (`libfuse.so.2`). If FUSE is missing, use `run-nalamdesk-appimage.sh` (fails with an actionable `.deb` message) or install the `.deb`. Do not document or use squashfs extract / `--appimage-extract` as an install path.
