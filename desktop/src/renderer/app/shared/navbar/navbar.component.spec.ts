@@ -30,7 +30,7 @@ describe('NavbarComponent', () => {
         mockRouter = { navigate: vi.fn() };
         mockNgZone = { run: vi.fn((fn) => fn()) };
         mockDataService = { invoke: vi.fn().mockReturnValue(Promise.resolve({ clinic_name: 'Test Clinic' })) };
-        mockAuthService = { getUser: vi.fn().mockReturnValue({ name: 'Dr. Test', role: 'doctor' }), logout: vi.fn() };
+        mockAuthService = { getUser: vi.fn().mockReturnValue({ name: 'Dr. Test', role: 'doctor' }), logout: vi.fn().mockResolvedValue(undefined) };
         mockRuntimeService = {
             init: vi.fn().mockResolvedValue(undefined),
             lanAccessUrl: '',
@@ -65,10 +65,21 @@ describe('NavbarComponent', () => {
         expect(component.isMobileMenuOpen).toBe(false);
     });
 
-    it('should logout through AuthService', () => {
-        component.logout();
+    it('should logout through AuthService', async () => {
+        await component.logout();
         expect(mockAuthService.logout).toHaveBeenCalled();
         expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('swallows logout rejection without navigating or clearing session', async () => {
+        mockAuthService.logout.mockRejectedValue(new Error('IPC Error'));
+        localStorage.setItem('nalamdesk_user', JSON.stringify({ id: 1, name: 'Dr. Test' }));
+        localStorage.setItem('nalamdesk_token', 'test-token');
+        await expect(component.logout()).resolves.toBeUndefined();
+        expect(mockAuthService.logout).toHaveBeenCalled();
+        expect(mockRouter.navigate).not.toHaveBeenCalled();
+        expect(localStorage.getItem('nalamdesk_user')).toBeTruthy();
+        expect(localStorage.getItem('nalamdesk_token')).toBe('test-token');
     });
 
     it('should load clinic name on init', async () => {

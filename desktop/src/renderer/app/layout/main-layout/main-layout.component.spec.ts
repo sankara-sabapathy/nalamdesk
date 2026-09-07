@@ -13,7 +13,7 @@ describe('MainLayoutComponent', () => {
 
     beforeEach(() => {
         mockAuthService = {
-            logout: vi.fn(),
+            logout: vi.fn().mockResolvedValue(undefined),
             getUser: vi.fn().mockReturnValue({ name: 'Dr. Test', role: 'doctor' })
         };
 
@@ -65,9 +65,21 @@ describe('MainLayoutComponent', () => {
         expect(mockCheckbox.nativeElement.checked).toBe(false);
     });
 
-    it('should logout', () => {
-        component.logout();
+    it('should logout', async () => {
+        await component.logout();
         expect(mockAuthService.logout).toHaveBeenCalled();
+        expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
+    it('swallows logout rejection without navigating or clearing session', async () => {
+        mockAuthService.logout.mockRejectedValue(new Error('IPC Error'));
+        localStorage.setItem('nalamdesk_user', JSON.stringify({ id: 1, name: 'Dr. Test' }));
+        localStorage.setItem('nalamdesk_token', 'test-token');
+        await expect(component.logout()).resolves.toBeUndefined();
+        expect(mockAuthService.logout).toHaveBeenCalled();
+        expect(mockRouter.navigate).not.toHaveBeenCalled();
+        expect(localStorage.getItem('nalamdesk_user')).toBeTruthy();
+        expect(localStorage.getItem('nalamdesk_token')).toBe('test-token');
     });
 
     it('clears the shell error when a child route starts', () => {
