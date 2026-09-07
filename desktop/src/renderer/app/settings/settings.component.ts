@@ -283,14 +283,11 @@ export class SettingsComponent implements OnInit {
   }
 
   async loadAppVersion() {
-    const electron = (globalThis as { electron?: { getAppVersion?: () => Promise<{ display: string }> } }).electron;
-    if (!electron?.getAppVersion) {
-      return;
-    }
+    if (!this.isElectron) return;
     try {
-      const info = await electron.getAppVersion();
+      const info = await window.electron.getAppVersion();
       this.ngZone.run(() => {
-        this.appVersion = info?.display || '';
+        this.appVersion = info?.display || info?.version || '';
       });
     } catch (e) {
       console.error('[Settings] Failed to load packaged app version', e);

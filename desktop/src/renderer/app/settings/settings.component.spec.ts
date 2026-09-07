@@ -188,7 +188,8 @@ describe('SettingsComponent Validation', () => {
 
     it('displays packaged app.getVersion() instead of a hard-coded 0.0.0', async () => {
         expect(component.appVersion).toBe('');
-        (globalThis as any).electron = {
+        component.isElectron = true;
+        (window as any).electron = {
             getAppVersion: vi.fn(async () => ({
                 version: '0.0.8',
                 display: '0.0.8 (abcdef1)',
@@ -201,21 +202,29 @@ describe('SettingsComponent Validation', () => {
         await component.loadAppVersion();
         expect(component.appVersion).toBe('0.0.8 (abcdef1)');
         expect(component.appVersion).not.toBe('0.0.0');
+        expect(component.appVersion).not.toBe('v0.0.0');
     });
 
-    it('leaves the footer empty when version IPC is missing or returns no display', async () => {
-        delete (globalThis as any).electron;
+    it('leaves the footer empty when version IPC is unavailable', async () => {
+        component.isElectron = false;
+        delete (window as any).electron;
         await component.loadAppVersion();
         expect(component.appVersion).toBe('');
+    });
 
-        (globalThis as any).electron = { getAppVersion: vi.fn(async () => ({ version: '0.0.8' })) };
+    it('falls back to the IPC version when display is missing', async () => {
+        component.isElectron = true;
+        (window as any).electron = { getAppVersion: vi.fn(async () => ({ version: '0.0.8' })) };
         await component.loadAppVersion();
-        expect(component.appVersion).toBe('');
+        expect(component.appVersion).toBe('0.0.8');
+        expect(component.appVersion).not.toBe('0.0.0');
+        expect(component.appVersion).not.toBe('v0.0.0');
     });
 
     it('keeps a blank footer when packaged version IPC fails', async () => {
         const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        (globalThis as any).electron = {
+        component.isElectron = true;
+        (window as any).electron = {
             getAppVersion: vi.fn(async () => { throw new Error('IPC Error'); })
         };
         component.appVersion = '';
@@ -226,7 +235,8 @@ describe('SettingsComponent Validation', () => {
     });
 
     it('labels a development build from the version IPC', async () => {
-        (globalThis as any).electron = {
+        component.isElectron = true;
+        (window as any).electron = {
             getAppVersion: vi.fn(async () => ({
                 version: '0.0.8',
                 display: '0.0.8 (development)',
@@ -238,5 +248,7 @@ describe('SettingsComponent Validation', () => {
         };
         await component.loadAppVersion();
         expect(component.appVersion).toContain('development');
+        expect(component.appVersion).not.toBe('0.0.0');
+        expect(component.appVersion).not.toBe('v0.0.0');
     });
 });
