@@ -173,5 +173,19 @@ describe('AuthService', () => {
             expect(String(navigate.mock.calls[0][0])).toContain('#/login');
             expect(String(navigate.mock.calls[0][0])).not.toContain('#/settings');
         });
+
+        it('keeps the principal when auth:logout IPC fails', async () => {
+            service['setUser']({ id: 1, username: 'admin', role: 'admin', name: 'Admin' });
+            localStorage.setItem('nalamdesk_token', 'test-token');
+            const logout = vi.fn().mockRejectedValue(new Error('IPC Error'));
+            (window as any).electron = { logout };
+            const navigate = vi.fn();
+            await expect(service.logout(navigate)).rejects.toThrow('IPC Error');
+            expect(service.getUser()).toEqual(expect.objectContaining({
+                id: 1, username: 'admin', role: 'admin', name: 'Admin'
+            }));
+            expect(service.getToken()).toBe('test-token');
+            expect(navigate).not.toHaveBeenCalled();
+        });
     });
 });

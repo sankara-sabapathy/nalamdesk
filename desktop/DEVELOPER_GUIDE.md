@@ -25,7 +25,7 @@ This will:
 
 ## Authentication session boundary
 - Renderer login calls `auth:login`, which sets `SessionService` in the main process.
-- Renderer logout must call `auth:logout`, which runs `SessionService.clearSession()` (via `clearMainProcessSession`).
+- Renderer logout must call `auth:logout`, which runs `SessionService.clearSession()`. If that IPC fails, the renderer must not clear local storage or navigate.
 - Protected IPC is gated on that main-process principal. After logout those handlers fail with `Unauthorized` until a new login.
 - Logout does **not** invent a second `closeDb` / restore-fence path. The device vault stays on the existing unlock contract; only the user principal is cleared.
 - Reloading the window after logout must not restore the prior role: the principal is in-memory only, and the renderer lands on `/#/login`.

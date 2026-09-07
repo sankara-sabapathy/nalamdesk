@@ -5,7 +5,6 @@ import log from 'electron-log';
 
 import { preferLinuxGnomeLibsecret } from './linuxKeyring';
 import { loadAppVersionInfo } from './appVersionInfo';
-import { clearMainProcessSession, requireAuthenticatedPrincipal } from './services/AuthSessionBoundary';
 import { SessionService } from './services/SessionService';
 import { BackupService } from './services/BackupService';
 import { selectRestoreBundle } from './services/BackupFileSelection';
@@ -505,7 +504,9 @@ function handleDb(channel: string, handler: (...args: any[]) => any) {
     ipcMain.handle(channel, async (...args) => databaseService.runWork(() => handler(...args)));
 }
 
-ipcMain.handle('auth:logout', () => clearMainProcessSession(sessionService));
+ipcMain.handle('auth:logout', () => {
+    sessionService.clearSession();
+});
 
 handleDb('auth:login', async (event, credentials) => {
     try {
@@ -754,7 +755,8 @@ handleDb('db:removeFromQueue', (_, id) => {
 
 // Audit IPC Handlers
 handleDb('db:getAuditLogs', (_, limit) => {
-    requireAuthenticatedPrincipal(sessionService);
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     return databaseService.getAuditLogs(limit);
 });
 

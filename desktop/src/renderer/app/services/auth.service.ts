@@ -101,11 +101,7 @@ export class AuthService {
 
     async logout(navigate: (url: string) => void = (url) => { window.location.replace(url); }): Promise<void> {
         if (window.electron?.logout) {
-            try {
-                await window.electron.logout();
-            } catch (e) {
-                console.error('[Auth] main-process logout failed', e);
-            }
+            await window.electron.logout();
         }
         localStorage.removeItem(this.tokenKey);
         localStorage.removeItem(this.userKey);
