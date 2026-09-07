@@ -203,6 +203,28 @@ describe('SettingsComponent Validation', () => {
         expect(component.appVersion).not.toBe('0.0.0');
     });
 
+    it('leaves the footer empty when version IPC is missing or returns no display', async () => {
+        delete (globalThis as any).electron;
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('');
+
+        (globalThis as any).electron = { getAppVersion: vi.fn(async () => ({ version: '0.0.8' })) };
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('');
+    });
+
+    it('keeps a blank footer when packaged version IPC fails', async () => {
+        const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        (globalThis as any).electron = {
+            getAppVersion: vi.fn(async () => { throw new Error('IPC Error'); })
+        };
+        component.appVersion = '';
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('');
+        expect(err).toHaveBeenCalled();
+        err.mockRestore();
+    });
+
     it('labels a development build from the version IPC', async () => {
         (globalThis as any).electron = {
             getAppVersion: vi.fn(async () => ({

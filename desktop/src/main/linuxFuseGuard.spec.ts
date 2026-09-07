@@ -22,6 +22,7 @@ describe('Linux FUSE / .deb clinic path', () => {
         expect(fuseLibraryPresent(() => false)).toBe(false);
         expect(fuseLibraryPresent((file) => file.endsWith('libfuse.so.2') && file.includes('x86_64'))).toBe(true);
         expect(linuxDebFileName('1.2.3', 'arm64')).toBe('nalamdesk-desktop_1.2.3_arm64.deb');
+        expect(typeof fuseLibraryPresent()).toBe('boolean');
     });
 
     it('emits an AppImage guard that fails closed without FUSE', () => {

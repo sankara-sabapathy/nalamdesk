@@ -92,8 +92,19 @@ describe('ElectronSafeStorageDeviceKeyStore', () => {
             expect(isDeviceCryptoFailure('ENCRYPTION_UNAVAILABLE')).toBe(true);
             expect(isDeviceCryptoFailure('DEVICE_UNLOCK_FAILED')).toBe(true);
             expect(isDeviceCryptoFailure('SYSTEM_ERROR')).toBe(false);
+            expect(isDeviceCryptoFailure(undefined)).toBe(false);
+            expect(formatEncryptionUnavailableMessage('darwin'))
+                .toBe('ENCRYPTION_UNAVAILABLE: OS-backed encryption is not available on this device.');
         } finally {
             Object.defineProperty(process, 'platform', { value: originalPlatform });
         }
+    });
+
+    it('omits backend when Electron cannot report the selected store', async () => {
+        safeStorage.getSelectedStorageBackend.mockImplementation(() => {
+            throw new Error('backend unavailable');
+        });
+        const { ElectronSafeStorageDeviceKeyStore } = await import('./DeviceKeyStore');
+        expect(new ElectronSafeStorageDeviceKeyStore().status().backend).toBeUndefined();
     });
 });

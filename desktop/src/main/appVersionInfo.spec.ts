@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     formatAppVersionDisplay,
     loadAppVersionInfo,
+    readBuildIdentityFile,
     resolveAppVersionInfo,
     shortCommit
 } from './appVersionInfo';
@@ -48,5 +49,14 @@ describe('app version display', () => {
         expect(info.version).toBe('0.0.8');
         expect(info.display).toBe('0.0.8');
         expect(identityPath.endsWith('build-identity.json')).toBe(true);
+    });
+
+    it('returns parsed identity objects and rejects non-objects', () => {
+        expect(readBuildIdentityFile('identity.json', () => JSON.stringify({
+            version: '0.0.8',
+            commit: 'abcdef1'
+        }))).toEqual({ version: '0.0.8', commit: 'abcdef1' });
+        expect(readBuildIdentityFile('identity.json', () => 'null')).toBeNull();
+        expect(readBuildIdentityFile('identity.json', () => '"not-an-object"')).toBeNull();
     });
 });
