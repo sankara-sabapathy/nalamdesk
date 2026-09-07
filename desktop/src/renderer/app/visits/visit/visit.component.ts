@@ -297,7 +297,6 @@ export class VisitComponent implements OnInit {
   viewMode = false;
   viewVisitId: number | null = null;
   viewedVisit: Visit | null = null;
-  private pendingNavState: Record<string, any> | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -310,7 +309,6 @@ export class VisitComponent implements OnInit {
   ) {
     const nav = this.router.getCurrentNavigation();
     const state = nav?.extras?.state || {};
-    this.pendingNavState = state;
     if (state['isConsulting']) {
       this.isConsulting = true;
     }
@@ -333,7 +331,7 @@ export class VisitComponent implements OnInit {
     this.currentUser = this.authService.getUser();
     combineLatest([this.route.params, this.route.queryParams]).subscribe(([params, queryParams]) => {
       this.patientId = +params['id'];
-      this.applyViewIntent(queryParams, true);
+      this.applyViewIntent(queryParams);
       this.loadData();
     });
   }
@@ -693,36 +691,14 @@ export class VisitComponent implements OnInit {
     return { ...this.visitForm.value };
   }
 
-  private applyViewIntent(source: Record<string, any> | null | undefined, replace = false) {
-    if (replace) {
-      const query = source || {};
-      const hasQueryIntent = query['mode'] != null || (query['visitId'] != null && query['visitId'] !== '');
-      if (hasQueryIntent) {
-        this.viewMode = query['mode'] === 'view';
-        this.viewVisitId = this.viewMode && query['visitId'] != null && query['visitId'] !== ''
-          ? Number(query['visitId'])
-          : null;
-        this.pendingNavState = null;
-      } else if (this.pendingNavState && (this.pendingNavState['mode'] === 'view' || this.pendingNavState['visitId'] != null)) {
-        const state = this.pendingNavState;
-        this.pendingNavState = null;
-        this.viewMode = state['mode'] === 'view';
-        const stateVisitId = state['visitId'];
-        this.viewVisitId = this.viewMode && stateVisitId != null && stateVisitId !== ''
-          ? Number(stateVisitId)
-          : null;
-      } else {
-        this.viewMode = false;
-        this.viewVisitId = null;
-        this.pendingNavState = null;
-      }
-      if (!this.viewMode) this.viewedVisit = null;
-      return;
-    }
-    if (!source) return;
-    if (source['mode'] === 'view') this.viewMode = true;
-    const visitId = source['visitId'];
-    if (visitId != null && visitId !== '') this.viewVisitId = Number(visitId);
+  private applyViewIntent(source: Record<string, any> | null | undefined) {
+    const isViewMode = source?.['mode'] === 'view';
+    const visitId = source?.['visitId'];
+    this.viewMode = isViewMode;
+    this.viewVisitId = isViewMode && visitId != null && visitId !== ''
+      ? Number(visitId)
+      : null;
+    if (!isViewMode) this.viewedVisit = null;
   }
 
   private async loadFinishedVisitView() {

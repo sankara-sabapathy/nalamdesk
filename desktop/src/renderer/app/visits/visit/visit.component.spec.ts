@@ -558,6 +558,7 @@ describe('VisitComponent', () => {
         await Promise.resolve();
         expect(reused.viewMode).toBe(true);
         expect(reused.viewVisitId).toBe(42);
+        reused.viewedVisit = { id: 42, diagnosis: 'Headache' } as any;
 
         query$.next({});
         await Promise.resolve();
@@ -565,6 +566,8 @@ describe('VisitComponent', () => {
         expect(reused.viewVisitId).toBeNull();
         expect(reused.viewedVisit).toBeNull();
         expect(reused.isViewMode).toBe(false);
+        expect(reused.canEditChart).toBe(false);
+        expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'getActiveConsultation')).toBe(true);
         expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'beginConsultation')).toBe(false);
     });
 
