@@ -40,6 +40,13 @@ export function hashUrlForPathname(pathname: string, search = ''): string | null
     return `/#${path}${search || ''}`;
 }
 
+/** Logout must not reload the previous hash route (e.g. #/settings). */
+export function logoutLandingHref(currentHref: string): string {
+    const url = new URL(currentHref);
+    url.hash = '#/login';
+    return url.toString();
+}
+
 export function rewriteNonHashAppPath(loc: {
     pathname: string;
     hash: string;

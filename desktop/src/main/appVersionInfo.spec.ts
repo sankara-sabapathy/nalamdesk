@@ -1,0 +1,52 @@
+import { describe, expect, it } from 'vitest';
+import {
+    formatAppVersionDisplay,
+    loadAppVersionInfo,
+    resolveAppVersionInfo,
+    shortCommit
+} from './appVersionInfo';
+
+describe('app version display', () => {
+    it('labels development builds and never uses a hard-coded 0.0.0', () => {
+        expect(formatAppVersionDisplay({ version: '0.0.8', isDev: true })).toBe('0.0.8 (development)');
+        expect(formatAppVersionDisplay({
+            version: '0.0.8',
+            isDev: true,
+            commit: 'abcdef1234567890'
+        })).toBe('0.0.8 (development, abcdef1)');
+        expect(formatAppVersionDisplay({ version: '0.0.8', isDev: false })).toBe('0.0.8');
+        expect(formatAppVersionDisplay({
+            version: '0.0.8',
+            isDev: false,
+            commit: 'abcdef1234567890'
+        })).toBe('0.0.8 (abcdef1)');
+    });
+
+    it('reads packaged app.getVersion() plus embedded commit/build id', () => {
+        const info = resolveAppVersionInfo({
+            version: '0.0.8',
+            isPackaged: true,
+            isDev: false,
+            identity: { version: '0.0.8', commit: 'deadbeefcafebabe', buildId: '12345' }
+        });
+        expect(info.version).toBe('0.0.8');
+        expect(info.packaged).toBe(true);
+        expect(info.isDev).toBe(false);
+        expect(info.commit).toBe('deadbeefcafebabe');
+        expect(info.buildId).toBe('12345');
+        expect(info.display).toBe('0.0.8 (deadbee)');
+        expect(shortCommit('deadbeefcafebabe')).toBe('deadbee');
+    });
+
+    it('loads identity from the packaged app path', () => {
+        const identityPath = '/tmp/nalamdesk-app/build-identity.json';
+        const info = loadAppVersionInfo({
+            getVersion: () => '0.0.8',
+            isPackaged: true,
+            getAppPath: () => '/tmp/nalamdesk-app'
+        }, false);
+        expect(info.version).toBe('0.0.8');
+        expect(info.display).toBe('0.0.8');
+        expect(identityPath.endsWith('build-identity.json')).toBe(true);
+    });
+});

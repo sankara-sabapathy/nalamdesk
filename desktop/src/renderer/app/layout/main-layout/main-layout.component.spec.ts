@@ -68,7 +68,6 @@ describe('MainLayoutComponent', () => {
     it('should logout', () => {
         component.logout();
         expect(mockAuthService.logout).toHaveBeenCalled();
-        expect(mockRouter.navigate).toHaveBeenCalledWith(['/login']);
     });
 
     it('clears the shell error when a child route starts', () => {

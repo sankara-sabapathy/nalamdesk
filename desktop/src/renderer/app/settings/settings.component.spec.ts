@@ -185,4 +185,36 @@ describe('SettingsComponent Validation', () => {
         expect((window as any).electron.backup.selectRestoreBundle).not.toHaveBeenCalled();
         expect((window as any).electron.restoreSystemBackup).not.toHaveBeenCalled();
     });
+
+    it('displays packaged app.getVersion() instead of a hard-coded 0.0.0', async () => {
+        expect(component.appVersion).toBe('');
+        (globalThis as any).electron = {
+            getAppVersion: vi.fn(async () => ({
+                version: '0.0.8',
+                display: '0.0.8 (abcdef1)',
+                isDev: false,
+                packaged: true,
+                commit: 'abcdef123',
+                buildId: '99'
+            }))
+        };
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('0.0.8 (abcdef1)');
+        expect(component.appVersion).not.toBe('0.0.0');
+    });
+
+    it('labels a development build from the version IPC', async () => {
+        (globalThis as any).electron = {
+            getAppVersion: vi.fn(async () => ({
+                version: '0.0.8',
+                display: '0.0.8 (development)',
+                isDev: true,
+                packaged: false,
+                commit: null,
+                buildId: null
+            }))
+        };
+        await component.loadAppVersion();
+        expect(component.appVersion).toContain('development');
+    });
 });

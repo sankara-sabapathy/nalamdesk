@@ -65,6 +65,12 @@ describe('NavbarComponent', () => {
         expect(component.isMobileMenuOpen).toBe(false);
     });
 
+    it('should logout through AuthService', () => {
+        component.logout();
+        expect(mockAuthService.logout).toHaveBeenCalled();
+        expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
     it('should load clinic name on init', async () => {
         // ngOnInit calls loadSettings (async but not awaited)
         component.ngOnInit();

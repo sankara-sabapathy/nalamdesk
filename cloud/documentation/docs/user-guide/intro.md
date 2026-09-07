@@ -8,6 +8,7 @@ Welcome to the NalamDesk User Guide. This section is designed to help Doctors, R
 
 ## Getting Started
 
+- **Install**: Windows `.exe`, macOS `.dmg`, or Linux **`.deb`** (`sudo apt install ./nalamdesk-desktop_*_amd64.deb`). The AppImage is secondary and needs FUSE 2; do not extract it.
 - **[Initial Setup](./initial-setup.md)**: Step-by-step guide to initializing your secure Vault.
 - **[Admin Management](./admin-management.md)**: Learn how to set up the clinic, manage users, and configure backups.
 - **[Clinic Operations](./clinic-operations.md)**: A guide to daily workflows like patient registration, queue management, and consultations.

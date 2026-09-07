@@ -25,6 +25,8 @@ NalamDesk uses a secure, local-first hybrid desktop architecture designed for re
     - Native System Integrations (File System, Dialogs).
     - Auto-updates (electron-updater).
     - Spawning the background component calls.
+    - Linux `gnome-libsecret` password-store switch at process start.
+    - Authenticated desktop session (`SessionService`); `auth:logout` clears the principal.
 
 ### 2. Local API Server (Fastify)
 - **Entry Point**: `src/main/server.ts`

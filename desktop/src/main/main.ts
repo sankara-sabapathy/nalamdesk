@@ -3,6 +3,9 @@ import * as path from 'path';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 
+import { preferLinuxGnomeLibsecret } from './linuxKeyring';
+import { loadAppVersionInfo } from './appVersionInfo';
+import { clearMainProcessSession, requireAuthenticatedPrincipal } from './services/AuthSessionBoundary';
 import { SessionService } from './services/SessionService';
 import { BackupService } from './services/BackupService';
 import { selectRestoreBundle } from './services/BackupFileSelection';
@@ -11,7 +14,7 @@ import { runDriveRestore } from './services/DriveRestore';
 import { requireExistingRestoreAuthorization } from './services/RestoreAuthorization';
 import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
-import { ElectronSafeStorageDeviceKeyStore } from './services/DeviceKeyStore';
+import { ElectronSafeStorageDeviceKeyStore, isDeviceCryptoFailure } from './services/DeviceKeyStore';
 import { DatabaseService } from './services/DatabaseService';
 import { GoogleDriveService } from './services/GoogleDriveService';
 import { CloudSyncService } from './services/CloudSyncService';
@@ -32,6 +35,9 @@ import {
 } from '../shared/runtime-config';
 
 import { session } from 'electron';
+
+// Linux: force gnome-libsecret before Chromium/OSCrypt picks basic_text.
+preferLinuxGnomeLibsecret(app.commandLine);
 
 // Dev isolation: separate userData dir and API port from installed NalamDesk (Mac/Windows).
 const isDev = isDevRuntime(app.isPackaged);
@@ -106,6 +112,8 @@ ipcMain.handle('utils:getRuntimeInfo', () => ({
     isDev,
     appName: app.getName(),
 }));
+
+ipcMain.handle('app:getVersion', () => loadAppVersionInfo(app, isDev));
 
 // Services
 const securityService = new SecurityService(new ElectronSafeStorageDeviceKeyStore());
@@ -455,7 +463,7 @@ async function tryUnlockDatabase(legacySecret: string): Promise<{ error?: string
     } catch (e: any) {
         if (e.message === 'NOT_SETUP') return { error: 'SETUP_REQUIRED' };
         if (e.message === 'INVALID_LEGACY_CREDENTIAL') return { error: 'INVALID_CREDENTIALS' };
-        if (['ENCRYPTION_UNAVAILABLE', 'INSECURE_LINUX_BACKEND', 'DEVICE_UNLOCK_FAILED'].includes(e.message)) {
+        if (isDeviceCryptoFailure(e.message)) {
             return { error: 'RECOVERY_REQUIRED' };
         }
         if (e.message === 'VAULT_BINDING_MISMATCH') return { error: 'VAULT_BINDING_MISMATCH' };
@@ -496,6 +504,8 @@ async function handleAdminLogin(password: string): Promise<{ success: boolean; u
 function handleDb(channel: string, handler: (...args: any[]) => any) {
     ipcMain.handle(channel, async (...args) => databaseService.runWork(() => handler(...args)));
 }
+
+ipcMain.handle('auth:logout', () => clearMainProcessSession(sessionService));
 
 handleDb('auth:login', async (event, credentials) => {
     try {
@@ -743,7 +753,10 @@ handleDb('db:removeFromQueue', (_, id) => {
 });
 
 // Audit IPC Handlers
-handleDb('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));
+handleDb('db:getAuditLogs', (_, limit) => {
+    requireAuthenticatedPrincipal(sessionService);
+    return databaseService.getAuditLogs(limit);
+});
 
 // Cloud IPC Handlers
 // Cloud IPC Handlers

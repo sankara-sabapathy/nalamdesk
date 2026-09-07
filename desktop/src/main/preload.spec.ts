@@ -20,6 +20,15 @@ describe('preload bridge surface', () => {
         api = electron.exposeInMainWorld.mock.calls[0][1];
     });
 
+    it('exposes logout and packaged version IPC without a filesystem bridge', async () => {
+        expect(api.logout).toEqual(expect.any(Function));
+        expect(api.getAppVersion).toEqual(expect.any(Function));
+        await api.logout();
+        await api.getAppVersion();
+        expect(electron.invoke).toHaveBeenCalledWith('auth:logout');
+        expect(electron.invoke).toHaveBeenCalledWith('app:getVersion');
+    });
+
     it('exposes picker-based backup restore without raw filesystem access', async () => {
         expect(api.fs).toBeUndefined();
         expect(api.backup.readFile).toBeUndefined();

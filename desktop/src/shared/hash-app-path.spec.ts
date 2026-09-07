@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { hashUrlForPathname, isHashSpaAppPath, rewriteNonHashAppPath } from './hash-app-path';
+import { hashUrlForPathname, isHashSpaAppPath, logoutLandingHref, rewriteNonHashAppPath } from './hash-app-path';
 
 describe('hash SPA path rewrite', () => {
     it('rewrites /settings to /#/settings', () => {
@@ -37,6 +37,13 @@ describe('hash SPA path rewrite', () => {
             pathname: '/settings', hash: '', search: '', replace
         })).toBe(true);
         expect(replace).toHaveBeenCalledWith('/#/settings');
+    });
+
+    it('sends logout to hash login without keeping settings or recover', () => {
+        expect(logoutLandingHref('file:///opt/NalamDesk/index.html#/settings'))
+            .toBe('file:///opt/NalamDesk/index.html#/login');
+        expect(logoutLandingHref('http://127.0.0.1:4200/#/recover?x=1'))
+            .toBe('http://127.0.0.1:4200/#/login');
     });
 
     it('leaves an existing hash session untouched', () => {

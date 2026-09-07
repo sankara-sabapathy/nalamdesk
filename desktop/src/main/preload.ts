@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 console.log('Preload script loaded!');
 contextBridge.exposeInMainWorld('electron', {
     login: (credentials: { username: string; password: string }) => ipcRenderer.invoke('auth:login', credentials),
+    logout: () => ipcRenderer.invoke('auth:logout'),
+    getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
     checkSetup: () => ipcRenderer.invoke('auth:checkSetup'),
     getRecoveryStatus: () => ipcRenderer.invoke('auth:getRecoveryStatus'),
     restoreSystemBackup: (request: { path: string; recoveryCode: string; currentAdminPassword?: string }) => ipcRenderer.invoke('auth:restoreSystemBackup', request),

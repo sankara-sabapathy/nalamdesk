@@ -11,6 +11,7 @@
   "include": [
     "src/test-setup.ts",
     "src/renderer/**/*.spec.ts",
-    "src/renderer/**/*.d.ts"
+    "src/renderer/**/*.d.ts",
+    "src/shared/hash-app-path.ts"
   ]
 }

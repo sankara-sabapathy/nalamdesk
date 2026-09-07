@@ -721,7 +721,7 @@ export class SecurityService {
 
     private assertDeviceStoreAvailable(): void {
         const status = this.deviceKeyStore.status();
-        if (!status.available) throw new Error(status.reason || 'DEVICE_KEY_UNAVAILABLE');
+        if (!status.available) throw new Error(status.message || status.reason || 'DEVICE_KEY_UNAVAILABLE');
     }
 
     private loadConfigV3(): SecurityConfigV3 {

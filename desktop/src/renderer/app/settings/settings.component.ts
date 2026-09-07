@@ -34,7 +34,7 @@ export class SettingsComponent implements OnInit {
   // Filter State
   staffFilter = 'all';
 
-  appVersion = '0.0.0';
+  appVersion = '';
 
   // General Settings
   settings = {
@@ -271,6 +271,7 @@ export class SettingsComponent implements OnInit {
   ngOnInit() {
     this.currentUser = this.authService.getUser();
     this.loadSettings();
+    this.loadAppVersion();
     if (this.isElectron) {
       this.listBackups();
       this.checkDriveStatus();
@@ -278,6 +279,21 @@ export class SettingsComponent implements OnInit {
     }
     if (this.currentUser?.role === 'admin') {
       this.loadUsers();
+    }
+  }
+
+  async loadAppVersion() {
+    const electron = (globalThis as { electron?: { getAppVersion?: () => Promise<{ display: string }> } }).electron;
+    if (!electron?.getAppVersion) {
+      return;
+    }
+    try {
+      const info = await electron.getAppVersion();
+      this.ngZone.run(() => {
+        this.appVersion = info?.display || '';
+      });
+    } catch (e) {
+      console.error('[Settings] Failed to load packaged app version', e);
     }
   }
 

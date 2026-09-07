@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import { logoutLandingHref } from '../../../shared/hash-app-path';
 
 @Injectable({
     providedIn: 'root'
@@ -98,10 +99,17 @@ export class AuthService {
         return window.electron.rotateDeviceEnvelope(currentPassword);
     }
 
-    logout() {
+    async logout(navigate: (url: string) => void = (url) => { window.location.replace(url); }): Promise<void> {
+        if (window.electron?.logout) {
+            try {
+                await window.electron.logout();
+            } catch (e) {
+                console.error('[Auth] main-process logout failed', e);
+            }
+        }
         localStorage.removeItem(this.tokenKey);
         localStorage.removeItem(this.userKey);
-        window.location.reload();
+        navigate(logoutLandingHref(window.location.href));
     }
 
     getUser() {
