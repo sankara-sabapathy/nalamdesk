@@ -6,7 +6,7 @@ import { describe, xdescribe, it, expect, vi, beforeEach } from 'vitest';
 import { VisitComponent } from './visit.component';
 import { DataService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 
 // Mock services
 vi.mock('../../services/api.service');
@@ -35,7 +35,7 @@ describe('VisitComponent', () => {
     let mockAuthService: any;
 
     beforeEach(() => {
-        mockRoute = { params: of({ id: 1 }), snapshot: { queryParams: {} } };
+        mockRoute = { params: of({ id: 1 }), queryParams: of({}), snapshot: { queryParams: {} } };
         mockRouter = {
             navigate: vi.fn(),
             getCurrentNavigation: vi.fn().mockReturnValue({ extras: { state: {} } })
@@ -538,10 +538,64 @@ describe('VisitComponent', () => {
         expect(fromState.viewMode).toBe(true);
         expect(fromState.viewVisitId).toBe(42);
 
-        mockRoute.snapshot = { queryParams: { visitId: '88', mode: 'view' } };
-        component.ngOnInit();
-        expect(component.viewMode).toBe(true);
-        expect(component.viewVisitId).toBe(88);
+        mockRoute = {
+            params: of({ id: 1 }),
+            queryParams: of({ visitId: '88', mode: 'view' }),
+            snapshot: { queryParams: { visitId: '88', mode: 'view' } }
+        };
+        const fromQuery = new VisitComponent(mockRoute, mockRouter, mockFb, mockNgZone, mockPdfService, mockDataService, mockAuthService);
+        fromQuery.ngOnInit();
+        expect(fromQuery.viewMode).toBe(true);
+        expect(fromQuery.viewVisitId).toBe(88);
+    });
+
+    it('clears view mode when the same visit route is reused without view query params', async () => {
+        const params$ = new BehaviorSubject({ id: 1 });
+        const query$ = new BehaviorSubject<Record<string, any>>({ visitId: '42', mode: 'view' });
+        mockRoute = { params: params$, queryParams: query$, snapshot: { queryParams: query$.value } };
+        const reused = new VisitComponent(mockRoute, mockRouter, mockFb, mockNgZone, mockPdfService, mockDataService, mockAuthService);
+        reused.ngOnInit();
+        await Promise.resolve();
+        expect(reused.viewMode).toBe(true);
+        expect(reused.viewVisitId).toBe(42);
+
+        query$.next({});
+        await Promise.resolve();
+        expect(reused.viewMode).toBe(false);
+        expect(reused.viewVisitId).toBeNull();
+        expect(reused.viewedVisit).toBeNull();
+        expect(reused.isViewMode).toBe(false);
+        expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'beginConsultation')).toBe(false);
+    });
+
+    it('updates the viewed visit when query visitId changes on the reused route', async () => {
+        const params$ = new BehaviorSubject({ id: 1 });
+        const query$ = new BehaviorSubject<Record<string, any>>({ visitId: '42', mode: 'view' });
+        mockRoute = { params: params$, queryParams: query$, snapshot: { queryParams: query$.value } };
+        const visits = [
+            { id: 42, status: 'finished', diagnosis: 'Headache', prescription: [], amount_paid: 100 },
+            { id: 88, status: 'finished', diagnosis: 'Flu', prescription: [{ medicine: 'Azithro' }], amount_paid: 200 }
+        ];
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getVisits') return Promise.resolve(visits);
+            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'John' }]);
+            if (method === 'getVitals') return Promise.resolve({});
+            return Promise.resolve(null);
+        });
+        const reused = new VisitComponent(mockRoute, mockRouter, mockFb, mockNgZone, mockPdfService, mockDataService, mockAuthService);
+        reused.ngOnInit();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(reused.viewVisitId).toBe(42);
+        expect(reused.viewedVisit).toEqual(expect.objectContaining({ diagnosis: 'Headache' }));
+
+        query$.next({ visitId: '88', mode: 'view' });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(reused.viewMode).toBe(true);
+        expect(reused.viewVisitId).toBe(88);
+        expect(reused.viewedVisit).toEqual(expect.objectContaining({ diagnosis: 'Flu' }));
+        expect(reused.canEditChart).toBe(false);
     });
 
     it('downloads a PDF from the loaded visit snapshot, not the empty form', async () => {
