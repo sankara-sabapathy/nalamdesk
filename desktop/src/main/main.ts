@@ -825,6 +825,8 @@ handleDb('db:saveAppointment', (_, appt) => {
 
 // Drive IPC Handlers
 handleDb('drive:authenticate', async (_, { clientId, clientSecret }) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     if (!mainWindow) return { success: false, error: 'Main window not found' };
     try {
         // Configure credentials first
@@ -849,6 +851,8 @@ handleDb('drive:authenticate', async (_, { clientId, clientSecret }) => {
 });
 
 handleDb('drive:disconnect', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     try {
         googleDriveService.setCredentials(null);
         databaseService.saveSettings({ drive_tokens: '' });
