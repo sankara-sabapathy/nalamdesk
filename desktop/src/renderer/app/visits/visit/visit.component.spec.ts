@@ -35,7 +35,7 @@ describe('VisitComponent', () => {
     let mockAuthService: any;
 
     beforeEach(() => {
-        mockRoute = { params: of({ id: 1 }) };
+        mockRoute = { params: of({ id: 1 }), snapshot: { queryParams: {} } };
         mockRouter = {
             navigate: vi.fn(),
             getCurrentNavigation: vi.fn().mockReturnValue({ extras: { state: {} } })
@@ -482,6 +482,114 @@ describe('VisitComponent', () => {
         component.resetForm();
         expect(component.editingVisitId).toBeNull();
         expect(component.canEditChart).toBe(false);
+    });
+
+    it('loads a finished visit in view mode without starting a consult', async () => {
+        component.patientId = 1;
+        component.viewMode = true;
+        component.viewVisitId = 42;
+        const finished = {
+            id: 42,
+            status: 'finished',
+            symptoms: 'Headache for 2 days',
+            examination_notes: 'BP 120/80',
+            diagnosis: 'Tension headache',
+            diagnosis_type: 'Final',
+            prescription: [{ medicine: 'Paracetamol', frequency: 'SOS' }],
+            amount_paid: 300
+        };
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getVisits') return Promise.resolve([finished]);
+            if (method === 'getPatients') return Promise.resolve([{ id: 1, name: 'Clinical Tester Sep2' }]);
+            if (method === 'getVitals') return Promise.resolve({ pulse: 72 });
+            return Promise.resolve(null);
+        });
+
+        await component.loadData();
+
+        expect(component.patient).toEqual({ id: 1, name: 'Clinical Tester Sep2' });
+        expect(component.viewedVisit).toEqual(finished);
+        expect(component.visitForm.patchValue).toHaveBeenCalledWith(expect.objectContaining({
+            symptoms: 'Headache for 2 days',
+            examination_notes: 'BP 120/80',
+            diagnosis: 'Tension headache',
+            diagnosis_type: 'Final',
+            prescription: [{ medicine: 'Paracetamol', frequency: 'SOS' }],
+            amount_paid: 300
+        }));
+        expect(component.currentPrescription).toEqual([{ medicine: 'Paracetamol', frequency: 'SOS' }]);
+        expect(component.isViewMode).toBe(true);
+        expect(component.isLiveConsultation).toBe(false);
+        expect(component.canEditChart).toBe(false);
+        expect(component.isConsulting).toBe(false);
+        expect(component.encounterId).toBeNull();
+        expect(component.editingVisitId).toBeNull();
+        expect(component.visitForm.enable).not.toHaveBeenCalled();
+        expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'beginConsultation')).toBe(false);
+        expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'getActiveConsultation')).toBe(false);
+        expect(mockDataService.invoke.mock.calls.some((call: any[]) => call[0] === 'resumeConsultation')).toBe(false);
+    });
+
+    it('reads view intent from router state and query params', () => {
+        mockRouter.getCurrentNavigation.mockReturnValue({
+            extras: { state: { visitId: 42, mode: 'view' } }
+        });
+        const fromState = new VisitComponent(mockRoute, mockRouter, mockFb, mockNgZone, mockPdfService, mockDataService, mockAuthService);
+        expect(fromState.viewMode).toBe(true);
+        expect(fromState.viewVisitId).toBe(42);
+
+        mockRoute.snapshot = { queryParams: { visitId: '88', mode: 'view' } };
+        component.ngOnInit();
+        expect(component.viewMode).toBe(true);
+        expect(component.viewVisitId).toBe(88);
+    });
+
+    it('downloads a PDF from the loaded visit snapshot, not the empty form', async () => {
+        component.patient = { id: 1, name: 'Clinical Tester Sep2', age: 40, gender: 'Female' };
+        component.viewedVisit = {
+            id: 42,
+            date: '2026-09-02T10:00:00Z',
+            diagnosis: 'Tension headache',
+            prescription: [{ medicine: 'Paracetamol', frequency: 'SOS' }],
+            amount_paid: 300
+        } as any;
+        component.visitForm = { value: {}, invalid: false } as any;
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getPublicSettings') return Promise.resolve({ doctor_name: 'Dr. Clinic' });
+            return Promise.resolve(null);
+        });
+        mockAuthService.getUser.mockReturnValue({ name: 'Dr. Clinic', specialty: 'General', license_number: 'LIC-1' });
+
+        await component.downloadVisitPdf();
+
+        expect(mockPdfService.generatePrescription).toHaveBeenCalledWith(
+            expect.objectContaining({
+                diagnosis: 'Tension headache',
+                prescription: [{ medicine: 'Paracetamol', frequency: 'SOS' }],
+                amount_paid: 300
+            }),
+            component.patient,
+            expect.objectContaining({ name: 'Dr. Clinic' })
+        );
+        expect(mockPdfService.generatePrescription.mock.calls[0][0]).not.toEqual(expect.objectContaining({
+            diagnosis: undefined
+        }));
+    });
+
+    it('keeps sidebar history clicks read-only in view mode', () => {
+        component.viewMode = true;
+        component.viewVisitId = 42;
+        component.editVisit({
+            id: 9,
+            diagnosis: 'Older flu',
+            prescription: [{ medicine: 'Azithro' }],
+            amount_paid: 200
+        });
+        expect(component.viewVisitId).toBe(9);
+        expect(component.editingVisitId).toBeNull();
+        expect(component.canEditChart).toBe(false);
+        expect(component.visitForm.enable).not.toHaveBeenCalled();
+        expect(component.visitForm.patchValue).toHaveBeenCalledWith(expect.objectContaining({ diagnosis: 'Older flu' }));
     });
 
     it('ignores prescription edits and copy-last-visit while the chart is read-only', () => {
