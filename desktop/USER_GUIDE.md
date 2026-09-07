@@ -5,14 +5,25 @@ Welcome to **NalamDesk**, your secure, offline-first Clinic Management System. T
 ## 🚀 Getting Started
 
 ### 1. Installation
-*   Download the latest installer for your operating system (Windows/macOS).
-*   Run the installer and follow the on-screen prompts.
-*   Once installed, launch **NalamDesk** from your desktop or start menu.
+*   **Windows:** Download the installer (`.exe`) and follow the on-screen prompts.
+*   **macOS:** Download the `.dmg`, open it, and drag NalamDesk into Applications.
+*   **Linux (clinic install):** Download the `.deb` package and install it. Do not extract an AppImage.
+    ```bash
+    sudo apt install ./nalamdesk-desktop_*_amd64.deb
+    ```
+    If `apt` is unavailable:
+    ```bash
+    sudo dpkg -i nalamdesk-desktop_*_amd64.deb
+    sudo apt-get install -f
+    ```
+    Then launch **NalamDesk** from the applications menu.
+*   An AppImage may be published as a secondary artifact. It requires FUSE 2 (`libfuse.so.2`). If it fails to start, install the `.deb` — do not extract the squashfs.
 
 ### 2. First Run & Security
-*   **Create Vault:** On the first launch, you will be asked to create a **Vault Password**.
-*   **⚠️ IMPORTANT:** This password is used to encrypt your database. **We do not store it.** If you lose this password, your data is lost forever.
-*   **Login:** Use your Vault Password to unlock the application every time you open it.
+*   **Create administrator password:** On first launch, the setup wizard creates the encrypted vault on this device and an administrator login.
+*   **Linux keyring:** Vault encryption uses the system keyring (`gnome-libsecret`). Install `libsecret-1-0` and `gnome-keyring` if setup reports `ENCRYPTION_UNAVAILABLE`. Do not use `--password-store=basic`.
+*   **Recovery code:** Save the recovery code shown at the end of setup. It is required to recover the device.
+*   **Login:** Sign in with your username and password. Logout clears the main-process session so the previous role cannot be reused.
 
 ---
 
@@ -60,6 +71,7 @@ Welcome to **NalamDesk**, your secure, offline-first Clinic Management System. T
 ### General
 *   **Theme:** Switch between Light, Dark, and High-Contrast modes.
 *   **Clinic Details:** Update your clinic's name and address (appears on prescriptions).
+*   **Application version:** The Settings footer shows the packaged application version from Electron (`app.getVersion()`), plus a short commit when the build embeds one. Development builds are labeled `(development)`.
 
 ### Data Management
 *   **Backup:** Automated daily backups are saved locally (Settings → Data & Backup). Retention is 30 days.

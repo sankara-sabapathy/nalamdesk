@@ -47,6 +47,7 @@ blob-report/
 .angular/
 
 # Temporary/Debug Files
+desktop/build-identity.json
 test_output.txt
 final_test_output.txt
 test_log.txt

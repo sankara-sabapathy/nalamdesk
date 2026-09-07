@@ -37,13 +37,16 @@ jobs:
         run: npm ci
 
       - name: Build Angular
+        env:
+          NALAMDESK_BUILD_COMMIT: ${{ github.sha }}
         run: npm run build
 
       - name: Run Unit Tests
         run: npm test -- --run
 
 
-      # Build Electron (No Publish)
+      # Build Electron (no publish). Linux clinic artifact is the .deb;
+      # AppImage is secondary and requires FUSE 2.
       
       - name: Build Electron (Windows)
         if: matrix.os == 'windows-latest'
@@ -51,19 +54,27 @@ jobs:
         # but required if electron-builder needs to read repo info or if we add code-signing later.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NALAMDESK_BUILD_COMMIT: ${{ github.sha }}
         run: npm run dist:win
 
       - name: Build Electron (Linux)
         if: matrix.os == 'ubuntu-latest'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NALAMDESK_BUILD_COMMIT: ${{ github.sha }}
         run: npm run dist:linux
 
       - name: Build Electron (Mac)
         if: matrix.os == 'macos-latest'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NALAMDESK_BUILD_COMMIT: ${{ github.sha }}
         run: npm run dist:mac
+
+      - name: Assert packaged version agreement
+        env:
+          NALAMDESK_BUILD_COMMIT: ${{ github.sha }}
+        run: node scripts/assert-packaged-version.js
 
       # Upload Artifacts to Action Run
       - name: Upload Artifacts
@@ -71,10 +82,13 @@ jobs:
         with:
           name: nalamdesk-${{ matrix.os }}
           path: |
-            desktop/release/*.exe
-            desktop/release/*.AppImage
             desktop/release/*.deb
+            desktop/release/*.exe
             desktop/release/*.dmg
+            desktop/release/*.AppImage
+            desktop/release/LINUX-INSTALL.txt
+            desktop/release/run-nalamdesk-appimage.sh
+            desktop/release/APPIMAGE-FUSE.txt
           retention-days: 5
 
   # ===========================================================================

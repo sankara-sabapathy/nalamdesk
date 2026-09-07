@@ -3,6 +3,8 @@ import * as path from 'path';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 
+import { preferLinuxGnomeLibsecret } from './linuxKeyring';
+import { loadAppVersionInfo } from './appVersionInfo';
 import { SessionService } from './services/SessionService';
 import { BackupService } from './services/BackupService';
 import { selectRestoreBundle } from './services/BackupFileSelection';
@@ -11,7 +13,7 @@ import { runDriveRestore } from './services/DriveRestore';
 import { requireExistingRestoreAuthorization } from './services/RestoreAuthorization';
 import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
-import { ElectronSafeStorageDeviceKeyStore } from './services/DeviceKeyStore';
+import { ElectronSafeStorageDeviceKeyStore, isDeviceCryptoFailure } from './services/DeviceKeyStore';
 import { DatabaseService } from './services/DatabaseService';
 import { GoogleDriveService } from './services/GoogleDriveService';
 import { CloudSyncService } from './services/CloudSyncService';
@@ -32,6 +34,9 @@ import {
 } from '../shared/runtime-config';
 
 import { session } from 'electron';
+
+// Linux: force gnome-libsecret before Chromium/OSCrypt picks basic_text.
+preferLinuxGnomeLibsecret(app.commandLine);
 
 // Dev isolation: separate userData dir and API port from installed NalamDesk (Mac/Windows).
 const isDev = isDevRuntime(app.isPackaged);
@@ -106,6 +111,8 @@ ipcMain.handle('utils:getRuntimeInfo', () => ({
     isDev,
     appName: app.getName(),
 }));
+
+ipcMain.handle('app:getVersion', () => loadAppVersionInfo(app, isDev));
 
 // Services
 const securityService = new SecurityService(new ElectronSafeStorageDeviceKeyStore());
@@ -455,7 +462,7 @@ async function tryUnlockDatabase(legacySecret: string): Promise<{ error?: string
     } catch (e: any) {
         if (e.message === 'NOT_SETUP') return { error: 'SETUP_REQUIRED' };
         if (e.message === 'INVALID_LEGACY_CREDENTIAL') return { error: 'INVALID_CREDENTIALS' };
-        if (['ENCRYPTION_UNAVAILABLE', 'INSECURE_LINUX_BACKEND', 'DEVICE_UNLOCK_FAILED'].includes(e.message)) {
+        if (isDeviceCryptoFailure(e.message)) {
             return { error: 'RECOVERY_REQUIRED' };
         }
         if (e.message === 'VAULT_BINDING_MISMATCH') return { error: 'VAULT_BINDING_MISMATCH' };
@@ -496,6 +503,10 @@ async function handleAdminLogin(password: string): Promise<{ success: boolean; u
 function handleDb(channel: string, handler: (...args: any[]) => any) {
     ipcMain.handle(channel, async (...args) => databaseService.runWork(() => handler(...args)));
 }
+
+ipcMain.handle('auth:logout', () => {
+    sessionService.clearSession();
+});
 
 handleDb('auth:login', async (event, credentials) => {
     try {
@@ -743,7 +754,11 @@ handleDb('db:removeFromQueue', (_, id) => {
 });
 
 // Audit IPC Handlers
-handleDb('db:getAuditLogs', (_, limit) => databaseService.getAuditLogs(limit));
+handleDb('db:getAuditLogs', (_, limit) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getAuditLogs(limit);
+});
 
 // Cloud IPC Handlers
 // Cloud IPC Handlers
@@ -810,6 +825,8 @@ handleDb('db:saveAppointment', (_, appt) => {
 
 // Drive IPC Handlers
 handleDb('drive:authenticate', async (_, { clientId, clientSecret }) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     if (!mainWindow) return { success: false, error: 'Main window not found' };
     try {
         // Configure credentials first
@@ -834,6 +851,8 @@ handleDb('drive:authenticate', async (_, { clientId, clientSecret }) => {
 });
 
 handleDb('drive:disconnect', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     try {
         googleDriveService.setCredentials(null);
         databaseService.saveSettings({ drive_tokens: '' });
@@ -850,6 +869,8 @@ ipcMain.handle('drive:isAuthenticated', () => {
 });
 
 ipcMain.handle('drive:backup', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     try {
         const dbPath = securityService.getDbPath();
         if (!dbPath) throw new Error('DB not open');
@@ -864,6 +885,8 @@ ipcMain.handle('drive:backup', async () => {
 });
 
 ipcMain.handle('drive:restore', async (_, fileId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     try {
         return await runDriveRestore({
             gate: restoreOperationGate,
@@ -882,6 +905,8 @@ ipcMain.handle('drive:restore', async (_, fileId) => {
 });
 
 ipcMain.handle('drive:listBackups', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     try {
         return await googleDriveService.listBackups();
     } catch (e) {
@@ -926,6 +951,8 @@ ipcMain.handle('backup:useDefaultPath', async () => {
 });
 
 ipcMain.handle('backup:runNow', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     // Manual trigger for testing
     console.log('[Main] Manual backup triggered via IPC');
     await backupService.performBackup();
@@ -933,6 +960,8 @@ ipcMain.handle('backup:runNow', async () => {
 });
 
 ipcMain.handle('backup:listSystemBackups', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
     return backupService.listSystemBackups();
 });
 

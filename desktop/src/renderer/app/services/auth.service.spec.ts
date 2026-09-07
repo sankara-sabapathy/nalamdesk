@@ -147,24 +147,45 @@ describe('AuthService', () => {
     });
 
     describe('Session Management', () => {
-        it('should logout by clearing storage', () => {
-            // Set up user in storage
+        it('should logout by clearing storage', async () => {
             service['setUser']({ id: 1 });
             localStorage.setItem('nalamdesk_token', 'test-token');
             expect(service.getUser()).toBeTruthy();
             expect(service.getToken()).toBe('test-token');
 
-            // jsdom's location.reload throws "Not implemented" error
-            // We catch and ignore it since we only care about storage being cleared
-            try {
-                service.logout();
-            } catch (e) {
-                // Expected in jsdom - location.reload is not implemented
-            }
-
-            // Verify storage is cleared
+            const navigate = vi.fn();
+            await service.logout(navigate);
             expect(localStorage.getItem('nalamdesk_user')).toBeNull();
             expect(localStorage.getItem('nalamdesk_token')).toBeNull();
+            expect(navigate).toHaveBeenCalled();
+            expect(String(navigate.mock.calls[0][0])).toContain('#/login');
+        });
+
+        it('calls auth:logout IPC then lands on hash login instead of reloading settings', async () => {
+            service['setUser']({ id: 1, username: 'admin', role: 'admin', name: 'Admin' });
+            const logout = vi.fn().mockResolvedValue({ success: true });
+            (window as any).electron = { logout };
+            const navigate = vi.fn();
+            await service.logout(navigate);
+            expect(logout).toHaveBeenCalledOnce();
+            expect(localStorage.getItem('nalamdesk_user')).toBeNull();
+            expect(navigate).toHaveBeenCalled();
+            expect(String(navigate.mock.calls[0][0])).toContain('#/login');
+            expect(String(navigate.mock.calls[0][0])).not.toContain('#/settings');
+        });
+
+        it('keeps the principal when auth:logout IPC fails', async () => {
+            service['setUser']({ id: 1, username: 'admin', role: 'admin', name: 'Admin' });
+            localStorage.setItem('nalamdesk_token', 'test-token');
+            const logout = vi.fn().mockRejectedValue(new Error('IPC Error'));
+            (window as any).electron = { logout };
+            const navigate = vi.fn();
+            await expect(service.logout(navigate)).rejects.toThrow('IPC Error');
+            expect(service.getUser()).toEqual(expect.objectContaining({
+                id: 1, username: 'admin', role: 'admin', name: 'Admin'
+            }));
+            expect(service.getToken()).toBe('test-token');
+            expect(navigate).not.toHaveBeenCalled();
         });
     });
 });

@@ -4,6 +4,15 @@ declare global {
     interface Window {
         electron: {
             login: (credentials: { username: string, password: string }) => Promise<{ success: boolean; user?: any; error?: string; pendingRecoveryCode?: string }>;
+            logout: () => Promise<{ success: boolean }>;
+            getAppVersion: () => Promise<{
+                version: string;
+                commit: string | null;
+                buildId: string | null;
+                isDev: boolean;
+                packaged: boolean;
+                display: string;
+            }>;
             checkSetup: () => Promise<{ isSetup: boolean; hasRecovery: boolean; vaultState?: string; configVersion?: number }>;
             getRecoveryStatus: () => Promise<{ isSetup: boolean; hasRecovery: boolean; hasBackups: boolean; backups?: any[] }>;
             restoreSystemBackup: (request: { path: string; recoveryCode: string; currentAdminPassword?: string }) => Promise<{

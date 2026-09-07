@@ -10,6 +10,10 @@ The Admin Dashboard allows you to configure your clinic settings and manage staf
 1. Click on the **Settings** icon in the main navigation bar.
 2. Ensure you are logged in as an **Admin**.
 
+The Settings footer shows the packaged application version (and a short commit when the build embeds one). Use that string when reporting defects. Development builds are labeled `(development)`.
+
+Logout from the user menu clears the main-process session. The previous user's role cannot be reused after logout or a window reload.
+
 ## Clinic Details
 In the **General** tab:
 - **Clinic Name**: Enter the name of your practice. This will appear on reports and the dashboard.

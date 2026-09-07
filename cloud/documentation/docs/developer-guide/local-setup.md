@@ -72,5 +72,7 @@ This command will:
 To build the application for your OS:
 
 - **Windows:** `npm run dist:win`
-- **Linux:** `npm run dist:linux`
+- **Linux:** `npm run dist:linux` — clinic artifact is the `.deb` in `desktop/release/` (`sudo apt install ./nalamdesk-desktop_*_amd64.deb`). The AppImage is secondary and requires FUSE 2; do not extract it.
 - **Mac:** `npm run dist:mac`
+
+Packaged Settings version comes from `app:getVersion` (`app.getVersion()` plus optional embedded commit). Feature CI fails the job if artifact names, `latest*.yml`, `build-identity.json`, and the displayed version disagree.

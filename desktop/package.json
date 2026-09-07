@@ -21,8 +21,10 @@
     "watch:main": "tsc -p tsconfig.main.json --watch",
     "watch:css": "tailwindcss -i src/tailwind.css -o src/styles.css --watch",
     "build:main": "tsc -p tsconfig.main.json",
+    "stamp:build-identity": "node scripts/stamp-build-identity.js",
+    "assert:packaged-version": "node scripts/assert-packaged-version.js",
     "build:css": "tailwindcss -i src/tailwind.css -o src/styles.css",
-    "build": "npm run build:css && ng build --base-href ./ && npm run build:main",
+    "build": "npm run stamp:build-identity && npm run build:css && ng build --base-href ./ && npm run build:main",
     "pack": "npm run build && electron-builder",
     "watch": "ng build --watch --configuration development",
     "test": "npm run test:main && npm run test:renderer",
@@ -56,8 +58,8 @@
     },
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        "deb",
+        "AppImage"
       ],
       "icon": "build/icon.png",
       "category": "Office",
@@ -70,9 +72,11 @@
     "directories": {
       "output": "release"
     },
+    "afterAllArtifactBuild": "./scripts/after-all-artifact-build.js",
     "files": [
       "dist/**/*",
-      "package.json"
+      "package.json",
+      "build-identity.json"
     ]
   },
   "dependencies": {

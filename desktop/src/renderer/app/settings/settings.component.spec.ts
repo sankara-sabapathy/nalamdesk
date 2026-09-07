@@ -185,4 +185,78 @@ describe('SettingsComponent Validation', () => {
         expect((window as any).electron.backup.selectRestoreBundle).not.toHaveBeenCalled();
         expect((window as any).electron.restoreSystemBackup).not.toHaveBeenCalled();
     });
+
+    it('displays packaged app.getVersion() instead of a hard-coded 0.0.0', async () => {
+        expect(component.appVersion).toBe('');
+        component.isElectron = true;
+        (window as any).electron = {
+            getAppVersion: vi.fn(async () => ({
+                version: '0.0.8',
+                display: '0.0.8 (abcdef1)',
+                isDev: false,
+                packaged: true,
+                commit: 'abcdef123',
+                buildId: '99'
+            }))
+        };
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('0.0.8 (abcdef1)');
+        expect(component.appVersion).not.toBe('0.0.0');
+        expect(component.appVersion).not.toBe('v0.0.0');
+    });
+
+    it('leaves the footer empty when version IPC is unavailable', async () => {
+        component.isElectron = false;
+        delete (window as any).electron;
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('');
+    });
+
+    it('falls back to the IPC version when display is missing', async () => {
+        component.isElectron = true;
+        (window as any).electron = { getAppVersion: vi.fn(async () => ({ version: '0.0.8' })) };
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('0.0.8');
+        expect(component.appVersion).not.toBe('0.0.0');
+        expect(component.appVersion).not.toBe('v0.0.0');
+    });
+
+    it('falls back to a blank footer when display and version are empty', async () => {
+        component.isElectron = true;
+        component.appVersion = 'stale';
+        (window as any).electron = { getAppVersion: vi.fn(async () => ({ display: '', version: '' })) };
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('');
+    });
+
+    it('keeps a blank footer when packaged version IPC fails', async () => {
+        const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        component.isElectron = true;
+        (window as any).electron = {
+            getAppVersion: vi.fn(async () => { throw new Error('IPC Error'); })
+        };
+        component.appVersion = '';
+        await component.loadAppVersion();
+        expect(component.appVersion).toBe('');
+        expect(err).toHaveBeenCalled();
+        err.mockRestore();
+    });
+
+    it('labels a development build from the version IPC', async () => {
+        component.isElectron = true;
+        (window as any).electron = {
+            getAppVersion: vi.fn(async () => ({
+                version: '0.0.8',
+                display: '0.0.8 (development)',
+                isDev: true,
+                packaged: false,
+                commit: null,
+                buildId: null
+            }))
+        };
+        await component.loadAppVersion();
+        expect(component.appVersion).toContain('development');
+        expect(component.appVersion).not.toBe('0.0.0');
+        expect(component.appVersion).not.toBe('v0.0.0');
+    });
 });

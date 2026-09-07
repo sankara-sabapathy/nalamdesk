@@ -265,9 +265,12 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
     }
   }
 
-  logout() {
-    this.authService.logout();
-    this.router.navigate(['/login']);
+  async logout() {
+    try {
+      await this.authService.logout();
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   getUserInitials(): string {
