@@ -124,7 +124,7 @@ import { DataService } from '../../services/api.service';
   `
 })
 export class PrescriptionComponent {
-  private dataService = inject(DataService, { optional: true });
+  private readonly dataService = inject(DataService, { optional: true });
 
   @Input() set initialData(value: any[]) {
     if (value && value.length > 0) this.items.set(value);

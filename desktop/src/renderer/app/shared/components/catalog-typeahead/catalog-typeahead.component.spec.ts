@@ -39,6 +39,41 @@ describe('CatalogTypeaheadComponent', () => {
         expect(component.error).toMatch(/already/i);
     });
 
+    it('searches on focus and debounce, and ignores failed searches', async () => {
+        vi.useFakeTimers();
+        component.onInput('flu');
+        await vi.advanceTimersByTimeAsync(160);
+        expect(component.searchFn).toHaveBeenCalledWith('flu');
+        vi.useRealTimers();
+
+        component.searchFn = vi.fn().mockRejectedValue(new Error('offline'));
+        component.value = 'x';
+        component.onFocus();
+        await Promise.resolve();
+        expect(component.hits).toEqual([]);
+    });
+
+    it('offers Add new only when the typed name is not already a hit', () => {
+        component.value = 'Viral fever';
+        component.hits = [{ id: 1, name: 'Influenza' }];
+        expect(component.canAdd).toBe(true);
+        component.hits = [{ id: 2, name: 'Viral fever' }];
+        expect(component.canAdd).toBe(false);
+    });
+
+    it('maps add-new validation errors', async () => {
+        component.value = ' ';
+        await component.addNew();
+        component.value = 'x';
+        component.createFn = vi.fn().mockRejectedValue(new Error('NAME_REQUIRED'));
+        await component.addNew();
+        expect(component.error).toMatch(/required/i);
+        component.createFn = vi.fn().mockRejectedValue('offline');
+        await component.addNew();
+        expect(component.error).toMatch(/keep the typed name/i);
+        component.ngOnDestroy();
+    });
+
     it('ignores an older search that finishes after a newer query', async () => {
         let resolveOlder: (hits: { id: number; name: string }[]) => void = () => undefined;
         let resolveNewer: (hits: { id: number; name: string }[]) => void = () => undefined;

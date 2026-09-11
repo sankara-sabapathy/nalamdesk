@@ -78,4 +78,12 @@ describe('PrescriptionComponent', () => {
         expect(component.items()[0].medicine).toBe('Paracetamol extra');
         expect(component.changed.emit).toHaveBeenCalled();
     });
+
+    it('searches and creates medicines through catalog IPC when available', async () => {
+        await expect(component.searchMedicines('para')).resolves.toEqual([]);
+        await expect(component.createMedicine('ORS')).resolves.toEqual({ id: 0, name: 'ORS' });
+        component.disabled = true;
+        component.onMedicineTyped(0, 'x');
+        expect(component.items()[0].medicine).toBe('');
+    });
 });

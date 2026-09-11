@@ -162,4 +162,15 @@ describe('condition and medicine catalogs', () => {
         expect(updated.frequency).toBe('1-1-1');
         expect(updated.duration).toBe('5 days');
     });
+
+    it('updates conditions, lists medicines, and ignores invalid preset ids', () => {
+        const condition = service.createCondition({ name: 'URI' });
+        const renamed = service.updateCondition({ id: condition.id, name: 'Upper URI' });
+        expect(renamed.name).toBe('Upper URI');
+        const medicine = service.createMedicine({ name: 'Paracetamol_500' });
+        expect(service.searchMedicines('Paracetamol_').some((row: any) => row.id === medicine.id)).toBe(true);
+        expect(service.listMedicines().some((row: any) => row.id === medicine.id)).toBe(true);
+        expect(service.getConditionMedPresets(0)).toEqual([]);
+        expect(() => service.replaceConditionMedPresets({ conditionId: 999, lines: [] })).toThrow('CONDITION_NOT_FOUND');
+    });
 });

@@ -109,7 +109,7 @@ export class CatalogTypeaheadComponent implements OnDestroy {
     }
 
     private createError(error: unknown): string {
-        const message = String((error as Error)?.message || error || '');
+        const message = error instanceof Error ? error.message : (typeof error === 'string' ? error : '');
         if (/NAME_REQUIRED/i.test(message)) return 'Name is required.';
         if (/DUPLICATE_ACTIVE_NAME/i.test(message)) return 'That name is already in the catalog.';
         return 'Could not add this catalog entry. You can keep the typed name.';

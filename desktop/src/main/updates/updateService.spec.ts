@@ -182,4 +182,33 @@ describe('DesktopUpdateService', () => {
         await service.install();
         expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
     });
+
+    it('skips when no feed is configured and ignores updater events until a download starts', async () => {
+        const updater = mockUpdater();
+        const { service, send } = createService(updater, { env: {} });
+        const skipped = await service.check({ source: 'startup' });
+        expect(skipped.state).toBe('skipped');
+        expect(skipped.reason).toBe('no-feed');
+        const progress = (updater.on as any).mock.calls.find((call: any[]) => call[0] === 'download-progress')[1];
+        const downloaded = (updater.on as any).mock.calls.find((call: any[]) => call[0] === 'update-downloaded')[1];
+        const errored = (updater.on as any).mock.calls.find((call: any[]) => call[0] === 'error')[1];
+        progress({ percent: 50 });
+        downloaded();
+        expect(service.getStatus().state).toBe('skipped');
+        errored(new Error('getaddrinfo ENOTFOUND x'));
+        expect(service.getStatus().state).toBe('error');
+        expect(send).toHaveBeenCalled();
+    });
+
+    it('rejects an insecure HTTP artifact URL from the feed', async () => {
+        const updater = mockUpdater({
+            checkForUpdates: vi.fn().mockResolvedValue({
+                updateInfo: { version: '0.0.9', files: [{ url: 'http://evil.example/nalamdesk.exe' }] }
+            })
+        });
+        const { service } = createService(updater);
+        const status = await service.check({ source: 'manual' });
+        expect(status.state).toBe('error');
+        expect(status.error).toMatch(/insecure HTTP/i);
+    });
 });

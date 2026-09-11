@@ -20,8 +20,14 @@ describe('CatalogSettingsComponent', () => {
         component = new CatalogSettingsComponent(data as any, { run: (fn: () => void) => fn() } as any);
     });
 
+    it('loads catalogs during init', () => {
+        const reload = vi.spyOn(component, 'reload').mockResolvedValue();
+        component.ngOnInit();
+        expect(reload).toHaveBeenCalled();
+    });
+
     it('lists catalogs and saves a new condition', async () => {
-        await component.ngOnInit();
+        await component.reload();
         expect(component.conditions[0].name).toBe('URI');
         component.newCondition = 'Influenza';
         await component.addCondition();
@@ -62,5 +68,24 @@ describe('CatalogSettingsComponent', () => {
         expect(component.selectedCondition).toEqual({ id: 1, name: 'URI' });
         await component.retire('retireCondition', { id: 1, name: 'URI' });
         expect(component.selectedCondition).toBeNull();
+    });
+
+    it('saves medicine rows, preset lines, and catalog errors', async () => {
+        await component.reload();
+        await component.selectCondition({ id: 1, name: 'URI' });
+        component.onPresetMedicine(0);
+        component.addPresetLine();
+        component.removePreset(1);
+        await component.saveCondition({ id: 1, name: 'URI' });
+        await component.saveMedicine({ id: 2, name: 'Paracetamol', dosage: '500mg' });
+        component.newMedicine = 'Cetirizine';
+        await component.addMedicine();
+        expect(data.invoke).toHaveBeenCalledWith('updateCondition', { id: 1, name: 'URI' });
+        expect(data.invoke).toHaveBeenCalledWith('createMedicine', { name: 'Cetirizine' });
+
+        data.invoke.mockRejectedValueOnce(new Error('NAME_REQUIRED'));
+        component.newCondition = '';
+        await component.addCondition();
+        expect(component.message).toMatch(/required/i);
     });
 });

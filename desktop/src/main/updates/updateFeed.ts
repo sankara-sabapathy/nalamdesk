@@ -82,7 +82,7 @@ export function feedHasAppImage(updateInfo: { files?: Array<{ url?: string }>; p
 }
 
 export function resolveOsApplyPath(input: {
-    platform: NodeJS.Platform | string;
+    platform: string;
     isAppImage: boolean;
     feedHasAppImage: boolean;
 }): { mode: OsApplyMode; canQuitAndInstall: boolean } {
@@ -102,7 +102,7 @@ export function signatureClaim(_mode?: SignatureMode): { verifiedSignature: bool
 }
 
 export function plainUpdateError(error: unknown): string {
-    const message = String((error as Error)?.message || error || '');
+    const message = errorMessage(error);
     if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ENETUNREACH|net::ERR|offline|getaddrinfo/i.test(message)) {
         return 'Could not reach the update feed. Check the network and try again.';
     }
@@ -166,17 +166,28 @@ function parseSemVer(value: string): { core: [number, number, number]; pre: Arra
 }
 
 function isAbsoluteInsecureUrl(value: string): boolean {
-    if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) return false;
-    return !isAllowedGenericFeedUrl(value);
+    try {
+        return !isAllowedGenericFeedUrl(new URL(value).href);
+    } catch {
+        return false;
+    }
 }
 
 function toInt(part: string | undefined): number {
-    const parsed = parseInt(part || '0', 10);
+    const parsed = Number.parseInt(part || '0', 10);
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function trimSlash(url: string): string {
-    return url.replace(/\/+$/, '');
+    let end = url.length;
+    while (end > 0 && url.charAt(end - 1) === '/') end -= 1;
+    return url.slice(0, end);
+}
+
+function errorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'string') return error;
+    return '';
 }
 
 function isAllowedGenericFeedUrl(url: string): boolean {

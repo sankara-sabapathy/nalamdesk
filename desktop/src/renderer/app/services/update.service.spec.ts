@@ -43,6 +43,32 @@ describe('AppUpdateService', () => {
         expect(service.status().state).toBe('available');
     });
 
+    it('wires startup checks, events, cancel, and missing IPC', async () => {
+        updates.check.mockResolvedValue({ state: 'available', source: 'startup', availableVersion: '0.0.9' });
+        service.init();
+        service.init();
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(updates.onEvent).toHaveBeenCalled();
+        expect(updates.check).toHaveBeenCalledWith({ source: 'startup' });
+        const listener = updates.onEvent.mock.calls[0][0];
+        listener({ state: 'downloading', percent: 20 });
+        expect(service.promptOpen()).toBe(true);
+        updates.cancel.mockResolvedValue({ state: 'available' });
+        await service.cancelDownload();
+        expect(updates.cancel).toHaveBeenCalled();
+        service.destroy();
+
+        delete (globalThis as any).electron;
+        const offline = new AppUpdateService({ run: (fn: () => void) => fn() } as any);
+        await offline.check();
+        await offline.updateNow();
+        await offline.install();
+        await offline.cancelDownload();
+        offline.init();
+        expect(offline.status().state).toBe('idle');
+    });
+
     it('downloads then installs on Update now', async () => {
         updates.download.mockResolvedValue({ state: 'downloaded', canQuitAndInstall: true });
         updates.install.mockResolvedValue({ state: 'downloaded' });

@@ -44,7 +44,7 @@ import { AppUpdateService } from '../../../services/update.service';
   `
 })
 export class UpdatePromptComponent implements OnInit, OnDestroy, AfterViewChecked {
-    private updates = inject(AppUpdateService);
+    private readonly updates = inject(AppUpdateService);
     private previousFocus: HTMLElement | null = null;
     private promptFocused = false;
 

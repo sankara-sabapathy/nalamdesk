@@ -295,7 +295,8 @@ function normalizeName(value: unknown): string {
 }
 
 function normalizeOptionalName(value: unknown): string {
-    return String(value || '').trim().replace(/\s+/g, ' ').slice(0, CATALOG_QUERY_MAX);
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    return String(value).trim().replace(/\s+/g, ' ').slice(0, CATALOG_QUERY_MAX);
 }
 
 function requireId(value: unknown): number {
@@ -319,11 +320,11 @@ function likePrefix(term: string): string {
 }
 
 function escapeLike(term: string): string {
-    return term.replace(/([%_\\])/g, '\\$1');
+    return term.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
 }
 
 function mapConstraint(error: unknown): Error {
-    const message = String((error as Error)?.message || error || '');
+    const message = error instanceof Error ? error.message : (typeof error === 'string' ? error : '');
     if (/UNIQUE|constraint/i.test(message)) return new Error('DUPLICATE_ACTIVE_NAME');
     if (error instanceof Error) return error;
     return new Error(message || 'CATALOG_WRITE_FAILED');

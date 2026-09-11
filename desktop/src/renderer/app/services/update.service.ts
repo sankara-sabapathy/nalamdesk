@@ -24,7 +24,7 @@ export class AppUpdateService {
     private unsubscribe: (() => void) | null = null;
     private started = false;
 
-    constructor(private ngZone: NgZone) { }
+    constructor(private readonly ngZone: NgZone) { }
 
     init(): void {
         if (this.started) return;
@@ -34,7 +34,7 @@ export class AppUpdateService {
         this.unsubscribe = api.onEvent((status: AppUpdateStatus) => {
             this.ngZone.run(() => this.applyStatus(status));
         });
-        void this.checkStartup();
+        this.checkStartup().catch(() => undefined);
     }
 
     destroy(): void {

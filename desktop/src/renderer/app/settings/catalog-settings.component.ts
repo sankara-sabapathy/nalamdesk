@@ -85,10 +85,10 @@ export class CatalogSettingsComponent implements OnInit {
     message = '';
     success = false;
 
-    constructor(private data: DataService, private ngZone: NgZone) { }
+    constructor(private readonly data: DataService, private readonly ngZone: NgZone) { }
 
-    async ngOnInit(): Promise<void> {
-        await this.reload();
+    ngOnInit(): void {
+        this.reload().catch(() => undefined);
     }
 
     async reload(): Promise<void> {
@@ -197,7 +197,7 @@ export class CatalogSettingsComponent implements OnInit {
     }
 
     private catalogError(error: unknown): string {
-        const message = String((error as Error)?.message || error || '');
+        const message = error instanceof Error ? error.message : (typeof error === 'string' ? error : '');
         if (/NAME_REQUIRED/i.test(message)) return 'Name is required.';
         if (/DUPLICATE_ACTIVE_NAME/i.test(message)) return 'That active name already exists.';
         return 'Could not save catalog changes.';

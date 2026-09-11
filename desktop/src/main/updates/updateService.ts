@@ -69,7 +69,7 @@ export interface UpdateServiceDeps {
     updater: UpdaterPort;
     isPackaged: boolean;
     env: NodeJS.Dict<string>;
-    platform: NodeJS.Platform | string;
+    platform: string;
     isAppImage: boolean;
     getVersion: () => string;
     send: (channel: string, payload: UpdateStatus) => void;
@@ -93,7 +93,7 @@ function createCancelToken(): CancelToken {
 
 export class DesktopUpdateService {
     private status: UpdateStatus;
-    private feed: UpdateFeedConfig | null;
+    private readonly feed: UpdateFeedConfig | null;
     private cancelToken: CancelToken | null = null;
     private lastInfo: UpdateInfoLike | null = null;
     private configured = false;
@@ -229,6 +229,7 @@ export class DesktopUpdateService {
         });
         this.deps.updater.on('update-downloaded', () => {
             if (this.cancelToken?.cancelled) return;
+            if (this.status.state !== 'downloading' && this.status.state !== 'downloaded') return;
             this.publish({ ...this.status, state: 'downloaded', percent: 100 });
         });
         this.deps.updater.on('error', (error: unknown) => {

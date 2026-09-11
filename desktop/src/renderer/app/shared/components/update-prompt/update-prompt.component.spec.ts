@@ -48,6 +48,30 @@ describe('UpdatePromptComponent', () => {
         expect(updates.later).toHaveBeenCalled();
     });
 
+    it('covers prompt titles, install, cancel, and keyboard dismiss', () => {
+        updates.status = () => ({ state: 'error', error: 'Could not reach the update feed.' });
+        expect(component.title).toMatch(/failed/i);
+        expect(component.body).toMatch(/reach/i);
+        updates.status = () => ({ state: 'up-to-date', currentVersion: '0.0.8' });
+        expect(component.title).toMatch(/up to date/i);
+        expect(component.body).toContain('0.0.8');
+        updates.status = () => ({ state: 'skipped', reason: 'unpackaged' });
+        expect(component.body).toMatch(/packaged/i);
+        updates.status = () => ({ state: 'skipped', reason: 'no-feed' });
+        expect(component.body).toMatch(/feed/i);
+        updates.status = () => ({ state: 'downloading', percent: 40 });
+        expect(component.title).toMatch(/Downloading/i);
+        component.cancel();
+        expect(updates.cancelDownload).toHaveBeenCalled();
+        component.updateNow();
+        expect(updates.updateNow).toHaveBeenCalled();
+        const event = { key: 'Escape', preventDefault: vi.fn() } as any;
+        component.onPromptKeydown(event);
+        expect(event.preventDefault).toHaveBeenCalled();
+        component.ngAfterViewChecked();
+        component.ngOnDestroy();
+    });
+
     it('installs a downloaded update from the prompt', () => {
         updates.status = () => ({
             state: 'downloaded',
