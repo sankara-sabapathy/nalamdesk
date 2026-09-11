@@ -722,6 +722,36 @@ describe('VisitComponent', () => {
         expect(component.currentPrescription[0].duration).toBe('7 days');
     });
 
+    it('ignores stale condition presets after a later diagnosis pick', async () => {
+        component.chartWritable = true;
+        component.isConsulting = true;
+        component.encounterId = 7;
+        let resolveFlu: (lines: any[]) => void = () => undefined;
+        let resolveUri: (lines: any[]) => void = () => undefined;
+        const fluPresets = new Promise<any[]>((resolve) => {
+            resolveFlu = resolve;
+        });
+        const uriPresets = new Promise<any[]>((resolve) => {
+            resolveUri = resolve;
+        });
+        mockDataService.invoke.mockImplementation((method: string, id?: number) => {
+            if (method === 'getConditionMedPresets') {
+                return id === 1 ? fluPresets : uriPresets;
+            }
+            return Promise.resolve([]);
+        });
+
+        const fluPick = component.onConditionPicked({ id: 1, name: 'Influenza' });
+        const uriPick = component.onConditionPicked({ id: 2, name: 'URI' });
+        resolveFlu([{ medicine: 'Oseltamivir' }]);
+        await fluPick;
+        expect(component.currentPrescription).toEqual([]);
+
+        resolveUri([{ medicine: 'Paracetamol' }]);
+        await uriPick;
+        expect(component.currentPrescription[0].medicine).toBe('Paracetamol');
+    });
+
     it('adds a new diagnosis without blocking free-text entry', async () => {
         component.chartWritable = true;
         component.isConsulting = true;

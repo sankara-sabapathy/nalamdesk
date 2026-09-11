@@ -49,9 +49,11 @@ export class CatalogTypeaheadComponent implements OnDestroy {
     open = false;
     error = '';
     private timer: ReturnType<typeof setTimeout> | null = null;
+    private searchGeneration = 0;
 
     ngOnDestroy(): void {
         if (this.timer) clearTimeout(this.timer);
+        this.searchGeneration += 1;
     }
 
     onFocus(): void {
@@ -70,6 +72,7 @@ export class CatalogTypeaheadComponent implements OnDestroy {
     }
 
     pick(hit: CatalogPick): void {
+        this.searchGeneration += 1;
         this.value = hit.name;
         this.valueChange.emit(hit.name);
         this.open = false;
@@ -94,9 +97,13 @@ export class CatalogTypeaheadComponent implements OnDestroy {
 
     private async search(query: string): Promise<void> {
         if (!this.searchFn) return;
+        const generation = ++this.searchGeneration;
         try {
-            this.hits = await this.searchFn(query);
+            const hits = await this.searchFn(query);
+            if (generation !== this.searchGeneration) return;
+            this.hits = hits;
         } catch {
+            if (generation !== this.searchGeneration) return;
             this.hits = [];
         }
     }

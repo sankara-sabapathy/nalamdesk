@@ -38,4 +38,33 @@ describe('CatalogTypeaheadComponent', () => {
         expect(component.value).toBe('Viral fever');
         expect(component.error).toMatch(/already/i);
     });
+
+    it('ignores an older search that finishes after a newer query', async () => {
+        let resolveOlder: (hits: { id: number; name: string }[]) => void = () => undefined;
+        let resolveNewer: (hits: { id: number; name: string }[]) => void = () => undefined;
+        const older = new Promise<{ id: number; name: string }[]>((resolve) => {
+            resolveOlder = resolve;
+        });
+        const newer = new Promise<{ id: number; name: string }[]>((resolve) => {
+            resolveNewer = resolve;
+        });
+        let calls = 0;
+        component.searchFn = vi.fn().mockImplementation(() => {
+            calls += 1;
+            return calls === 1 ? older : newer;
+        });
+
+        component.value = 'fl';
+        component.onFocus();
+        component.value = 'flu';
+        component.onFocus();
+
+        resolveOlder([{ id: 1, name: 'Flower' }]);
+        await Promise.resolve();
+        expect(component.hits).toEqual([]);
+
+        resolveNewer([{ id: 2, name: 'Influenza' }]);
+        await Promise.resolve();
+        expect(component.hits).toEqual([{ id: 2, name: 'Influenza' }]);
+    });
 });

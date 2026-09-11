@@ -77,10 +77,12 @@ export function getConditionMedPresets(db: SqliteDb, conditionId: number): Presc
     const id = Number(conditionId);
     if (!Number.isInteger(id) || id <= 0) return [];
     const rows = db.prepare(`
-        SELECT medicine_id, medicine, form, dosage, route, frequency, duration, instruction
-        FROM condition_med_presets
-        WHERE condition_id = ?
-        ORDER BY sort_order ASC, id ASC
+        SELECT p.medicine_id, p.medicine, p.form, p.dosage, p.route, p.frequency, p.duration, p.instruction
+        FROM condition_med_presets p
+        LEFT JOIN medicine_catalog m ON m.id = p.medicine_id
+        WHERE p.condition_id = ?
+          AND (p.medicine_id IS NULL OR m.active = 1)
+        ORDER BY p.sort_order ASC, p.id ASC
     `).all(id);
     return rows.map((row) => toRxLine(row));
 }

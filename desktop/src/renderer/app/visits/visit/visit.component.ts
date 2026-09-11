@@ -302,6 +302,7 @@ export class VisitComponent implements OnInit {
   showMobileHistory = false;
 
   currentPrescription: any[] = [];
+  private conditionPresetGeneration = 0;
   viewMode = false;
   viewVisitId: number | null = null;
   viewedVisit: Visit | null = null;
@@ -534,6 +535,7 @@ export class VisitComponent implements OnInit {
 
   onDiagnosisTyped(name: string) {
     if (!this.canEditChart) return;
+    this.conditionPresetGeneration += 1;
     this.visitForm.patchValue({ diagnosis: name });
     this.visitForm.get('diagnosis')?.markAsDirty?.();
   }
@@ -541,14 +543,17 @@ export class VisitComponent implements OnInit {
   async onConditionPicked(hit: { id: number; name: string }) {
     if (!this.canEditChart) return;
     this.visitForm.patchValue({ diagnosis: hit.name });
+    const generation = ++this.conditionPresetGeneration;
     try {
       const presets = await this.dataService.invoke<any[]>('getConditionMedPresets', hit.id);
+      if (generation !== this.conditionPresetGeneration) return;
       if (presets && presets.length > 0) {
         const lines = presets.map((line) => ({ ...line }));
         this.currentPrescription = lines;
         this.visitForm.patchValue({ prescription: lines });
       }
     } catch (e) {
+      if (generation !== this.conditionPresetGeneration) return;
       console.warn('Could not apply condition presets', e);
     }
   }
@@ -694,6 +699,7 @@ export class VisitComponent implements OnInit {
 
   copyLastVisit() {
     if (!this.canEditChart || this.history.length === 0) return;
+    this.conditionPresetGeneration += 1;
     const last = this.history[0];
     this.visitForm.patchValue({
       diagnosis: last.diagnosis,

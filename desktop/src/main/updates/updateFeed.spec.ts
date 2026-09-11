@@ -33,6 +33,31 @@ describe('update feed resolver', () => {
         expect(signatureClaim(config!.signatureMode).verifiedSignature).toBe(false);
     });
 
+    it('rejects plaintext HTTP generic feeds except localhost', () => {
+        expect(resolveUpdateFeedConfig({
+            NALAMDESK_UPDATE_FEED_URL: 'http://updates.example.clinic/nalamdesk'
+        })).toBeNull();
+        expect(resolveUpdateFeedConfig({
+            NALAMDESK_UPDATE_FEED_URL: 'ftp://updates.example.clinic/nalamdesk'
+        })).toBeNull();
+        expect(resolveUpdateFeedConfig({
+            NALAMDESK_UPDATE_FEED_URL: 'not a url'
+        })).toBeNull();
+
+        const loopback = resolveUpdateFeedConfig({
+            NALAMDESK_UPDATE_FEED_URL: 'http://127.0.0.1:8080/nalamdesk/'
+        });
+        expect(loopback).toEqual({
+            provider: 'generic',
+            url: 'http://127.0.0.1:8080/nalamdesk',
+            signatureMode: 'feed-checksum',
+            downloadPageUrl: 'https://github.com/sankara-sabapathy/nalamdesk'
+        });
+        expect(resolveUpdateFeedConfig({
+            NALAMDESK_UPDATE_FEED_URL: 'http://localhost/nalamdesk'
+        })?.url).toBe('http://localhost/nalamdesk');
+    });
+
     it('leaves a github provider seam without rewriting IPC', () => {
         const config = resolveUpdateFeedConfig({
             NALAMDESK_UPDATE_PROVIDER: 'github',

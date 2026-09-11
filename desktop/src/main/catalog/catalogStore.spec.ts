@@ -133,4 +133,22 @@ describe('condition and medicine catalogs', () => {
         expect(service.searchMedicines('Oseltamivir')).toHaveLength(0);
         expect(service.listConditions(true).some((row: any) => row.id === condition.id && row.active === 0)).toBe(true);
     });
+
+    it('omits retired medicines when loading condition presets', () => {
+        const condition = service.createCondition({ name: 'URI' });
+        const active = service.createMedicine({ name: 'Paracetamol' });
+        const retired = service.createMedicine({ name: 'Old syrup' });
+        service.replaceConditionMedPresets({
+            conditionId: condition.id,
+            lines: [
+                { medicine_id: active.id },
+                { medicine_id: retired.id },
+                { medicine: 'ORS' }
+            ]
+        });
+        service.retireMedicine(retired.id);
+
+        const presets = service.getConditionMedPresets(condition.id);
+        expect(presets.map((line: any) => line.medicine)).toEqual(['Paracetamol', 'ORS']);
+    });
 });

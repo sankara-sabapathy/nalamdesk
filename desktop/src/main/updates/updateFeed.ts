@@ -2,8 +2,9 @@
  * In-app update feed configuration.
  *
  * Interim channel (this PR): generic provider. Ops hosts approved
- * `latest*.yml` plus OS packages at `NALAMDESK_UPDATE_FEED_URL`.
- * Feature CI PR zips / Actions artifacts are not an update channel.
+ * `latest*.yml` plus OS packages at `NALAMDESK_UPDATE_FEED_URL` (HTTPS;
+ * HTTP is allowed only for localhost). Feature CI PR zips / Actions
+ * artifacts are not an update channel.
  *
  * Later PR seam: set `NALAMDESK_UPDATE_PROVIDER=github` (and optional
  * owner/repo). IPC and renderer UX stay the same — only this resolver
@@ -48,7 +49,7 @@ export function resolveUpdateFeedConfig(env: NodeJS.Dict<string> = process.env):
     }
 
     const url = (env['NALAMDESK_UPDATE_FEED_URL'] || '').trim();
-    if (!url) return null;
+    if (!url || !isAllowedGenericFeedUrl(url)) return null;
     return {
         provider: 'generic',
         url: trimSlash(url),
@@ -141,4 +142,17 @@ function toInt(part: string | undefined): number {
 
 function trimSlash(url: string): string {
     return url.replace(/\/+$/, '');
+}
+
+function isAllowedGenericFeedUrl(url: string): boolean {
+    let parsed: URL;
+    try {
+        parsed = new URL(url);
+    } catch {
+        return false;
+    }
+    if (parsed.protocol === 'https:') return true;
+    if (parsed.protocol !== 'http:') return false;
+    const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
 }

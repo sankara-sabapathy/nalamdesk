@@ -23,7 +23,7 @@ NalamDesk uses a secure, local-first hybrid desktop architecture designed for re
 - **Responsibilities**:
     - App Window Management.
     - Native System Integrations (File System, Dialogs).
-    - Auto-updates (`electron-updater`) against a generic clinic feed (`NALAMDESK_UPDATE_FEED_URL`) in packaged builds; GitHub provider is a later-PR seam (`NALAMDESK_UPDATE_PROVIDER=github`).
+    - Auto-updates (`electron-updater`) against a generic HTTPS clinic feed (`NALAMDESK_UPDATE_FEED_URL`) in packaged builds; GitHub provider is a later-PR seam (`NALAMDESK_UPDATE_PROVIDER=github`).
     - Linux `gnome-libsecret` password-store switch at process start.
     - Authenticated desktop session (`SessionService`); `auth:logout` clears the principal.
 

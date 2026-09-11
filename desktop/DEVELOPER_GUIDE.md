@@ -44,7 +44,7 @@ This will:
 Packaged Electron only (`app.isPackaged`). Unpackaged `npm start` skips the updater.
 
 ### Interim feed (this PR)
-- Provider: **generic** via `NALAMDESK_UPDATE_FEED_URL` (directory that serves `latest.yml` / `latest-mac.yml` / `latest-linux.yml` plus the OS packages those files name).
+- Provider: **generic** via `NALAMDESK_UPDATE_FEED_URL` (HTTPS directory that serves `latest.yml` / `latest-mac.yml` / `latest-linux.yml` plus the OS packages those files name). Plain HTTP is rejected except `localhost` / `127.0.0.1`.
 - Ops copies **approved** builds onto that feed. Feature CI PR zips and random Actions artifacts are not an update channel. Automated Release / public GitHub Releases are not required here.
 - Optional: `NALAMDESK_UPDATE_DOWNLOAD_PAGE` (Linux `.deb` fallback opens this URL).
 
