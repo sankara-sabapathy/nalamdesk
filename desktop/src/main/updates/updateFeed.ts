@@ -167,7 +167,7 @@ function parseSemVer(value: string): { core: [number, number, number]; pre: Arra
 
 function isAbsoluteInsecureUrl(value: string): boolean {
     try {
-        return !isAllowedGenericFeedUrl(new URL(value).href);
+        return new URL(value).protocol !== 'https:';
     } catch {
         return false;
     }

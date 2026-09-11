@@ -102,7 +102,9 @@ describe('version compare and OS apply path', () => {
         expect(feedHasAppImage({ path: 'NalamDesk-0.0.9.AppImage' })).toBe(true);
         expect(feedHasAppImage({ files: [{ url: 'nalamdesk-desktop_0.0.9_amd64.deb' }] })).toBe(false);
         expect(hasInsecureUpdateArtifact({ path: 'NalamDesk-Setup-0.0.9.exe' })).toBe(false);
+        expect(hasInsecureUpdateArtifact({ files: [{ url: 'https://updates.example.clinic/nalamdesk.exe' }] })).toBe(false);
         expect(hasInsecureUpdateArtifact({ files: [{ url: 'http://evil.example/nalamdesk.exe' }] })).toBe(true);
+        expect(hasInsecureUpdateArtifact({ files: [{ url: 'http://127.0.0.1/nalamdesk.exe' }] })).toBe(true);
     });
 });
 
