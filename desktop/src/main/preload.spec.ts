@@ -3,13 +3,15 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 const electron = vi.hoisted(() => ({
     exposeInMainWorld: vi.fn(),
     invoke: vi.fn(),
-    on: vi.fn()
+    on: vi.fn(),
+    removeListener: vi.fn()
 }));
 
 vi.mock('electron', () => ({
     contextBridge: { exposeInMainWorld: electron.exposeInMainWorld },
-    ipcRenderer: { invoke: electron.invoke, on: electron.on }
+    ipcRenderer: { invoke: electron.invoke, on: electron.on, removeListener: electron.removeListener }
 }));
+
 
 describe('preload bridge surface', () => {
     let api: any;
@@ -43,5 +45,15 @@ describe('preload bridge surface', () => {
         expect(electron.invoke).toHaveBeenCalledWith('db:addToQueue', { patientId: 42, priority: 2 });
         expect(electron.invoke).toHaveBeenCalledWith('db:updateQueueStatus', { id: 9, status: 'waiting' });
         expect(electron.invoke).toHaveBeenCalledWith('db:removeFromQueue', 9);
+    });
+
+    it('exposes catalog search/create and updates IPC', async () => {
+        await api.db.searchConditions('flu');
+        await api.db.createMedicine({ name: 'Paracetamol' });
+        await api.updates.check({ source: 'manual' });
+        expect(electron.invoke).toHaveBeenCalledWith('db:searchConditions', 'flu', undefined);
+        expect(electron.invoke).toHaveBeenCalledWith('db:createMedicine', { name: 'Paracetamol' });
+        expect(electron.invoke).toHaveBeenCalledWith('updates:check', { source: 'manual' });
+        expect(api.updates.onEvent).toEqual(expect.any(Function));
     });
 });

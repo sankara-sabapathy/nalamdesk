@@ -106,11 +106,11 @@ test('NalamDesk Full Clinical Flow', async () => {
         await expect(window.locator(`h3:has-text("${patientName}")`)).toBeVisible();
 
         // Fill Diagnosis
-        await window.locator('textarea[formControlName="diagnosis"]').fill('Flu symptoms. Fever and cold.');
+        await window.locator('[data-testid="diagnosis-input"]').fill('Flu symptoms. Fever and cold.');
 
         // Prescribe Medicine (First row is auto-added)
         const firstRowMock = window.locator('app-prescription .grid').first();
-        await firstRowMock.locator('input[placeholder="Medicine Name"]').fill('Paracetamol');
+        await firstRowMock.locator('[data-testid="rx-medicine-0"]').fill('Paracetamol');
         await firstRowMock.locator('input[placeholder="Duration (e.g. 5 days)"]').fill('3 days');
 
         // Save Progress

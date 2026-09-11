@@ -5,6 +5,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 
 import { PdfService } from '../../services/pdf.service';
 import { PrescriptionComponent } from '../../visits/prescription/prescription.component';
+import { CatalogTypeaheadComponent } from '../../shared/components/catalog-typeahead/catalog-typeahead.component';
 import { AuthService } from '../../services/auth.service';
 import { DataService } from '../../services/api.service';
 import { newRequestId } from '../../services/request-id';
@@ -33,7 +34,7 @@ interface Visit {
 @Component({
   selector: 'app-visit',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, PrescriptionComponent],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, PrescriptionComponent, CatalogTypeaheadComponent],
   template: `
     <div class="flex h-full bg-gray-50 font-sans overflow-hidden relative">
       
@@ -186,9 +187,16 @@ interface Visit {
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div class="md:col-span-3">
                              <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Diagnosis <span class="text-red-500">*</span></label>
-                             <input formControlName="diagnosis" type="text" placeholder="Primary Diagnosis" 
-                                class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 outline-none font-medium text-lg"
-                                [class.border-red-500]="visitForm.get('diagnosis')?.invalid && (visitForm.get('diagnosis')?.dirty || visitForm.get('diagnosis')?.touched)">
+                             <app-catalog-typeahead
+                                [value]="visitForm.get('diagnosis')?.value || ''"
+                                [disabled]="!canEditChart"
+                                placeholder="Primary Diagnosis"
+                                testId="diagnosis-input"
+                                [searchFn]="searchConditions"
+                                [createFn]="createCondition"
+                                (valueChange)="onDiagnosisTyped($event)"
+                                (picked)="onConditionPicked($event)">
+                             </app-catalog-typeahead>
                              <p *ngIf="visitForm.get('diagnosis')?.invalid && (visitForm.get('diagnosis')?.dirty)" class="text-xs text-red-500 mt-1">Diagnosis is required</p>
                         </div>
                         <div class="md:col-span-1">
@@ -518,6 +526,31 @@ export class VisitComponent implements OnInit {
   updatePrescription(items: any[]) {
     if (!this.canEditChart) return;
     this.visitForm.patchValue({ prescription: items });
+  }
+
+  searchConditions = (query: string) => this.dataService.invoke('searchConditions', query);
+
+  createCondition = (name: string) => this.dataService.invoke('createCondition', { name });
+
+  onDiagnosisTyped(name: string) {
+    if (!this.canEditChart) return;
+    this.visitForm.patchValue({ diagnosis: name });
+    this.visitForm.get('diagnosis')?.markAsDirty?.();
+  }
+
+  async onConditionPicked(hit: { id: number; name: string }) {
+    if (!this.canEditChart) return;
+    this.visitForm.patchValue({ diagnosis: hit.name });
+    try {
+      const presets = await this.dataService.invoke<any[]>('getConditionMedPresets', hit.id);
+      if (presets && presets.length > 0) {
+        const lines = presets.map((line) => ({ ...line }));
+        this.currentPrescription = lines;
+        this.visitForm.patchValue({ prescription: lines });
+      }
+    } catch (e) {
+      console.warn('Could not apply condition presets', e);
+    }
   }
 
   async saveVisit(): Promise<boolean> {

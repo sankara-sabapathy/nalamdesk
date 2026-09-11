@@ -107,6 +107,47 @@ describe('HTTP /api/ipc queue wrapper', () => {
     });
 });
 
+describe('HTTP /api/ipc catalog methods', () => {
+    let server: ApiServer;
+    let db: any;
+
+    beforeEach(() => {
+        db = {
+            beginWork: vi.fn(),
+            endWork: vi.fn(),
+            getPermissions: vi.fn().mockReturnValue(['searchConditions', 'createCondition', 'createMedicine']),
+            searchConditions: vi.fn().mockReturnValue([{ id: 1, name: 'Influenza' }]),
+            createCondition: vi.fn().mockReturnValue({ id: 2, name: 'URI' }),
+            createMedicine: vi.fn().mockReturnValue({ id: 3, name: 'Paracetamol' })
+        };
+        server = new ApiServer(db, os.tmpdir());
+    });
+
+    afterEach(async () => {
+        await server.close();
+    });
+
+    it('forwards catalog search and Add new with the same args Electron IPC unpacks', async () => {
+        const token = jwt.sign({ id: 15, role: 'doctor', username: 'doc' }, JWT_SECRET, { expiresIn: '1h' });
+        const search = await server.inject({
+            method: 'POST',
+            url: '/api/ipc/searchConditions',
+            headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+            payload: ['flu']
+        });
+        const create = await server.inject({
+            method: 'POST',
+            url: '/api/ipc/createCondition',
+            headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+            payload: [{ name: 'URI' }]
+        });
+        expect(search.statusCode).toBe(200);
+        expect(create.statusCode).toBe(200);
+        expect(db.searchConditions).toHaveBeenCalledWith('flu');
+        expect(db.createCondition).toHaveBeenCalledWith({ name: 'URI' });
+    });
+});
+
 describe('hash SPA fallback', () => {
     let server: ApiServer;
 

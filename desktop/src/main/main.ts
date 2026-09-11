@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, clipboard, shell, dialog } from 'electron'
 import * as path from 'path';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
+import { bindUpdateIpc, createUpdateService } from './updates/updateService';
 
 import { preferLinuxGnomeLibsecret } from './linuxKeyring';
 import { loadAppVersionInfo } from './appVersionInfo';
@@ -113,6 +114,23 @@ ipcMain.handle('utils:getRuntimeInfo', () => ({
 }));
 
 ipcMain.handle('app:getVersion', () => loadAppVersionInfo(app, isDev));
+
+const updateService = createUpdateService({
+        updater: autoUpdater as any,
+    isPackaged: app.isPackaged,
+    env: process.env,
+    platform: process.platform,
+    isAppImage: Boolean(process.env['APPIMAGE']),
+    getVersion: () => app.getVersion(),
+    send: (_channel, payload) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('updates:event', payload);
+        }
+    },
+    openExternal: (url) => shell.openExternal(url)
+});
+bindUpdateIpc(ipcMain, updateService);
+autoUpdater.logger = log;
 
 // Services
 const securityService = new SecurityService(new ElectronSafeStorageDeviceKeyStore());
@@ -821,6 +839,62 @@ handleDb('db:saveAppointment', (_, appt) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return databaseService.saveAppointment(appt);
+});
+
+function requireCatalogSession(roles: string[]) {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!roles.includes(user.role)) throw new Error('Forbidden');
+    return user;
+}
+
+handleDb('db:searchConditions', (_, query, limit) => {
+    requireCatalogSession(['doctor', 'admin']);
+    return databaseService.searchConditions(query, limit);
+});
+handleDb('db:searchMedicines', (_, query, limit) => {
+    requireCatalogSession(['doctor', 'admin']);
+    return databaseService.searchMedicines(query, limit);
+});
+handleDb('db:createCondition', (_, input) => {
+    requireCatalogSession(['doctor', 'admin']);
+    return databaseService.createCondition(input);
+});
+handleDb('db:createMedicine', (_, input) => {
+    requireCatalogSession(['doctor', 'admin']);
+    return databaseService.createMedicine(input);
+});
+handleDb('db:getConditionMedPresets', (_, conditionId) => {
+    requireCatalogSession(['doctor', 'admin']);
+    return databaseService.getConditionMedPresets(conditionId);
+});
+handleDb('db:listConditions', (_, includeRetired) => {
+    requireCatalogSession(['admin']);
+    return databaseService.listConditions(includeRetired);
+});
+handleDb('db:listMedicines', (_, includeRetired) => {
+    requireCatalogSession(['admin']);
+    return databaseService.listMedicines(includeRetired);
+});
+handleDb('db:updateCondition', (_, input) => {
+    requireCatalogSession(['admin']);
+    return databaseService.updateCondition(input);
+});
+handleDb('db:updateMedicine', (_, input) => {
+    requireCatalogSession(['admin']);
+    return databaseService.updateMedicine(input);
+});
+handleDb('db:retireCondition', (_, id) => {
+    requireCatalogSession(['admin']);
+    return databaseService.retireCondition(id);
+});
+handleDb('db:retireMedicine', (_, id) => {
+    requireCatalogSession(['admin']);
+    return databaseService.retireMedicine(id);
+});
+handleDb('db:replaceConditionMedPresets', (_, input) => {
+    requireCatalogSession(['admin']);
+    return databaseService.replaceConditionMedPresets(input);
 });
 
 // Drive IPC Handlers

@@ -48,7 +48,7 @@ Follow these steps to set up the development environment from a clean repository
 - **Native Module Errors (`better-sqlite3`)**:
     - Ensure you have the Windows Build Tools installed.
     - Re-run `npm run postinstall` to rebuild modules against the Electron header files.
-- **Linux install**: Use the `.deb` from Feature CI (`sudo apt install ./nalamdesk-desktop_*_amd64.deb`). The AppImage needs FUSE 2; if it does not start, install the `.deb` instead of extracting the squashfs.
+- **Linux install**: Use the `.deb` from Feature CI (`sudo apt install ./nalamdesk-desktop_*_amd64.deb`). The AppImage needs FUSE 2; if it does not start, install the `.deb` instead of extracting the squashfs. In-app upgrades apply via AppImage; `.deb` installs fall back to the download page (no apt repo).
 - **Linux `ENCRYPTION_UNAVAILABLE`**: The packaged app selects `gnome-libsecret` at process start. Install `libsecret-1-0` and `gnome-keyring`. Do not use `--password-store=basic`.
 - **Database**:
     - A local SQLite database `nalamdesk.db` is automatically created in the `desktop` directory (dev) or `%APPDATA%` (prod) on first run.

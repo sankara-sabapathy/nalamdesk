@@ -45,8 +45,9 @@ Welcome to **NalamDesk**, your secure, offline-first Clinic Management System. T
 ### 3. Doctor's Workbench
 *   **Timeline:** View a patient's entire medical history (previous visits, prescriptions) in a chronological timeline.
 *   **Prescription Pad:**
-    *   **Diagnosis:** Enter clinical notes and diagnosis.
-    *   **Medicines:** Search and add medicines with dosage instructions (e.g., "1-0-1", "After Food").
+    *   **Diagnosis:** Typeahead against the clinic condition catalog. Use **Add new** if the term is missing — the visit is never blocked.
+    *   **Presets:** Choosing a condition can fill a clinic-configured medicine set. Edit or remove lines before save.
+    *   **Medicines:** Typeahead against the medicine catalog, with **Add new** on the go.
     *   **Print:** Click "Print" to generate a professional PDF prescription instantly.
 
 ### 4. Online Booking (Cloud Sync) ☁️
@@ -72,6 +73,8 @@ Welcome to **NalamDesk**, your secure, offline-first Clinic Management System. T
 *   **Theme:** Switch between Light, Dark, and High-Contrast modes.
 *   **Clinic Details:** Update your clinic's name and address (appears on prescriptions).
 *   **Application version:** The Settings footer shows the packaged application version from Electron (`app.getVersion()`), plus a short commit when the build embeds one. Development builds are labeled `(development)`.
+*   **Updates:** Packaged desktops check for a newer approved build on launch and from **Settings → Check for updates**. If one is available you see the current and new version, optional notes, and **Update now** / **Later**. Later keeps the running app. A failed check or download shows a plain error and does not touch the vault. Unsigned or checksum-only feeds do **not** claim full signature verification.
+*   **Catalogs:** Administrators maintain diagnosis and medicine inventories (and condition→medicine presets) under **Settings → Catalogs**. Soft-retire hides a term from typeahead; past visit text is unchanged.
 
 ### Data Management
 *   **Backup:** Automated daily backups are saved locally (Settings → Data & Backup). Retention is 30 days.

@@ -1,4 +1,5 @@
 import { MIGRATIONS } from '../schema/migrations';
+import * as catalog from '../catalog/catalogStore';
 
 export class DatabaseService {
     private db: any;
@@ -1011,6 +1012,54 @@ export class DatabaseService {
                 VALUES (?, ?, ?, ?, 'CONFIRMED')
             `).run(appt.patient_id, appt.date, appt.time, appt.reason);
         }
+    }
+
+    searchConditions(query?: string, limit?: number) {
+        return catalog.searchConditions(this.db, query, limit);
+    }
+
+    searchMedicines(query?: string, limit?: number) {
+        return catalog.searchMedicines(this.db, query, limit);
+    }
+
+    createCondition(input: any) {
+        return catalog.createCondition(this.db, input);
+    }
+
+    createMedicine(input: any) {
+        return catalog.createMedicine(this.db, input);
+    }
+
+    getConditionMedPresets(conditionId: number) {
+        return catalog.getConditionMedPresets(this.db, conditionId);
+    }
+
+    listConditions(includeRetired = false) {
+        return catalog.listConditions(this.db, includeRetired);
+    }
+
+    listMedicines(includeRetired = false) {
+        return catalog.listMedicines(this.db, includeRetired);
+    }
+
+    updateCondition(input: any) {
+        return catalog.updateCondition(this.db, input);
+    }
+
+    updateMedicine(input: any) {
+        return catalog.updateMedicine(this.db, input);
+    }
+
+    retireCondition(id: number) {
+        return catalog.retireCondition(this.db, id);
+    }
+
+    retireMedicine(id: number) {
+        return catalog.retireMedicine(this.db, id);
+    }
+
+    replaceConditionMedPresets(input: any) {
+        return catalog.replaceConditionMedPresets(this.db, input);
     }
 
     logStats() {

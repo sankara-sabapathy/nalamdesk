@@ -704,4 +704,33 @@ describe('VisitComponent', () => {
         component.copyLastVisit();
         expect(component.visitForm.patchValue).toHaveBeenCalledWith(expect.objectContaining({ diagnosis: 'Flu' }));
     });
+
+    it('applies editable condition presets when a catalog diagnosis is picked', async () => {
+        component.chartWritable = true;
+        component.isConsulting = true;
+        component.encounterId = 7;
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getConditionMedPresets') {
+                return Promise.resolve([{ medicine: 'Paracetamol', dosage: '500mg', duration: '3 days' }]);
+            }
+            return Promise.resolve([]);
+        });
+        await component.onConditionPicked({ id: 4, name: 'Influenza' });
+        expect(component.visitForm.patchValue).toHaveBeenCalledWith({ diagnosis: 'Influenza' });
+        expect(component.currentPrescription[0].medicine).toBe('Paracetamol');
+        component.currentPrescription[0].duration = '7 days';
+        expect(component.currentPrescription[0].duration).toBe('7 days');
+    });
+
+    it('adds a new diagnosis without blocking free-text entry', async () => {
+        component.chartWritable = true;
+        component.isConsulting = true;
+        component.encounterId = 7;
+        mockDataService.invoke.mockResolvedValue({ id: 8, name: 'Viral fever' });
+        const created = await component.createCondition('Viral fever');
+        expect(mockDataService.invoke).toHaveBeenCalledWith('createCondition', { name: 'Viral fever' });
+        expect(created.name).toBe('Viral fever');
+        component.onDiagnosisTyped('Free text diagnosis');
+        expect(component.visitForm.patchValue).toHaveBeenCalledWith({ diagnosis: 'Free text diagnosis' });
+    });
 });

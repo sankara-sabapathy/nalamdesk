@@ -34,7 +34,11 @@ const ALLOWED_IPC_METHODS = [
     'getVitals', 'saveVitals',
     'getSettings', 'getPublicSettings', 'saveSettings',
     'getDoctors',
-    'getUsers', 'saveUser', 'deleteUser', 'updateUserPassword'
+    'getUsers', 'saveUser', 'deleteUser', 'updateUserPassword',
+    'searchConditions', 'searchMedicines', 'createCondition', 'createMedicine',
+    'getConditionMedPresets', 'listConditions', 'listMedicines',
+    'updateCondition', 'updateMedicine', 'retireCondition', 'retireMedicine',
+    'replaceConditionMedPresets'
 ];
 
 export class ApiServer {

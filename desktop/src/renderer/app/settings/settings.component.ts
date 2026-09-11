@@ -8,11 +8,13 @@ import { SharedTableComponent } from '../shared/components/table/table.component
 import { ActionRendererComponent } from '../shared/components/table/renderers/action-renderer.component';
 import { ColDef, ValueGetterParams } from 'ag-grid-community';
 import { DatePickerComponent } from '../shared/components/date-picker/date-picker.component';
+import { CatalogSettingsComponent } from './catalog-settings.component';
+import { AppUpdateService } from '../services/update.service';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule, SharedTableComponent, ActionRendererComponent, DatePickerComponent],
+  imports: [CommonModule, FormsModule, SharedTableComponent, ActionRendererComponent, DatePickerComponent, CatalogSettingsComponent],
   templateUrl: './settings.component.html',
   styles: [`
     :host { display: block; height: 100%; }
@@ -35,6 +37,7 @@ export class SettingsComponent implements OnInit {
   staffFilter = 'all';
 
   appVersion = '';
+  updateBusy = false;
 
   // General Settings
   settings = {
@@ -266,6 +269,7 @@ export class SettingsComponent implements OnInit {
   private dataService = inject(DataService);
   private authService = inject(AuthService);
   private router = inject(Router);
+  private updates = inject(AppUpdateService, { optional: true });
   constructor(private ngZone: NgZone) { }
 
   ngOnInit() {
@@ -291,6 +295,22 @@ export class SettingsComponent implements OnInit {
       });
     } catch (e) {
       console.error('[Settings] Failed to load packaged app version', e);
+    }
+  }
+
+  async checkForUpdates(): Promise<void> {
+    if (!this.isElectron || this.updateBusy) return;
+    this.updateBusy = true;
+    try {
+      if (this.updates) {
+        await this.updates.check('manual');
+        return;
+      }
+      await window.electron.updates.check({ source: 'manual' });
+    } catch (e) {
+      console.error('[Settings] Update check failed', e);
+    } finally {
+      this.updateBusy = false;
     }
   }
 

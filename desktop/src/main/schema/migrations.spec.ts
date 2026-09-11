@@ -33,8 +33,8 @@ describe('Database Migrations', () => {
             });
         });
 
-        it('should have 8 migrations total', () => {
-            expect(MIGRATIONS).toHaveLength(8);
+        it('should have 9 migrations total', () => {
+            expect(MIGRATIONS).toHaveLength(9);
         });
     });
 
@@ -251,6 +251,37 @@ describe('Database Migrations', () => {
             expect(permissions).toContain('saveVisit');
             expect(permissions).toContain('beginConsultation');
             expect(permissions).toContain('beginNextConsultation');
+        });
+    });
+
+    describe('Migration v9 (Condition and medicine catalogs)', () => {
+        it('creates catalog tables, active-name uniqueness, and ordered presets', () => {
+            MIGRATIONS[8].up(mockDb);
+            const sql = executedSql.join('\n');
+            expect(sql).toContain('CREATE TABLE IF NOT EXISTS condition_catalog');
+            expect(sql).toContain('CREATE TABLE IF NOT EXISTS medicine_catalog');
+            expect(sql).toContain('CREATE TABLE IF NOT EXISTS condition_med_presets');
+            expect(sql).toContain('idx_condition_catalog_active_name');
+            expect(sql).toContain('idx_medicine_catalog_active_name');
+            expect(sql).toContain('WHERE active = 1');
+            expect(sql).toContain('instruction TEXT');
+        });
+
+        it('adds visit catalog permissions for doctors without dropping existing ones', () => {
+            const run = vi.fn();
+            mockDb.prepare = vi.fn().mockReturnValue({
+                run,
+                get: vi.fn().mockReturnValue({ permissions: JSON.stringify(['saveVisit']) }),
+                all: vi.fn()
+            });
+            MIGRATIONS[8].up(mockDb);
+            const [serializedPermissions, role] = run.mock.calls[0];
+            const permissions = JSON.parse(serializedPermissions);
+            expect(role).toBe('doctor');
+            expect(permissions).toContain('saveVisit');
+            expect(permissions).toContain('searchConditions');
+            expect(permissions).toContain('createMedicine');
+            expect(permissions).toContain('getConditionMedPresets');
         });
     });
 
