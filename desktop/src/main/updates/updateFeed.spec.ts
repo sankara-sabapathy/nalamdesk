@@ -1,0 +1,85 @@
+import { describe, expect, it } from 'vitest';
+import {
+    feedHasAppImage,
+    formatReleaseNotes,
+    isNewerVersion,
+    plainUpdateError,
+    resolveOsApplyPath,
+    resolveUpdateFeedConfig,
+    signatureClaim,
+    toElectronUpdaterOptions
+} from './updateFeed';
+
+describe('update feed resolver', () => {
+    it('disables updates when no generic feed URL is set', () => {
+        expect(resolveUpdateFeedConfig({})).toBeNull();
+        expect(resolveUpdateFeedConfig({ NALAMDESK_UPDATE_PROVIDER: 'generic' })).toBeNull();
+    });
+
+    it('uses the documented generic feed URL without GitHub Releases', () => {
+        const config = resolveUpdateFeedConfig({
+            NALAMDESK_UPDATE_FEED_URL: 'https://updates.example.clinic/nalamdesk/'
+        });
+        expect(config).toEqual({
+            provider: 'generic',
+            url: 'https://updates.example.clinic/nalamdesk',
+            signatureMode: 'feed-checksum',
+            downloadPageUrl: 'https://github.com/sankara-sabapathy/nalamdesk'
+        });
+        expect(toElectronUpdaterOptions(config!)).toEqual({
+            provider: 'generic',
+            url: 'https://updates.example.clinic/nalamdesk'
+        });
+        expect(signatureClaim(config!.signatureMode).verifiedSignature).toBe(false);
+    });
+
+    it('leaves a github provider seam without rewriting IPC', () => {
+        const config = resolveUpdateFeedConfig({
+            NALAMDESK_UPDATE_PROVIDER: 'github',
+            NALAMDESK_UPDATE_RELEASE_SIGNED: '1',
+            NALAMDESK_UPDATE_DOWNLOAD_PAGE: 'https://clinic.example/download'
+        });
+        expect(config?.provider).toBe('github');
+        expect(toElectronUpdaterOptions(config!)).toEqual({
+            provider: 'github',
+            owner: 'sankara-sabapathy',
+            repo: 'nalamdesk'
+        });
+        expect(signatureClaim(config!.signatureMode).verifiedSignature).toBe(true);
+    });
+});
+
+describe('version compare and OS apply path', () => {
+    it('detects a newer feed version', () => {
+        expect(isNewerVersion('0.0.9', '0.0.8')).toBe(true);
+        expect(isNewerVersion('0.0.8', '0.0.8')).toBe(false);
+        expect(isNewerVersion('0.0.7', '0.0.8')).toBe(false);
+    });
+
+    it('applies Windows NSIS, macOS DMG, and Linux AppImage in-app', () => {
+        expect(resolveOsApplyPath({ platform: 'win32', isAppImage: false, feedHasAppImage: false }))
+            .toEqual({ mode: 'nsis', canQuitAndInstall: true });
+        expect(resolveOsApplyPath({ platform: 'darwin', isAppImage: false, feedHasAppImage: false }))
+            .toEqual({ mode: 'dmg', canQuitAndInstall: true });
+        expect(resolveOsApplyPath({ platform: 'linux', isAppImage: true, feedHasAppImage: true }))
+            .toEqual({ mode: 'appimage-updater', canQuitAndInstall: true });
+    });
+
+    it('falls back to the download page for Linux .deb or a missing AppImage', () => {
+        expect(resolveOsApplyPath({ platform: 'linux', isAppImage: false, feedHasAppImage: true }).mode)
+            .toBe('open-download-page');
+        expect(resolveOsApplyPath({ platform: 'linux', isAppImage: true, feedHasAppImage: false }).mode)
+            .toBe('open-download-page');
+        expect(feedHasAppImage({ path: 'NalamDesk-0.0.9.AppImage' })).toBe(true);
+        expect(feedHasAppImage({ files: [{ url: 'nalamdesk-desktop_0.0.9_amd64.deb' }] })).toBe(false);
+    });
+});
+
+describe('plain update errors', () => {
+    it('maps offline and bad-feed failures without technical noise', () => {
+        expect(plainUpdateError(new Error('getaddrinfo ENOTFOUND updates.example'))).toMatch(/network/i);
+        expect(plainUpdateError(new Error('Cannot find channel latest.yml'))).toMatch(/feed/i);
+        expect(plainUpdateError(new Error('SHA512 checksum mismatch'))).toMatch(/checksum/i);
+        expect(formatReleaseNotes([{ note: 'Fix queue' }, { note: 'Rx typeahead' }])).toContain('Fix queue');
+    });
+});

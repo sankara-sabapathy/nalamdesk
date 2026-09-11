@@ -50,6 +50,9 @@ export function linuxClinicInstallInstructions(version: string): string {
         '',
         'The AppImage is a secondary artifact and requires FUSE 2 (libfuse.so.2).',
         'If the AppImage does not start, install the .deb — do not extract the squashfs.',
+        '',
+        'In-app upgrades use the AppImage (electron-updater). Clinic first-install stays the .deb.',
+        'If the update feed has no AppImage, open the download page for a new package — there is no apt repo.',
         ''
     ].join('\n');
 }

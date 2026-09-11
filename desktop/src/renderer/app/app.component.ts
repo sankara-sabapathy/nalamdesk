@@ -3,17 +3,19 @@ import { RouterOutlet } from '@angular/router';
 import { ThemeService } from './services/theme.service';
 
 import { UniversalDialogComponent } from './shared/components/universal-dialog/universal-dialog.component';
+import { UpdatePromptComponent } from './shared/components/update-prompt/update-prompt.component';
 
 import { BackupSetupComponent } from './setup/backup-setup.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, UniversalDialogComponent, BackupSetupComponent],
+  imports: [RouterOutlet, UniversalDialogComponent, BackupSetupComponent, UpdatePromptComponent],
   template: `
     <router-outlet></router-outlet>
     <app-universal-dialog></app-universal-dialog>
     <app-backup-setup></app-backup-setup>
+    <app-update-prompt></app-update-prompt>
   `
 })
 export class AppComponent {
