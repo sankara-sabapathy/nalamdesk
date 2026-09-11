@@ -25,4 +25,14 @@ describe('VisitListComponent layout', () => {
         const selectionColumnWidth = 0;
         expect(minSum).toBeLessThanOrEqual(1024 - 288 - 48 - selectionColumnWidth);
     });
+
+    it('opens a finished visit in view mode with visitId', () => {
+        const navigate = vi.fn();
+        const component = new VisitListComponent({ run: (fn: () => void) => fn() } as any, { navigate } as any);
+        component.goToVisit({ id: 42, patient_id: 7, diagnosis: 'Headache' });
+        expect(navigate).toHaveBeenCalledWith(['/visit', 7], {
+            queryParams: { visitId: 42, mode: 'view' },
+            state: { visitId: 42, mode: 'view' }
+        });
+    });
 });

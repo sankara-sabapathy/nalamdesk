@@ -124,6 +124,9 @@ export class VisitListComponent implements OnInit {
   }
 
   goToVisit(visit: any) {
-    this.router.navigate(['/visit', visit.patient_id]);
+    this.router.navigate(['/visit', visit.patient_id], {
+      queryParams: { visitId: visit.id, mode: 'view' },
+      state: { visitId: visit.id, mode: 'view' }
+    });
   }
 }

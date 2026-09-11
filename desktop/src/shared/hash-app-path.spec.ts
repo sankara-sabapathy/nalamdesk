@@ -9,6 +9,7 @@ describe('hash SPA path rewrite', () => {
     it('rewrites nested app paths and preserves the query string', () => {
         expect(hashUrlForPathname('/patients/12', '?q=1')).toBe('/#/patients/12?q=1');
         expect(hashUrlForPathname('/visit/3')).toBe('/#/visit/3');
+        expect(hashUrlForPathname('/visit/3', '?visitId=42&mode=view')).toBe('/#/visit/3?visitId=42&mode=view');
         expect(hashUrlForPathname('/online-booking')).toBe('/#/online-booking');
         expect(hashUrlForPathname('/queue')).toBe('/#/queue');
         expect(hashUrlForPathname('/dashboard')).toBe('/#/dashboard');

@@ -8,6 +8,7 @@ import { PrescriptionComponent } from '../../visits/prescription/prescription.co
 import { AuthService } from '../../services/auth.service';
 import { DataService } from '../../services/api.service';
 import { newRequestId } from '../../services/request-id';
+import { combineLatest } from 'rxjs';
 
 interface PrescriptionItem {
   medicine: string;
@@ -124,13 +125,16 @@ interface Visit {
                </button>
 
                <h1 class="text-lg md:text-xl font-bold text-gray-800 truncate">
-                 {{ editingVisitId ? 'Editing Past Visit' : (isLiveConsultation ? 'Current Consultation' : 'Visit') }}
+                 {{ isViewMode ? 'View Visit' : (editingVisitId ? 'Editing Past Visit' : (isLiveConsultation ? 'Current Consultation' : 'Visit')) }}
                </h1>
            </div>
 
            <div class="flex flex-wrap gap-2 items-center justify-end">
-              <button *ngIf="editingVisitId" (click)="deleteVisit()" class="border border-red-200 text-red-600 bg-white hover:bg-red-50 px-3 py-1 rounded text-sm font-medium transition">Delete</button>
-              <button *ngIf="editingVisitId" (click)="resetForm()" class="border border-blue-200 text-blue-600 bg-white hover:bg-blue-50 px-3 py-1 rounded text-sm font-medium transition">New Visit</button>
+              <button *ngIf="editingVisitId && !isViewMode" (click)="deleteVisit()" class="border border-red-200 text-red-600 bg-white hover:bg-red-50 px-3 py-1 rounded text-sm font-medium transition">Delete</button>
+              <button *ngIf="editingVisitId && !isViewMode" (click)="resetForm()" class="border border-blue-200 text-blue-600 bg-white hover:bg-blue-50 px-3 py-1 rounded text-sm font-medium transition">New Visit</button>
+              <div class="text-right flex items-center gap-2" *ngIf="isViewMode">
+                  <div class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-bold">VIEW</div>
+              </div>
               <div class="text-right flex items-center gap-2" *ngIf="isLiveConsultation">
                   <div class="hidden md:block text-xs text-gray-500 uppercase tracking-wider font-bold">Status</div>
                   <div class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-bold gap-1 flex items-center">
@@ -226,7 +230,10 @@ interface Visit {
         <!-- STICKY FOOTER ACTION BAR -->
         <div class="min-h-20 bg-white border-t px-4 md:px-8 flex flex-col md:flex-row items-center justify-between z-30 py-3 gap-3">
             <div class="flex gap-3 w-full md:w-auto justify-center md:justify-start">
-               <button type="button" (click)="printPrescription()" class="px-4 py-2 rounded text-gray-600 hover:bg-gray-100 font-medium transition flex-1 md:flex-none justify-center">
+               <button *ngIf="isViewMode" type="button" (click)="downloadVisitPdf()" [disabled]="!viewedVisit" class="px-4 py-2 rounded bg-gray-800 text-white hover:bg-gray-900 font-medium transition flex-1 md:flex-none justify-center disabled:opacity-50">
+                 Download PDF
+               </button>
+               <button *ngIf="!isViewMode" type="button" (click)="printPrescription()" class="px-4 py-2 rounded text-gray-600 hover:bg-gray-100 font-medium transition flex-1 md:flex-none justify-center">
                  Print
                </button>
                <button *ngIf="isLiveConsultation" type="button" (click)="postponeConsult()" class="px-4 py-2 rounded text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50 font-medium transition flex-1 md:flex-none justify-center">
@@ -287,7 +294,9 @@ export class VisitComponent implements OnInit {
   showMobileHistory = false;
 
   currentPrescription: any[] = [];
-  // ...
+  viewMode = false;
+  viewVisitId: number | null = null;
+  viewedVisit: Visit | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -299,12 +308,14 @@ export class VisitComponent implements OnInit {
     private authService: AuthService
   ) {
     const nav = this.router.getCurrentNavigation();
-    if (nav?.extras?.state?.['isConsulting']) {
+    const state = nav?.extras?.state || {};
+    if (state['isConsulting']) {
       this.isConsulting = true;
     }
-    if (nav?.extras?.state?.['encounterId']) {
-      this.encounterId = Number(nav.extras.state['encounterId']);
+    if (state['encounterId']) {
+      this.encounterId = Number(state['encounterId']);
     }
+    this.applyViewIntent(state);
 
     this.visitForm = this.fb.group({
       symptoms: [''],
@@ -318,10 +329,15 @@ export class VisitComponent implements OnInit {
 
   ngOnInit() {
     this.currentUser = this.authService.getUser();
-    this.route.params.subscribe(params => {
+    combineLatest([this.route.params, this.route.queryParams]).subscribe(([params, queryParams]) => {
       this.patientId = +params['id'];
+      this.applyViewIntent(queryParams);
       this.loadData();
     });
+  }
+
+  get isViewMode(): boolean {
+    return this.viewMode && !this.isLiveConsultation;
   }
 
   get isLiveConsultation(): boolean {
@@ -343,6 +359,13 @@ export class VisitComponent implements OnInit {
 
   editVisit(visit: any) {
     // Historical editing and active completion are deliberately separate modes.
+    if (this.isViewMode) {
+      this.viewVisitId = visit.id;
+      this.patchVisitSnapshot(visit);
+      this.setChartWritable(false);
+      this.showMobileHistory = false;
+      return;
+    }
     if (this.isConsulting || this.encounterId || this.activeEncounterReadOnly) return;
     this.editingVisitId = visit.id;
     this.visitForm.patchValue({
@@ -379,6 +402,10 @@ export class VisitComponent implements OnInit {
     this.consultationLoadError = null;
     try {
       this.setChartWritable(false);
+      if (this.viewMode) {
+        await this.loadFinishedVisitView();
+        return;
+      }
       let activeEncounterReadDenied = false;
       const activeEncounterRequest = this.dataService.invoke<any>('getActiveConsultation', this.patientId)
         .catch(error => {
@@ -546,21 +573,18 @@ export class VisitComponent implements OnInit {
 
   async printPrescription() {
     try {
-      const settings = await this.dataService.invoke<any>('getPublicSettings');
-      const currentUser = this.authService.getUser();
-      const doctor = {
-        name: currentUser?.name || settings?.doctor_name || 'Doctor',
-        specialty: currentUser?.specialty || 'General',
-        license_number: currentUser?.license_number || settings?.license_key || ''
-      };
-
-      await this.pdfService.generatePrescription(
-        { ...this.visitForm.value, date: new Date() },
-        this.patient,
-        doctor
-      );
+      await this.generateVisitPdf({ ...this.visitForm.value, date: new Date() });
     } catch (e) {
       console.error('Print failed', e);
+    }
+  }
+
+  async downloadVisitPdf() {
+    if (!this.viewedVisit) return;
+    try {
+      await this.generateVisitPdf(this.viewedVisit);
+    } catch (e) {
+      console.error('PDF download failed', e);
     }
   }
 
@@ -665,6 +689,74 @@ export class VisitComponent implements OnInit {
 
   private currentVisitData() {
     return { ...this.visitForm.value };
+  }
+
+  private applyViewIntent(source: Record<string, any> | null | undefined) {
+    const isViewMode = source?.['mode'] === 'view';
+    const visitId = source?.['visitId'];
+    this.viewMode = isViewMode;
+    this.viewVisitId = isViewMode && visitId != null && visitId !== ''
+      ? Number(visitId)
+      : null;
+    if (!isViewMode) this.viewedVisit = null;
+  }
+
+  private async loadFinishedVisitView() {
+    const [visits, allPatients, vitals] = await Promise.all([
+      this.dataService.invoke<any[]>('getVisits', this.patientId),
+      this.dataService.invoke<any[]>('getPatients', ''),
+      this.dataService.invoke<any>('getVitals', this.patientId)
+    ]);
+    const patient = allPatients.find((item: any) => item.id === this.patientId);
+    const finished = (visits || []).filter((visit: any) => visit.status !== 'in-progress');
+    const target = this.viewVisitId != null
+      ? finished.find((visit: any) => Number(visit.id) === Number(this.viewVisitId))
+      : undefined;
+
+    this.ngZone.run(() => {
+      this.patient = patient;
+      this.history = finished;
+      this.patientVitals = vitals;
+      this.activeEncounterReadOnly = false;
+      this.encounterId = null;
+      this.isConsulting = false;
+      this.editingVisitId = null;
+      this.viewedVisit = target || null;
+      if (target) {
+        this.patchVisitSnapshot(target);
+      } else if (this.viewVisitId != null) {
+        this.consultationLoadError = 'Could not load this visit.';
+      }
+      this.setChartWritable(false);
+    });
+  }
+
+  private async generateVisitPdf(visit: any) {
+    const settings = await this.dataService.invoke<any>('getPublicSettings');
+    const currentUser = this.authService.getUser();
+    const doctor = {
+      name: currentUser?.name || settings?.doctor_name || 'Doctor',
+      specialty: currentUser?.specialty || 'General',
+      license_number: currentUser?.license_number || settings?.license_key || ''
+    };
+    await this.pdfService.generatePrescription(
+      { ...visit, date: visit.date || new Date() },
+      this.patient,
+      doctor
+    );
+  }
+
+  private patchVisitSnapshot(visit: any) {
+    this.viewedVisit = visit;
+    this.visitForm.patchValue({
+      symptoms: visit.symptoms || '',
+      examination_notes: visit.examination_notes || '',
+      diagnosis: visit.diagnosis || '',
+      diagnosis_type: visit.diagnosis_type || '',
+      prescription: visit.prescription || [],
+      amount_paid: visit.amount_paid || 0
+    });
+    this.currentPrescription = visit.prescription || [];
   }
 
   private patchEncounter(encounter: any) {
