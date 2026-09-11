@@ -59,7 +59,7 @@ Set `NALAMDESK_UPDATE_PROVIDER=github` (optional `NALAMDESK_UPDATE_GITHUB_OWNER`
 | Linux | AppImage | `electron-updater` `quitAndInstall` |
 | Linux | `.deb` (clinic first-install) | **Open download page** if the running process is not an AppImage, or if the feed has no AppImage. No apt repo. |
 
-Unsigned / checksum-only feeds must not claim full code-signature verification in the UI. Set `NALAMDESK_UPDATE_RELEASE_SIGNED=1` only when a later signed channel is actually in use.
+Unsigned / checksum-only feeds must not claim full code-signature verification in the UI. `NALAMDESK_UPDATE_RELEASE_SIGNED=1` is a later-PR seam only; this build always reports checksum-only integrity until the updater returns a real verification result.
 
 The updater never wipes, moves, or re-encrypts `userData` / the vault.
 

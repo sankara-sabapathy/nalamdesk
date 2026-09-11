@@ -103,8 +103,10 @@ export function updateCondition(db: SqliteDb, input: { id?: number; name?: strin
 
 export function updateMedicine(db: SqliteDb, input: Partial<MedicineCatalogRow> & { id?: number; name?: string }): MedicineCatalogRow {
     const id = requireId(input?.id);
-    const name = normalizeName(input?.name);
-    const defaults = defaultRxFields(input);
+    const existing = db.prepare('SELECT * FROM medicine_catalog WHERE id = ?').get(id) as MedicineCatalogRow | undefined;
+    if (!existing) throw new Error('CATALOG_NOT_FOUND');
+    const name = normalizeName(input?.name != null ? input.name : existing.name);
+    const defaults = defaultRxFields(mergeMedicineFields(existing, input));
     return updateNamed(db, 'medicine_catalog', id, { name, ...defaults }) as MedicineCatalogRow;
 }
 
@@ -257,6 +259,20 @@ function toRxLine(row: any): PrescriptionLine {
         frequency: row.frequency || defaults.frequency,
         duration: row.duration || defaults.duration,
         instruction: row.instruction || defaults.instruction
+    };
+}
+
+function mergeMedicineFields(
+    existing: MedicineCatalogRow,
+    input: Partial<MedicineCatalogRow>
+): Partial<MedicineCatalogRow> {
+    return {
+        form: input.form !== undefined ? input.form : existing.form,
+        dosage: input.dosage !== undefined ? input.dosage : existing.dosage,
+        route: input.route !== undefined ? input.route : existing.route,
+        frequency: input.frequency !== undefined ? input.frequency : existing.frequency,
+        duration: input.duration !== undefined ? input.duration : existing.duration,
+        instruction: input.instruction !== undefined ? input.instruction : existing.instruction
     };
 }
 

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, clipboard, shell, dialog } from 'electron'
 import * as path from 'path';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
-import { bindUpdateIpc, createUpdateService } from './updates/updateService';
+import { bindUpdateIpc, createUpdateService, type UpdaterPort } from './updates/updateService';
 
 import { preferLinuxGnomeLibsecret } from './linuxKeyring';
 import { loadAppVersionInfo } from './appVersionInfo';
@@ -116,7 +116,7 @@ ipcMain.handle('utils:getRuntimeInfo', () => ({
 ipcMain.handle('app:getVersion', () => loadAppVersionInfo(app, isDev));
 
 const updateService = createUpdateService({
-        updater: autoUpdater as any,
+        updater: autoUpdater as unknown as UpdaterPort,
     isPackaged: app.isPackaged,
     env: process.env,
     platform: process.platform,

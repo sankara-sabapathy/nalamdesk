@@ -21,6 +21,7 @@ describe('UpdatePromptComponent', () => {
             destroy: vi.fn(),
             later: vi.fn(),
             updateNow: vi.fn(),
+            install: vi.fn(),
             cancelDownload: vi.fn(),
             promptOpen: () => true,
             status: () => ({
@@ -45,5 +46,18 @@ describe('UpdatePromptComponent', () => {
         expect(component.status.integrityNote).not.toMatch(/full code-signature verification is complete/i);
         component.later();
         expect(updates.later).toHaveBeenCalled();
+    });
+
+    it('installs a downloaded update from the prompt', () => {
+        updates.status = () => ({
+            state: 'downloaded',
+            currentVersion: '0.0.8',
+            availableVersion: '0.0.9',
+            canQuitAndInstall: true,
+            verifiedSignature: false
+        });
+        expect(component.title).toMatch(/downloaded/i);
+        component.install();
+        expect(updates.install).toHaveBeenCalled();
     });
 });

@@ -2,6 +2,7 @@ import type { IpcMain } from 'electron';
 import {
     feedHasAppImage,
     formatReleaseNotes,
+    hasInsecureUpdateArtifact,
     isNewerVersion,
     plainUpdateError,
     resolveOsApplyPath,
@@ -130,7 +131,13 @@ export class DesktopUpdateService {
         if (!this.deps.isPackaged || !this.feed) {
             return this.check({ source: 'manual' });
         }
-        if (this.status.state === 'available' && !this.status.canQuitAndInstall) {
+        if (this.status.state === 'downloading' || this.status.state === 'downloaded') {
+            return this.getStatus();
+        }
+        if (this.status.state !== 'available') {
+            return this.fail('manual', new Error('No update is ready to download.'));
+        }
+        if (!this.status.canQuitAndInstall) {
             const url = this.status.downloadPageUrl;
             if (url) await this.deps.openExternal(url);
             return this.getStatus();
@@ -157,12 +164,14 @@ export class DesktopUpdateService {
     }
 
     async install(): Promise<UpdateStatus> {
+        if (this.status.state === 'downloaded' && this.status.canQuitAndInstall) {
+            this.deps.updater.quitAndInstall(false, true);
+            return this.getStatus();
+        }
         if (!this.status.canQuitAndInstall) {
             const url = this.status.downloadPageUrl;
             if (url) await this.deps.openExternal(url);
-            return this.getStatus();
         }
-        this.deps.updater.quitAndInstall(false, true);
         return this.getStatus();
     }
 
@@ -176,6 +185,9 @@ export class DesktopUpdateService {
 
     private applyCheckResult(info: UpdateInfoLike | undefined, source: UpdateCheckSource): UpdateStatus {
         this.lastInfo = info || null;
+        if (hasInsecureUpdateArtifact(info)) {
+            return this.fail(source, new Error('The update feed listed an insecure HTTP download.'));
+        }
         const currentVersion = this.deps.getVersion();
         const availableVersion = info?.version || '';
         const apply = resolveOsApplyPath({

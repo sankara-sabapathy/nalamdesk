@@ -36,7 +36,11 @@ describe('CatalogSettingsComponent', () => {
         component.addPresetLine();
         await component.savePresets();
         expect(data.invoke).toHaveBeenCalledWith('replaceConditionMedPresets', expect.objectContaining({
-            conditionId: 1
+            conditionId: 1,
+            lines: [
+                { medicine: 'Paracetamol', medicine_id: 2 },
+                expect.objectContaining({ medicine_id: null })
+            ]
         }));
     });
 
@@ -49,5 +53,14 @@ describe('CatalogSettingsComponent', () => {
         await component.addMedicine();
         expect(component.success).toBe(false);
         expect(component.message).toMatch(/already exists/i);
+    });
+
+    it('does not hide condition presets when a medicine with the same id is retired', async () => {
+        await component.reload();
+        await component.selectCondition({ id: 1, name: 'URI' });
+        await component.retire('retireMedicine', { id: 1, name: 'Old syrup' });
+        expect(component.selectedCondition).toEqual({ id: 1, name: 'URI' });
+        await component.retire('retireCondition', { id: 1, name: 'URI' });
+        expect(component.selectedCondition).toBeNull();
     });
 });

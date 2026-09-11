@@ -66,13 +66,14 @@ export function toElectronUpdaterOptions(config: UpdateFeedConfig): Record<strin
 }
 
 export function isNewerVersion(latest: string, current: string): boolean {
-    const next = parseVersion(latest);
-    const running = parseVersion(current);
-    for (let i = 0; i < 3; i++) {
-        if (next[i] > running[i]) return true;
-        if (next[i] < running[i]) return false;
-    }
-    return false;
+    return compareSemVer(latest, current) > 0;
+}
+
+export function hasInsecureUpdateArtifact(
+    updateInfo: { files?: Array<{ url?: string }>; path?: string } | null | undefined
+): boolean {
+    const names = [updateInfo?.path || '', ...(updateInfo?.files || []).map((file) => file.url || '')];
+    return names.some((name) => isAbsoluteInsecureUrl(name));
 }
 
 export function feedHasAppImage(updateInfo: { files?: Array<{ url?: string }>; path?: string } | null | undefined): boolean {
@@ -93,13 +94,7 @@ export function resolveOsApplyPath(input: {
     return { mode: 'open-download-page', canQuitAndInstall: false };
 }
 
-export function signatureClaim(mode: SignatureMode): { verifiedSignature: boolean; integrityNote: string } {
-    if (mode === 'release-signed') {
-        return {
-            verifiedSignature: true,
-            integrityNote: 'This update is release-signed.'
-        };
-    }
+export function signatureClaim(_mode?: SignatureMode): { verifiedSignature: boolean; integrityNote: string } {
     return {
         verifiedSignature: false,
         integrityNote: 'This feed lists package checksums. NalamDesk does not claim full code-signature verification.'
@@ -130,9 +125,49 @@ export function formatReleaseNotes(notes: string | Array<{ note?: string }> | un
     return notes.map((item) => String(item?.note || '').trim()).filter(Boolean).join('\n');
 }
 
-function parseVersion(value: string): [number, number, number] {
-    const parts = String(value || '').replace(/^v/i, '').split(/[.-]/);
-    return [toInt(parts[0]), toInt(parts[1]), toInt(parts[2])];
+function compareSemVer(latest: string, current: string): number {
+    const next = parseSemVer(latest);
+    const running = parseSemVer(current);
+    for (let i = 0; i < 3; i++) {
+        if (next.core[i] !== running.core[i]) return next.core[i] > running.core[i] ? 1 : -1;
+    }
+    if (next.pre.length === 0 && running.pre.length === 0) return 0;
+    if (next.pre.length === 0) return 1;
+    if (running.pre.length === 0) return -1;
+    return comparePrerelease(next.pre, running.pre);
+}
+
+function comparePrerelease(left: Array<string | number>, right: Array<string | number>): number {
+    const len = Math.max(left.length, right.length);
+    for (let i = 0; i < len; i++) {
+        if (i >= left.length) return -1;
+        if (i >= right.length) return 1;
+        const l = left[i];
+        const r = right[i];
+        if (l === r) continue;
+        if (typeof l === 'number' && typeof r === 'number') return l > r ? 1 : -1;
+        if (typeof l === 'number') return -1;
+        if (typeof r === 'number') return 1;
+        return String(l) > String(r) ? 1 : -1;
+    }
+    return 0;
+}
+
+function parseSemVer(value: string): { core: [number, number, number]; pre: Array<string | number> } {
+    const raw = String(value || '').replace(/^v/i, '').trim();
+    const dash = raw.indexOf('-');
+    const corePart = dash === -1 ? raw : raw.slice(0, dash);
+    const prePart = dash === -1 ? '' : raw.slice(dash + 1);
+    const coreNums = corePart.split('.');
+    const core: [number, number, number] = [toInt(coreNums[0]), toInt(coreNums[1]), toInt(coreNums[2])];
+    if (!prePart) return { core, pre: [] };
+    const pre = prePart.split('.').map((id) => (/^\d+$/.test(id) ? toInt(id) : id));
+    return { core, pre };
+}
+
+function isAbsoluteInsecureUrl(value: string): boolean {
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) return false;
+    return !isAllowedGenericFeedUrl(value);
 }
 
 function toInt(part: string | undefined): number {

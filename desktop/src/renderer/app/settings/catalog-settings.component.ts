@@ -120,7 +120,9 @@ export class CatalogSettingsComponent implements OnInit {
 
     async retire(method: 'retireCondition' | 'retireMedicine', row: any): Promise<void> {
         await this.write(method, row.id);
-        if (this.selectedCondition?.id === row.id) this.selectedCondition = null;
+        if (method === 'retireCondition' && this.selectedCondition?.id === row.id) {
+            this.selectedCondition = null;
+        }
     }
 
     async selectCondition(row: any): Promise<void> {

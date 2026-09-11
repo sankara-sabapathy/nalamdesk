@@ -154,4 +154,32 @@ describe('DesktopUpdateService', () => {
         expect(handle).toHaveBeenCalledWith('updates:cancel', expect.any(Function));
         expect(handle).toHaveBeenCalledWith('updates:status', expect.any(Function));
     });
+
+    it('refuses download when the app is already up to date', async () => {
+        const updater = mockUpdater({
+            checkForUpdates: vi.fn().mockResolvedValue({ updateInfo: { version: '0.0.8' } })
+        });
+        const { service } = createService(updater);
+        await service.check({ source: 'manual' });
+        const status = await service.download();
+        expect(status.state).toBe('error');
+        expect(status.error).toMatch(/ready to download/i);
+        expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    });
+
+    it('does not quitAndInstall until an update has downloaded', async () => {
+        const updater = mockUpdater({
+            checkForUpdates: vi.fn().mockResolvedValue({
+                updateInfo: { version: '0.0.9', path: 'NalamDesk-Setup-0.0.9.exe' }
+            }),
+            downloadUpdate: vi.fn().mockResolvedValue(undefined)
+        });
+        const { service } = createService(updater);
+        await service.check({ source: 'manual' });
+        await service.install();
+        expect(updater.quitAndInstall).not.toHaveBeenCalled();
+        await service.download();
+        await service.install();
+        expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    });
 });

@@ -52,6 +52,13 @@ describe('AppUpdateService', () => {
         expect(updates.install).toHaveBeenCalled();
     });
 
+    it('installs a previously downloaded update', async () => {
+        updates.install.mockResolvedValue({ state: 'downloaded', canQuitAndInstall: true });
+        service.status.set({ state: 'downloaded' });
+        await service.install();
+        expect(updates.install).toHaveBeenCalled();
+    });
+
     it('keeps the prompt for a failed launch check', async () => {
         updates.check.mockResolvedValue({
             state: 'error',

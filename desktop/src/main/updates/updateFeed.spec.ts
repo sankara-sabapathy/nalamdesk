@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     feedHasAppImage,
     formatReleaseNotes,
+    hasInsecureUpdateArtifact,
     isNewerVersion,
     plainUpdateError,
     resolveOsApplyPath,
@@ -70,7 +71,7 @@ describe('update feed resolver', () => {
             owner: 'sankara-sabapathy',
             repo: 'nalamdesk'
         });
-        expect(signatureClaim(config!.signatureMode).verifiedSignature).toBe(true);
+        expect(signatureClaim(config!.signatureMode).verifiedSignature).toBe(false);
     });
 });
 
@@ -79,6 +80,9 @@ describe('version compare and OS apply path', () => {
         expect(isNewerVersion('0.0.9', '0.0.8')).toBe(true);
         expect(isNewerVersion('0.0.8', '0.0.8')).toBe(false);
         expect(isNewerVersion('0.0.7', '0.0.8')).toBe(false);
+        expect(isNewerVersion('1.0.0-rc.2', '1.0.0-rc.1')).toBe(true);
+        expect(isNewerVersion('1.0.0', '1.0.0-rc.1')).toBe(true);
+        expect(isNewerVersion('1.0.0-rc.1', '1.0.0')).toBe(false);
     });
 
     it('applies Windows NSIS, macOS DMG, and Linux AppImage in-app', () => {
@@ -97,6 +101,8 @@ describe('version compare and OS apply path', () => {
             .toBe('open-download-page');
         expect(feedHasAppImage({ path: 'NalamDesk-0.0.9.AppImage' })).toBe(true);
         expect(feedHasAppImage({ files: [{ url: 'nalamdesk-desktop_0.0.9_amd64.deb' }] })).toBe(false);
+        expect(hasInsecureUpdateArtifact({ path: 'NalamDesk-Setup-0.0.9.exe' })).toBe(false);
+        expect(hasInsecureUpdateArtifact({ files: [{ url: 'http://evil.example/nalamdesk.exe' }] })).toBe(true);
     });
 });
 

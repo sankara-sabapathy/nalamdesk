@@ -151,4 +151,15 @@ describe('condition and medicine catalogs', () => {
         const presets = service.getConditionMedPresets(condition.id);
         expect(presets.map((line: any) => line.medicine)).toEqual(['Paracetamol', 'ORS']);
     });
+
+    it('keeps existing Rx defaults when a medicine is renamed', () => {
+        const medicine = service.createMedicine({
+            name: 'Paracetamol', dosage: '500mg', frequency: '1-1-1', duration: '5 days'
+        });
+        const updated = service.updateMedicine({ id: medicine.id, name: 'Acetaminophen' });
+        expect(updated.name).toBe('Acetaminophen');
+        expect(updated.dosage).toBe('500mg');
+        expect(updated.frequency).toBe('1-1-1');
+        expect(updated.duration).toBe('5 days');
+    });
 });

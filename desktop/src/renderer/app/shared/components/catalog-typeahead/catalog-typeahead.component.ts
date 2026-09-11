@@ -25,10 +25,10 @@ export interface CatalogPick {
       <div *ngIf="open && !disabled" class="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto">
         <button type="button" *ngFor="let hit of hits"
                 class="block w-full text-left px-3 py-2 text-sm hover:bg-blue-50"
-                (mousedown)="pick(hit)">{{ hit.name }}</button>
+                (click)="pick(hit)">{{ hit.name }}</button>
         <button type="button" *ngIf="canAdd"
                 class="block w-full text-left px-3 py-2 text-sm text-blue-700 hover:bg-blue-50 font-medium"
-                (mousedown)="addNew()">+ Add new “{{ value.trim() }}”</button>
+                (click)="addNew()">+ Add new “{{ value.trim() }}”</button>
         <div *ngIf="hits.length === 0 && !canAdd" class="px-3 py-2 text-xs text-gray-400">No matching catalog entries</div>
       </div>
       <p *ngIf="error" class="text-xs text-red-500 mt-1">{{ error }}</p>

@@ -56,8 +56,15 @@ export class AppUpdateService {
         const afterDownload = await api.download();
         this.applyStatus(afterDownload);
         if (afterDownload.state === 'downloaded') {
-            await api.install();
+            await this.install();
         }
+    }
+
+    async install(): Promise<void> {
+        const api = (globalThis as any).electron?.updates;
+        if (!api) return;
+        const status = await api.install();
+        this.applyStatus(status);
     }
 
     later(): void {

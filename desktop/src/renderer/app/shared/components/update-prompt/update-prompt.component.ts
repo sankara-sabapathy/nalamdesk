@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { AfterViewChecked, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AppUpdateService } from '../../../services/update.service';
 
@@ -7,10 +7,12 @@ import { AppUpdateService } from '../../../services/update.service';
     standalone: true,
     imports: [CommonModule],
     template: `
-    <div *ngIf="showPrompt" class="fixed inset-0 z-[110] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <div *ngIf="showPrompt" class="fixed inset-0 z-[110] flex items-center justify-center p-4"
+         role="dialog" aria-modal="true" aria-labelledby="update-prompt-title"
+         (keydown)="onPromptKeydown($event)">
       <div class="fixed inset-0 bg-black/50" (click)="later()"></div>
       <div class="relative w-full max-w-lg rounded-lg bg-white p-6 shadow-xl border border-gray-200">
-        <h3 class="text-xl font-bold text-gray-900">{{ title }}</h3>
+        <h3 id="update-prompt-title" tabindex="-1" class="text-xl font-bold text-gray-900">{{ title }}</h3>
         <p class="mt-2 text-sm text-gray-700 whitespace-pre-line">{{ body }}</p>
         <p *ngIf="status.integrityNote && status.state !== 'error'" class="mt-3 text-xs text-gray-500">{{ status.integrityNote }}</p>
         <div *ngIf="status.state === 'downloading'" class="mt-4">
@@ -23,13 +25,17 @@ import { AppUpdateService } from '../../../services/update.service';
           <button *ngIf="status.state === 'downloading'" type="button"
                   class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
                   (click)="cancel()">Cancel</button>
-          <button *ngIf="status.state === 'available'" type="button"
+          <button *ngIf="status.state === 'available' || status.state === 'downloaded'" type="button"
                   class="px-4 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
                   (click)="later()">Later</button>
-          <button *ngIf="status.state === 'available'" type="button"
+          <button *ngIf="status.state === 'available'" type="button" id="update-prompt-primary"
                   class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium"
                   (click)="updateNow()">{{ status.canQuitAndInstall === false ? 'Open download page' : 'Update now' }}</button>
+          <button *ngIf="status.state === 'downloaded'" type="button" id="update-prompt-primary"
+                  class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium"
+                  (click)="install()">{{ status.canQuitAndInstall === false ? 'Open download page' : 'Install and restart' }}</button>
           <button *ngIf="status.state === 'error' || status.state === 'up-to-date' || status.state === 'skipped'" type="button"
+                  id="update-prompt-primary"
                   class="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 font-medium"
                   (click)="later()">OK</button>
         </div>
@@ -37,8 +43,10 @@ import { AppUpdateService } from '../../../services/update.service';
     </div>
   `
 })
-export class UpdatePromptComponent implements OnInit, OnDestroy {
+export class UpdatePromptComponent implements OnInit, OnDestroy, AfterViewChecked {
     private updates = inject(AppUpdateService);
+    private previousFocus: HTMLElement | null = null;
+    private promptFocused = false;
 
     ngOnInit(): void {
         this.updates.init();
@@ -46,6 +54,18 @@ export class UpdatePromptComponent implements OnInit, OnDestroy {
 
     ngOnDestroy(): void {
         this.updates.destroy();
+    }
+
+    ngAfterViewChecked(): void {
+        if (!this.showPrompt) {
+            this.restoreFocus();
+            return;
+        }
+        if (this.promptFocused) return;
+        this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const target = document.getElementById('update-prompt-primary') || document.getElementById('update-prompt-title');
+        target?.focus();
+        this.promptFocused = true;
     }
 
     get status() {
@@ -61,6 +81,7 @@ export class UpdatePromptComponent implements OnInit, OnDestroy {
         if (this.status.state === 'up-to-date') return 'You’re up to date';
         if (this.status.state === 'skipped') return 'Updates';
         if (this.status.state === 'downloading') return 'Downloading update';
+        if (this.status.state === 'downloaded') return 'Update downloaded';
         return 'Update available';
     }
 
@@ -81,13 +102,48 @@ export class UpdatePromptComponent implements OnInit, OnDestroy {
 
     later(): void {
         this.updates.later();
+        this.restoreFocus();
     }
 
     updateNow(): void {
-        void this.updates.updateNow();
+        this.updates.updateNow();
+    }
+
+    install(): void {
+        this.updates.install();
     }
 
     cancel(): void {
-        void this.updates.cancelDownload();
+        this.updates.cancelDownload();
+    }
+
+    onPromptKeydown(event: KeyboardEvent): void {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            this.later();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const nodes = Array.from(document.querySelectorAll<HTMLElement>(
+            '[role="dialog"][aria-modal="true"] button:not([disabled])'
+        ));
+        if (nodes.length === 0) return;
+        const first = nodes[0];
+        const last = nodes[nodes.length - 1];
+        const active = document.activeElement;
+        if (event.shiftKey && active === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && active === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
+    private restoreFocus(): void {
+        if (!this.promptFocused) return;
+        this.promptFocused = false;
+        this.previousFocus?.focus();
+        this.previousFocus = null;
     }
 }
