@@ -1,11 +1,13 @@
-import { Component, Input, Output, EventEmitter, signal } from '@angular/core';
+import { Component, Input, Output, EventEmitter, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { CatalogTypeaheadComponent } from '../../shared/components/catalog-typeahead/catalog-typeahead.component';
+import { DataService } from '../../services/api.service';
 
 @Component({
   selector: 'app-prescription',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CatalogTypeaheadComponent],
   template: `
     <div class="card bg-base-100 border border-base-200" [class.opacity-70]="disabled">
       <div class="card-body p-3 md:p-4">
@@ -25,10 +27,16 @@ import { FormsModule } from '@angular/forms';
           <!-- 1. Medicine (Full Width on Mobile) -->
           <div class="col-span-12 md:col-span-3">
             <span class="text-xs text-gray-500 md:hidden font-bold">Medicine</span>
-            <input type="text" placeholder="Medicine Name" 
-                   [(ngModel)]="item.medicine" (ngModelChange)="emitChange()"
-                   [disabled]="disabled"
-                   class="input input-bordered input-sm w-full font-medium" />
+            <app-catalog-typeahead
+              [value]="item.medicine"
+              [disabled]="disabled"
+              [placeholder]="'Medicine Name'"
+              [testId]="'rx-medicine-' + i"
+              [searchFn]="searchMedicines"
+              [createFn]="createMedicine"
+              (valueChange)="onMedicineTyped(i, $event)"
+              (picked)="onMedicinePicked(i, $event)">
+            </app-catalog-typeahead>
           </div>
 
           <!-- 2. Form (1/3 Mobile) -->
@@ -116,6 +124,8 @@ import { FormsModule } from '@angular/forms';
   `
 })
 export class PrescriptionComponent {
+  private readonly dataService = inject(DataService, { optional: true });
+
   @Input() set initialData(value: any[]) {
     if (value && value.length > 0) this.items.set(value);
   }
@@ -125,6 +135,14 @@ export class PrescriptionComponent {
   items = signal<any[]>([
     { medicine: '', form: 'Tab', dosage: '', route: 'Oral', frequency: '1-0-1', duration: '3 days', instruction: 'After Food' }
   ]);
+
+  searchMedicines = (query: string) => this.dataService
+    ? this.dataService.invoke('searchMedicines', query)
+    : Promise.resolve([]);
+
+  createMedicine = (name: string) => this.dataService
+    ? this.dataService.invoke('createMedicine', { name })
+    : Promise.resolve({ id: 0, name });
 
   add() {
     if (this.disabled) return;
@@ -141,5 +159,27 @@ export class PrescriptionComponent {
   emitChange() {
     if (this.disabled) return;
     this.changed.emit(this.items());
+  }
+
+  onMedicineTyped(index: number, name: string) {
+    this.patchLine(index, { medicine: name });
+  }
+
+  onMedicinePicked(index: number, hit: any) {
+    this.patchLine(index, {
+      medicine: hit.name,
+      form: hit.form || this.items()[index]?.form || 'Tab',
+      dosage: hit.dosage ?? this.items()[index]?.dosage ?? '',
+      route: hit.route || this.items()[index]?.route || 'Oral',
+      frequency: hit.frequency || this.items()[index]?.frequency || '1-0-1',
+      duration: hit.duration || this.items()[index]?.duration || '3 days',
+      instruction: hit.instruction || this.items()[index]?.instruction || 'After Food'
+    });
+  }
+
+  private patchLine(index: number, patch: Record<string, unknown>) {
+    if (this.disabled) return;
+    this.items.update((list) => list.map((item, i) => i === index ? { ...item, ...patch } : item));
+    this.emitChange();
   }
 }

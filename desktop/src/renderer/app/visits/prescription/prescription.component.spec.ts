@@ -68,4 +68,22 @@ describe('PrescriptionComponent', () => {
         expect(component.items()).toHaveLength(1);
         expect(component.changed.emit).not.toHaveBeenCalled();
     });
+
+    it('copies catalog defaults when a medicine is picked and keeps the line editable', () => {
+        vi.spyOn(component.changed, 'emit');
+        component.onMedicinePicked(0, { id: 3, name: 'Paracetamol', dosage: '500mg', form: 'Tab' });
+        expect(component.items()[0].medicine).toBe('Paracetamol');
+        expect(component.items()[0].dosage).toBe('500mg');
+        component.onMedicineTyped(0, 'Paracetamol extra');
+        expect(component.items()[0].medicine).toBe('Paracetamol extra');
+        expect(component.changed.emit).toHaveBeenCalled();
+    });
+
+    it('searches and creates medicines through catalog IPC when available', async () => {
+        await expect(component.searchMedicines('para')).resolves.toEqual([]);
+        await expect(component.createMedicine('ORS')).resolves.toEqual({ id: 0, name: 'ORS' });
+        component.disabled = true;
+        component.onMedicineTyped(0, 'x');
+        expect(component.items()[0].medicine).toBe('');
+    });
 });

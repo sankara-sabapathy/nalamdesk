@@ -58,6 +58,18 @@ declare global {
                 removeFromQueue: (id: number) => Promise<any>;
                 // Audit
                 getAuditLogs: (limit: number) => Promise<any[]>;
+                searchConditions: (query: string, limit?: number) => Promise<any[]>;
+                searchMedicines: (query: string, limit?: number) => Promise<any[]>;
+                createCondition: (input: { name: string }) => Promise<any>;
+                createMedicine: (input: any) => Promise<any>;
+                getConditionMedPresets: (conditionId: number) => Promise<any[]>;
+                listConditions: (includeRetired?: boolean) => Promise<any[]>;
+                listMedicines: (includeRetired?: boolean) => Promise<any[]>;
+                updateCondition: (input: any) => Promise<any>;
+                updateMedicine: (input: any) => Promise<any>;
+                retireCondition: (id: number) => Promise<any>;
+                retireMedicine: (id: number) => Promise<any>;
+                replaceConditionMedPresets: (input: { conditionId: number; lines: any[] }) => Promise<any[]>;
             };
             drive: {
                 isAuthenticated: () => Promise<boolean>;
@@ -67,13 +79,13 @@ declare global {
                 restore: (fileId: string) => Promise<{ success: boolean; restartRequired?: boolean; error?: string }>;
                 listBackups: () => Promise<any[]>;
             };
-            updater: {
-                checkForUpdates: () => Promise<any>;
-                quitAndInstall: () => Promise<void>;
-                onUpdateAvailable: (callback: (info: any) => void) => void;
-                onUpdateDownloaded: (callback: (info: any) => void) => void;
-                onDownloadProgress: (callback: (progress: any) => void) => void;
-                onUpdateError: (callback: (err: any) => void) => void;
+            updates: {
+                check: (opts?: { source?: 'startup' | 'manual' }) => Promise<any>;
+                download: () => Promise<any>;
+                install: () => Promise<any>;
+                cancel: () => Promise<any>;
+                getStatus: () => Promise<any>;
+                onEvent: (callback: (status: any) => void) => () => void;
             };
             cloud: {
                 getStatus: () => Promise<{ enabled: boolean; clinicId: string | null }>;

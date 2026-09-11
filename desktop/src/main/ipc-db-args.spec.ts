@@ -50,6 +50,10 @@ describe('IPC DatabaseService argument unpacking', () => {
     it('leaves read methods unchanged', () => {
         expect(resolveDbMethodArgs('getQueue', [], 7)).toEqual([]);
         expect(resolveDbMethodArgs('getPatients', [''], 7)).toEqual(['']);
+        expect(resolveDbMethodArgs('searchConditions', ['flu'], 7)).toEqual(['flu']);
+        expect(resolveDbMethodArgs('createCondition', [{ name: 'URI' }], 7)).toEqual([{ name: 'URI' }]);
+        expect(resolveDbMethodArgs('replaceConditionMedPresets', [{ conditionId: 1, lines: [] }], 7))
+            .toEqual([{ conditionId: 1, lines: [] }]);
     });
 
     it('does not bind a non-object payload as patient_id', () => {

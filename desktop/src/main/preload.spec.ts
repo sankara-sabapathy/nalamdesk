@@ -3,13 +3,15 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 const electron = vi.hoisted(() => ({
     exposeInMainWorld: vi.fn(),
     invoke: vi.fn(),
-    on: vi.fn()
+    on: vi.fn(),
+    removeListener: vi.fn()
 }));
 
 vi.mock('electron', () => ({
     contextBridge: { exposeInMainWorld: electron.exposeInMainWorld },
-    ipcRenderer: { invoke: electron.invoke, on: electron.on }
+    ipcRenderer: { invoke: electron.invoke, on: electron.on, removeListener: electron.removeListener }
 }));
+
 
 describe('preload bridge surface', () => {
     let api: any;
@@ -43,5 +45,32 @@ describe('preload bridge surface', () => {
         expect(electron.invoke).toHaveBeenCalledWith('db:addToQueue', { patientId: 42, priority: 2 });
         expect(electron.invoke).toHaveBeenCalledWith('db:updateQueueStatus', { id: 9, status: 'waiting' });
         expect(electron.invoke).toHaveBeenCalledWith('db:removeFromQueue', 9);
+    });
+
+    it('exposes catalog search/create and updates IPC', async () => {
+        await api.db.searchConditions('flu');
+        await api.db.searchMedicines('para');
+        await api.db.createCondition({ name: 'URI' });
+        await api.db.createMedicine({ name: 'Paracetamol' });
+        await api.db.getConditionMedPresets(4);
+        await api.db.listConditions(true);
+        await api.db.listMedicines(false);
+        await api.db.updateCondition({ id: 1, name: 'URI' });
+        await api.db.updateMedicine({ id: 2, name: 'Paracetamol' });
+        await api.db.retireCondition(1);
+        await api.db.retireMedicine(2);
+        await api.db.replaceConditionMedPresets({ conditionId: 1, lines: [] });
+        await api.updates.check({ source: 'manual' });
+        await api.updates.download();
+        await api.updates.install();
+        await api.updates.cancel();
+        await api.updates.getStatus();
+        const off = api.updates.onEvent(() => undefined);
+        off();
+        expect(electron.invoke).toHaveBeenCalledWith('db:searchConditions', 'flu', undefined);
+        expect(electron.invoke).toHaveBeenCalledWith('db:createMedicine', { name: 'Paracetamol' });
+        expect(electron.invoke).toHaveBeenCalledWith('updates:check', { source: 'manual' });
+        expect(electron.invoke).toHaveBeenCalledWith('updates:download');
+        expect(electron.on).toHaveBeenCalledWith('updates:event', expect.any(Function));
     });
 });

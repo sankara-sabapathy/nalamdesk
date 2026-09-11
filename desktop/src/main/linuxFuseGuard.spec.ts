@@ -15,6 +15,7 @@ describe('Linux FUSE / .deb clinic path', () => {
         expect(message).toContain('sudo apt install ./nalamdesk-desktop_0.0.8_amd64.deb');
         expect(message).toMatch(/Do not extract the AppImage squashfs/i);
         expect(linuxClinicInstallInstructions('0.0.8')).toContain('Primary package: nalamdesk-desktop_0.0.8_amd64.deb');
+        expect(linuxClinicInstallInstructions('0.0.8')).toContain('In-app upgrades use the AppImage');
         expect(linuxClinicInstallInstructions('0.0.8')).not.toMatch(/unsquashfs|--appimage-extract-and-run/i);
     });
 

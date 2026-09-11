@@ -69,6 +69,12 @@
                     class="w-full text-left px-3 py-2 rounded-md transition-colors font-medium flex items-center gap-3 border-l-4">
                     <span>Audit Logs</span>
                 </button>
+
+                <button (click)="switchTab('catalogs')"
+                    [class]="activeTab === 'catalogs' ? 'bg-blue-50 text-blue-700 border-blue-500' : 'text-gray-600 hover:bg-gray-50 border-transparent'"
+                    class="w-full text-left px-3 py-2 rounded-md transition-colors font-medium flex items-center gap-3 border-l-4">
+                    <span>Catalogs</span>
+                </button>
             </ng-container>
         </nav>
 
@@ -104,6 +110,19 @@
             <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200" *ngIf="isElectron">
                 <div class="flex items-center justify-between mb-4">
                     <div>
+                        <h3 class="text-lg font-medium text-gray-800">Updates</h3>
+                        <p class="text-sm text-gray-500">Installed version: <span class="font-mono">{{ appVersion || 'unknown' }}</span></p>
+                    </div>
+                    <button type="button" class="btn btn-outline btn-sm" [disabled]="updateBusy" (click)="checkForUpdates()">
+                        Check for updates
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500">Packaged desktop builds check a clinic update feed. This app does not claim full code-signature verification unless a later signed release channel is configured.</p>
+            </div>
+
+            <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200 mt-6" *ngIf="isElectron">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
                         <h3 class="text-lg font-medium text-purple-700">Online Booking</h3>
                         <p class="text-sm text-gray-500">Enable public appointment booking on nalamdesk.com</p>
                     </div>
@@ -115,6 +134,10 @@
                     <strong>Status:</strong> Active &bull; <strong>Clinic ID:</strong> {{ cloudClinicId }}
                 </div>
             </div>
+        </div>
+
+        <div *ngIf="activeTab === 'catalogs'" class="h-full overflow-hidden">
+            <app-catalog-settings></app-catalog-settings>
         </div>
 
         <!-- 2. USERS TAB -->

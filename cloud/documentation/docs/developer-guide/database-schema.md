@@ -46,6 +46,15 @@ Records clinical encounters.
 | `prescription_json` | TEXT | JSON string array of medicines. |
 | `amount_paid` | NUMERIC(12,2) | Consultation fee collected. |
 
+## Condition catalog
+Clinic-local diagnoses for Plan & Rx typeahead. Unique `name` among **active** rows. Soft-retire sets `active = 0` and does not rewrite historical visit text.
+
+## Medicine catalog
+Clinic-local medicines with optional default Rx fields (`form`, `dosage`, `route`, `frequency`, `duration`, `instruction`) matching the visit prescription snapshot.
+
+## Condition medicine presets
+Ordered default Rx lines for a condition (`condition_id`, `sort_order`, optional `medicine_id`, plus snapshot columns matching `PrescriptionItem`). Applied into the editable Rx list on diagnosis pick.
+
 ## Patient Queue Table
 Manages the daily patient flow.
 

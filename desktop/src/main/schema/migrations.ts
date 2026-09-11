@@ -405,5 +405,65 @@ export const MIGRATIONS = [
                 );
             `);
         }
+    },
+    {
+        version: 9,
+        up: (db: any) => {
+            console.log('Running Migration v9 (Condition and medicine catalogs)...');
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS condition_catalog (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_condition_catalog_active_name
+                    ON condition_catalog(name COLLATE NOCASE) WHERE active = 1;
+
+                CREATE TABLE IF NOT EXISTS medicine_catalog (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    form TEXT,
+                    dosage TEXT,
+                    route TEXT,
+                    frequency TEXT,
+                    duration TEXT,
+                    instruction TEXT,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_medicine_catalog_active_name
+                    ON medicine_catalog(name COLLATE NOCASE) WHERE active = 1;
+
+                CREATE TABLE IF NOT EXISTS condition_med_presets (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    condition_id INTEGER NOT NULL,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    medicine_id INTEGER,
+                    medicine TEXT NOT NULL,
+                    form TEXT,
+                    dosage TEXT,
+                    route TEXT,
+                    frequency TEXT,
+                    duration TEXT,
+                    instruction TEXT,
+                    FOREIGN KEY(condition_id) REFERENCES condition_catalog(id) ON DELETE CASCADE,
+                    FOREIGN KEY(medicine_id) REFERENCES medicine_catalog(id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_condition_med_presets_condition
+                    ON condition_med_presets(condition_id, sort_order);
+            `);
+
+            const doctor = db.prepare('SELECT permissions FROM roles WHERE name = ?').get('doctor');
+            if (doctor?.permissions) {
+                const permissions = new Set<string>(JSON.parse(doctor.permissions));
+                ['searchConditions', 'searchMedicines', 'createCondition', 'createMedicine', 'getConditionMedPresets']
+                    .forEach(permission => permissions.add(permission));
+                db.prepare('UPDATE roles SET permissions = ? WHERE name = ?')
+                    .run(JSON.stringify([...permissions]), 'doctor');
+            }
+        }
     }
 ];

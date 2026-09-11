@@ -63,7 +63,19 @@ contextBridge.exposeInMainWorld('electron', {
         updateAppointmentRequestStatus: (data: { id: string, status: string }) => ipcRenderer.invoke('db:updateAppointmentRequestStatus', data),
         // Appointments
         getAppointments: (date: string) => ipcRenderer.invoke('db:getAppointments', date),
-        saveAppointment: (appt: any) => ipcRenderer.invoke('db:saveAppointment', appt)
+        saveAppointment: (appt: any) => ipcRenderer.invoke('db:saveAppointment', appt),
+        searchConditions: (query: string, limit?: number) => ipcRenderer.invoke('db:searchConditions', query, limit),
+        searchMedicines: (query: string, limit?: number) => ipcRenderer.invoke('db:searchMedicines', query, limit),
+        createCondition: (input: any) => ipcRenderer.invoke('db:createCondition', input),
+        createMedicine: (input: any) => ipcRenderer.invoke('db:createMedicine', input),
+        getConditionMedPresets: (conditionId: number) => ipcRenderer.invoke('db:getConditionMedPresets', conditionId),
+        listConditions: (includeRetired?: boolean) => ipcRenderer.invoke('db:listConditions', includeRetired),
+        listMedicines: (includeRetired?: boolean) => ipcRenderer.invoke('db:listMedicines', includeRetired),
+        updateCondition: (input: any) => ipcRenderer.invoke('db:updateCondition', input),
+        updateMedicine: (input: any) => ipcRenderer.invoke('db:updateMedicine', input),
+        retireCondition: (id: number) => ipcRenderer.invoke('db:retireCondition', id),
+        retireMedicine: (id: number) => ipcRenderer.invoke('db:retireMedicine', id),
+        replaceConditionMedPresets: (input: any) => ipcRenderer.invoke('db:replaceConditionMedPresets', input)
     },
     drive: {
         isAuthenticated: () => ipcRenderer.invoke('drive:isAuthenticated'),
@@ -73,20 +85,16 @@ contextBridge.exposeInMainWorld('electron', {
         restore: (fileId: string) => ipcRenderer.invoke('drive:restore', fileId),
         listBackups: () => ipcRenderer.invoke('drive:listBackups')
     },
-    updater: {
-        checkForUpdates: () => ipcRenderer.invoke('updater:check'),
-        quitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
-        onUpdateAvailable: (callback: (info: any) => void) => {
-            ipcRenderer.on('update-available', (_, info) => callback(info));
-        },
-        onUpdateDownloaded: (callback: (info: any) => void) => {
-            ipcRenderer.on('update-downloaded', (_, info) => callback(info));
-        },
-        onDownloadProgress: (callback: (progress: any) => void) => {
-            ipcRenderer.on('download-progress', (_, progress) => callback(progress));
-        },
-        onUpdateError: (callback: (err: any) => void) => {
-            ipcRenderer.on('update-error', (_, err) => callback(err));
+    updates: {
+        check: (opts?: { source?: 'startup' | 'manual' }) => ipcRenderer.invoke('updates:check', opts),
+        download: () => ipcRenderer.invoke('updates:download'),
+        install: () => ipcRenderer.invoke('updates:install'),
+        cancel: () => ipcRenderer.invoke('updates:cancel'),
+        getStatus: () => ipcRenderer.invoke('updates:status'),
+        onEvent: (callback: (status: any) => void) => {
+            const listener = (_event: unknown, status: any) => callback(status);
+            ipcRenderer.on('updates:event', listener);
+            return () => ipcRenderer.removeListener('updates:event', listener);
         }
     },
     cloud: {

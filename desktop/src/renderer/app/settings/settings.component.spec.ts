@@ -16,11 +16,13 @@ import { inject } from '@angular/core';
 import { DataService } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { Router } from '@angular/router';
+import { AppUpdateService } from '../services/update.service';
 
 // Mock Child Components
 vi.mock('../shared/components/table/table.component', () => ({ SharedTableComponent: class { } }));
 vi.mock('../shared/components/table/renderers/action-renderer.component', () => ({ ActionRendererComponent: class { } }));
 vi.mock('../shared/components/date-picker/date-picker.component', () => ({ DatePickerComponent: class { } }));
+vi.mock('./catalog-settings.component', () => ({ CatalogSettingsComponent: class { } }));
 
 describe('SettingsComponent Validation', () => {
     let component: SettingsComponent;
@@ -258,5 +260,19 @@ describe('SettingsComponent Validation', () => {
         expect(component.appVersion).toContain('development');
         expect(component.appVersion).not.toBe('0.0.0');
         expect(component.appVersion).not.toBe('v0.0.0');
+    });
+
+    it('checks for updates from Settings on packaged Electron', async () => {
+        const updates = { check: vi.fn().mockResolvedValue({ state: 'up-to-date' }) };
+        vi.mocked(inject).mockImplementation((token) => {
+            if (token === AuthService) return mockAuth;
+            if (token === DataService) return mockData;
+            if (token === AppUpdateService) return updates;
+            return { navigate: vi.fn() };
+        });
+        component = new SettingsComponent(mockNgZone);
+        component.isElectron = true;
+        await component.checkForUpdates();
+        expect(updates.check).toHaveBeenCalledWith('manual');
     });
 });
