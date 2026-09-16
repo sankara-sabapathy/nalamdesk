@@ -129,12 +129,7 @@ export interface ClinicalVitalsAlerts {
     alerts: string[];
 }
 
-export function evaluateVitalsAbnormalities(vitals: Record<string, unknown> | null | undefined): ClinicalVitalsAlerts {
-    if (!vitals) return { hasAbnormal: false, alerts: [] };
-    const alerts: string[] = [];
-
-    const sys = Number(vitals['systolic_bp']);
-    const dia = Number(vitals['diastolic_bp']);
+function checkBpAlerts(sys: number, dia: number, alerts: string[]): void {
     if (!Number.isNaN(sys) && sys > 0) {
         if (sys >= 160 || sys < 90) alerts.push(`Critical Systolic BP: ${sys} mmHg`);
         else if (sys >= 140) alerts.push(`High Systolic BP: ${sys} mmHg`);
@@ -143,31 +138,54 @@ export function evaluateVitalsAbnormalities(vitals: Record<string, unknown> | nu
         if (dia >= 100 || dia < 60) alerts.push(`Critical Diastolic BP: ${dia} mmHg`);
         else if (dia >= 90) alerts.push(`High Diastolic BP: ${dia} mmHg`);
     }
+}
+
+function checkPulseAlert(pulse: number, alerts: string[]): void {
+    if (!Number.isNaN(pulse) && pulse > 0 && (pulse >= 120 || pulse < 50)) {
+        alerts.push(`Abnormal Pulse: ${pulse} bpm`);
+    }
+}
+
+function checkTemperatureAlert(temp: number, units: string, alerts: string[]): void {
+    if (Number.isNaN(temp) || temp <= 0) return;
+    const isC = units.includes('C') || units === 'Cel';
+    const tempF = isC ? cToF(temp) : temp;
+    if (tempF >= 100.4) alerts.push(`Fever: ${temp} ${units}`);
+    else if (tempF < 95.0) alerts.push(`Hypothermia: ${temp} ${units}`);
+}
+
+function checkSpo2Alert(spo2: number, alerts: string[]): void {
+    if (Number.isNaN(spo2) || spo2 <= 0) return;
+    if (spo2 < 92) alerts.push(`Severe Hypoxia: ${spo2}% SpO2`);
+    else if (spo2 < 95) alerts.push(`Low Oxygen: ${spo2}% SpO2`);
+}
+
+function checkRespiratoryRateAlert(rr: number, alerts: string[]): void {
+    if (!Number.isNaN(rr) && rr > 0 && (rr >= 28 || rr < 10)) {
+        alerts.push(`Abnormal Resp Rate: ${rr} bpm`);
+    }
+}
+
+export function evaluateVitalsAbnormalities(vitals: Record<string, unknown> | null | undefined): ClinicalVitalsAlerts {
+    if (!vitals) return { hasAbnormal: false, alerts: [] };
+    const alerts: string[] = [];
+
+    const sys = Number(vitals['systolic_bp']);
+    const dia = Number(vitals['diastolic_bp']);
+    checkBpAlerts(sys, dia, alerts);
 
     const pulse = Number(vitals['pulse']);
-    if (!Number.isNaN(pulse) && pulse > 0) {
-        if (pulse >= 120 || pulse < 50) alerts.push(`Abnormal Pulse: ${pulse} bpm`);
-    }
+    checkPulseAlert(pulse, alerts);
 
     const temp = Number(vitals['temperature']);
-    if (!Number.isNaN(temp) && temp > 0) {
-        const units = (vitals['units'] as Record<string, string> | undefined)?.['temperature'] || '°F';
-        const isC = units.includes('C') || units === 'Cel';
-        const tempF = isC ? cToF(temp) : temp;
-        if (tempF >= 100.4) alerts.push(`Fever: ${temp} ${units}`);
-        else if (tempF < 95.0) alerts.push(`Hypothermia: ${temp} ${units}`);
-    }
+    const units = (vitals['units'] as Record<string, string> | undefined)?.['temperature'] || '°F';
+    checkTemperatureAlert(temp, units, alerts);
 
     const spo2 = Number(vitals['spo2']);
-    if (!Number.isNaN(spo2) && spo2 > 0) {
-        if (spo2 < 92) alerts.push(`Severe Hypoxia: ${spo2}% SpO2`);
-        else if (spo2 < 95) alerts.push(`Low Oxygen: ${spo2}% SpO2`);
-    }
+    checkSpo2Alert(spo2, alerts);
 
     const rr = Number(vitals['respiratory_rate']);
-    if (!Number.isNaN(rr) && rr > 0) {
-        if (rr >= 28 || rr < 10) alerts.push(`Abnormal Resp Rate: ${rr} bpm`);
-    }
+    checkRespiratoryRateAlert(rr, alerts);
 
     return {
         hasAbnormal: alerts.length > 0,

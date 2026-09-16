@@ -132,6 +132,86 @@ describe('vitals-validator', () => {
             expect(feverC.hasAbnormal).toBe(true);
             expect(feverC.alerts[0]).toContain('Fever: 38.5 °C');
         });
+
+        it('handles null, undefined, or empty vitals safely', () => {
+            expect(evaluateVitalsAbnormalities(null)).toEqual({ hasAbnormal: false, alerts: [] });
+            expect(evaluateVitalsAbnormalities(undefined)).toEqual({ hasAbnormal: false, alerts: [] });
+            expect(evaluateVitalsAbnormalities({})).toEqual({ hasAbnormal: false, alerts: [] });
+        });
+
+        it('detects hypothermia in both °F and °C', () => {
+            const hypothermiaF = evaluateVitalsAbnormalities({
+                temperature: 94.0,
+                units: { temperature: '°F' }
+            });
+            expect(hypothermiaF.hasAbnormal).toBe(true);
+            expect(hypothermiaF.alerts[0]).toContain('Hypothermia: 94 °F');
+
+            const hypothermiaC = evaluateVitalsAbnormalities({
+                temperature: 34.5,
+                units: { temperature: '°C' }
+            });
+            expect(hypothermiaC.hasAbnormal).toBe(true);
+            expect(hypothermiaC.alerts[0]).toContain('Hypothermia: 34.5 °C');
+        });
+
+        it('detects low pulse, low oxygen, low respiratory rate, and non-critical stage 1 BP', () => {
+            const alertsResult = evaluateVitalsAbnormalities({
+                systolic_bp: 145,
+                diastolic_bp: 95,
+                pulse: 45,
+                spo2: 93,
+                respiratory_rate: 8
+            });
+            expect(alertsResult.hasAbnormal).toBe(true);
+            expect(alertsResult.alerts).toContain('High Systolic BP: 145 mmHg');
+            expect(alertsResult.alerts).toContain('High Diastolic BP: 95 mmHg');
+            expect(alertsResult.alerts).toContain('Abnormal Pulse: 45 bpm');
+            expect(alertsResult.alerts).toContain('Low Oxygen: 93% SpO2');
+            expect(alertsResult.alerts).toContain('Abnormal Resp Rate: 8 bpm');
+        });
+
+        it('detects low systolic and diastolic blood pressure', () => {
+            const lowBp = evaluateVitalsAbnormalities({
+                systolic_bp: 85,
+                diastolic_bp: 55
+            });
+            expect(lowBp.hasAbnormal).toBe(true);
+            expect(lowBp.alerts).toContain('Critical Systolic BP: 85 mmHg');
+            expect(lowBp.alerts).toContain('Critical Diastolic BP: 55 mmHg');
+        });
+    });
+
+    describe('Blood Pressure and Vitals Payload Validation', () => {
+        it('requires both systolic and diastolic blood pressure when one is entered', () => {
+            const sysOnly = validateVitalsPayload({ patient_id: 1, systolic_bp: 120 });
+            expect(sysOnly.valid).toBe(false);
+            expect(sysOnly.errors[0]).toBe('Both systolic and diastolic blood pressure must be provided together');
+
+            const diaOnly = validateVitalsPayload({ patient_id: 1, diastolic_bp: 80 });
+            expect(diaOnly.valid).toBe(false);
+            expect(diaOnly.errors[0]).toBe('Both systolic and diastolic blood pressure must be provided together');
+        });
+
+        it('fails validation when systolic blood pressure is not greater than diastolic', () => {
+            const equalBp = validateVitalsPayload({ patient_id: 1, systolic_bp: 80, diastolic_bp: 80 });
+            expect(equalBp.valid).toBe(false);
+            expect(equalBp.errors).toContain('Systolic blood pressure must be greater than diastolic blood pressure');
+
+            const invertedBp = validateVitalsPayload({ patient_id: 1, systolic_bp: 70, diastolic_bp: 90 });
+            expect(invertedBp.valid).toBe(false);
+            expect(invertedBp.errors).toContain('Systolic blood pressure must be greater than diastolic blood pressure');
+        });
+
+        it('fails validation for non-numeric blood pressure or non-numeric values', () => {
+            const nonNumeric = validateVitalsPayload({ patient_id: 1, systolic_bp: 'invalid', diastolic_bp: 'invalid' } as any);
+            expect(nonNumeric.valid).toBe(false);
+            expect(nonNumeric.errors).toContain('Blood pressure measurements must be valid numbers');
+
+            const invalidPulse = validateVitalsPayload({ patient_id: 1, pulse: 'slow' } as any);
+            expect(invalidPulse.valid).toBe(false);
+            expect(invalidPulse.errors[0]).toContain('Pulse must be a valid number');
+        });
     });
 
     describe('formatVitalsTextLines', () => {

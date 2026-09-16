@@ -890,30 +890,35 @@ export class DatabaseService {
     private getPractitioner(userId: number) {
         if (!userId) return null;
         const user = this.db.prepare('SELECT id, name, role, active, license_number, specialty FROM users WHERE id = ?').get(Number(userId));
-        if (user && user.role === 'doctor' && user.active) {
+        if (user?.role === 'doctor' && user?.active) {
             return user;
         }
         return null;
     }
 
+    private isAllergyConflict(medName: string, activeAllergies: any[]): any | null {
+        for (const allergy of activeAllergies) {
+            const substance = String(allergy.substance || '').trim().toLowerCase();
+            if (substance && (medName.includes(substance) || substance.includes(medName))) {
+                return allergy;
+            }
+        }
+        return null;
+    }
+
     assertPrescriptionAllergySafety(patientId: number, prescription: any[], overrideReason?: string | null) {
-        if (!prescription || !Array.isArray(prescription) || prescription.length === 0) return;
+        if (!Array.isArray(prescription) || prescription.length === 0) return;
         const activeAllergies = this.db.prepare(
             "SELECT id, substance, reaction, severity FROM patient_allergies WHERE patient_id = ? AND status = 'active'"
         ).all(patientId) as any[];
-        if (!activeAllergies || activeAllergies.length === 0) return;
+        if (!activeAllergies?.length) return;
 
         for (const item of prescription) {
             const medName = String(item.medicine || item.name || '').trim().toLowerCase();
             if (!medName) continue;
-            for (const allergy of activeAllergies) {
-                const substance = String(allergy.substance || '').trim().toLowerCase();
-                if (!substance) continue;
-                if (medName.includes(substance) || substance.includes(medName)) {
-                    if (!overrideReason || !overrideReason.trim()) {
-                        throw new Error(`Prescription contains medication '${item.medicine || item.name}' conflicting with active allergy '${allergy.substance}'. An explicit override reason is required.`);
-                    }
-                }
+            const conflict = this.isAllergyConflict(medName, activeAllergies);
+            if (conflict && !overrideReason?.trim()) {
+                throw new Error(`Prescription contains medication '${item.medicine || item.name}' conflicting with active allergy '${conflict.substance}'. An explicit override reason is required.`);
             }
         }
     }
@@ -1292,9 +1297,9 @@ export class DatabaseService {
         const existing = this.db.prepare('SELECT id FROM patient_queue WHERE patient_id = ? AND status != ?').get(patientId, 'completed');
         if (existing) throw new Error('Patient already in queue');
 
-        let priority = 1;
-        let urgency = 'routine';
-        let triageNotes = '';
+        let priority: number;
+        let urgency: string;
+        let triageNotes: string;
 
         if (typeof priorityOrOptions === 'object' && priorityOrOptions !== null) {
             urgency = priorityOrOptions.urgency || (priorityOrOptions.priority ? this.priorityToUrgency(priorityOrOptions.priority) : 'routine');
@@ -1333,7 +1338,7 @@ export class DatabaseService {
     reassessQueueTriage(queueId: number, newUrgency: string, reason: string, actingUserId?: number) {
         if (!queueId) throw new Error('queueId is required');
         if (!newUrgency) throw new Error('newUrgency is required');
-        if (!reason || !reason.trim()) throw new Error('A clinical reason is required for triage reassessment');
+        if (!reason?.trim()) throw new Error('A clinical reason is required for triage reassessment');
 
         const queue = this.db.prepare('SELECT * FROM patient_queue WHERE id = ?').get(queueId) as any;
         if (!queue) throw new Error('Queue entry not found');
@@ -1396,6 +1401,11 @@ export class DatabaseService {
                      a.id DESC
         `).all(Number(patientId));
     }
+    private resolveActorId(actingUserId?: number, fallbackId?: number | string | null): number | null {
+        if (actingUserId) return Number(actingUserId);
+        if (fallbackId) return Number(fallbackId);
+        return null;
+    }
 
     saveAllergy(allergy: any, actingUserId?: number) {
         if (!allergy) throw new Error('Allergy data is required');
@@ -1410,7 +1420,7 @@ export class DatabaseService {
         const status = allergy.status || 'active';
         const reaction = allergy.reaction || '';
         const notes = allergy.notes || '';
-        const userId = actingUserId ? Number(actingUserId) : (allergy.recorder_id ? Number(allergy.recorder_id) : null);
+        const userId = this.resolveActorId(actingUserId, allergy.recorder_id);
 
         if (allergy.id) {
             this.db.prepare(`
@@ -1460,7 +1470,7 @@ export class DatabaseService {
         const clinicalStatus = condition.clinical_status || condition.status || 'active';
         const onsetDate = condition.onset_date || null;
         const notes = condition.notes || '';
-        const userId = actingUserId ? Number(actingUserId) : (condition.recorder_id ? Number(condition.recorder_id) : null);
+        const userId = this.resolveActorId(actingUserId, condition.recorder_id);
 
         if (condition.id) {
             this.db.prepare(`
@@ -1511,7 +1521,7 @@ export class DatabaseService {
         const startDate = medication.start_date || null;
         const endDate = medication.end_date || null;
         const notes = medication.notes || '';
-        const userId = actingUserId ? Number(actingUserId) : (medication.recorder_id ? Number(medication.recorder_id) : null);
+        const userId = this.resolveActorId(actingUserId, medication.recorder_id);
 
         if (medication.id) {
             this.db.prepare(`

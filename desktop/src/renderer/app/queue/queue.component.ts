@@ -63,7 +63,7 @@ import { DialogService } from '../shared/services/dialog.service';
                                   'badge-info text-white': item.urgency === 'priority',
                                   'badge-ghost text-gray-700': item.urgency === 'routine' || !item.urgency
                                 }">
-                            {{ item.urgency || (item.priority >= 4 ? 'immediate' : (item.priority === 3 ? 'urgent' : (item.priority === 2 ? 'priority' : 'routine'))) }}
+                            {{ getItemUrgency(item) }}
                           </span>
                         </div>
                         <span *ngIf="item.triage_notes" class="text-xs text-gray-500 italic max-w-[160px] truncate" [title]="item.triage_notes">
@@ -267,6 +267,14 @@ export class QueueComponent implements OnInit, OnDestroy {
 
   goBack() {
     this.router.navigate(['/dashboard']);
+  }
+
+  getItemUrgency(item: any): string {
+    if (item?.urgency) return item.urgency;
+    if (item?.priority >= 4) return 'immediate';
+    if (item?.priority === 3) return 'urgent';
+    if (item?.priority === 2) return 'priority';
+    return 'routine';
   }
 
   async refreshQueue() {

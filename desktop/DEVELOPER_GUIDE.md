@@ -66,6 +66,22 @@ The updater never wipes, moves, or re-encrypts `userData` / the vault.
 ## Visit catalogs (#46)
 One SQLite migration (`condition_catalog`, `medicine_catalog`, `condition_med_presets`). Visit writes stay denormalized `diagnosis` TEXT + `prescription_json`. IPC extends existing `db:*` / `invokeDbMethod` (Electron and HTTP `/api/ipc`). Doctor/admin can search and Add new during a visit; Settings catalog maintenance is admin-only.
 
+## Clinical Safety, Practitioner Provenance & Actionable Triage (#11, #15, #17, #53)
+Migration v11 adds longitudinal records and triage tracking:
+- **Practitioner Provenance (`encounters.doctor_id`):** Every consultation requires an active doctor with a valid license (`doctor_license_json`). Delegated authoring (e.g., triage intake by staff) captures both the responsible `doctor_id` and the `author_id`.
+- **Longitudinal Safety Profile:**
+  - `patient_allergies`: tracks substances, verification status, severity, and reactions.
+  - `patient_conditions`: problem list with onset dates, clinical statuses, and ICD-10 codes.
+  - `patient_medications`: reconciled active medications.
+  - Prescriptions conflicting with active allergies require an explicit clinical override reason (`allergy_override_reason`).
+- **Actionable Triage:**
+  - `patient_queue.urgency`: 4-tier urgency level (`immediate`, `urgent`, `priority`, `routine`).
+  - `queue_triage_history`: audit trail capturing prior/new urgency, required clinical reason, and assessor ID.
+  - Queue items preserve triage audit records even after deletion.
+- **Physiological Vitals Validation:**
+  - Evaluates LOINC/UCUM ranges with unit conversions (°F / °C, kg / lbs).
+  - Flags abnormal vitals (hypothermia, fever, hypoxia, tachycardia/bradycardia, hypertension/hypotension) directly in queue queries.
+
 ## Build & Distribution
 Output is `desktop/release/`.
 

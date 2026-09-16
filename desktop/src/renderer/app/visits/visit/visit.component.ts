@@ -126,9 +126,9 @@ interface Visit {
                    </svg>
                </button>
 
-               <h1 class="text-lg md:text-xl font-bold text-gray-800 truncate">
-                 {{ isViewMode ? 'View Visit' : (editingVisitId ? 'Editing Past Visit' : (isLiveConsultation ? 'Current Consultation' : 'Visit')) }}
-               </h1>
+                <h1 class="text-lg md:text-xl font-bold text-gray-800 truncate">
+                  {{ headerTitle }}
+                </h1>
            </div>
 
            <div class="flex flex-wrap gap-2 items-center justify-end">
@@ -503,6 +503,13 @@ export class VisitComponent implements OnInit {
     return this.chartWritable && this.isConsulting && this.encounterId != null && !this.activeEncounterReadOnly;
   }
 
+  get headerTitle(): string {
+    if (this.isViewMode) return 'View Visit';
+    if (this.editingVisitId) return 'Editing Past Visit';
+    if (this.isLiveConsultation) return 'Current Consultation';
+    return 'Visit';
+  }
+
   get canEditChart(): boolean {
     return this.chartWritable && !this.activeEncounterReadOnly && (this.isConsulting || this.editingVisitId != null);
   }
@@ -723,9 +730,12 @@ export class VisitComponent implements OnInit {
 
   checkForAllergyConflicts(): Array<{ medicine: string; substance: string; criticality: string; reaction?: string }> {
     if (!this.patientSafetyContext?.active_allergies?.length) return [];
-    const rxItems = (Array.isArray(this.currentPrescription) && this.currentPrescription.length > 0)
-      ? this.currentPrescription
-      : (this.visitForm.value?.prescription || (this.visitForm.get ? this.visitForm.get('prescription')?.value : []) || []);
+    let rxItems: any[] = [];
+    if (Array.isArray(this.currentPrescription) && this.currentPrescription.length > 0) {
+      rxItems = this.currentPrescription;
+    } else {
+      rxItems = this.visitForm.value?.prescription || this.visitForm.get?.('prescription')?.value || [];
+    }
     if (!Array.isArray(rxItems) || rxItems.length === 0) return [];
 
     const conflicts: Array<{ medicine: string; substance: string; criticality: string; reaction?: string }> = [];
@@ -749,7 +759,7 @@ export class VisitComponent implements OnInit {
 
   private verifyAllergySafety(continuation: () => Promise<boolean>): Promise<boolean> {
     const conflicts = this.checkForAllergyConflicts();
-    const rawReason = this.visitForm.value?.allergy_override_reason || (this.visitForm.get ? this.visitForm.get('allergy_override_reason')?.value : '');
+    const rawReason = this.visitForm.value?.allergy_override_reason || this.visitForm.get?.('allergy_override_reason')?.value || '';
     const existingReason = typeof rawReason === 'string' ? rawReason.trim() : '';
     if (conflicts.length > 0 && !existingReason) {
       this.activeAllergyConflicts = conflicts;

@@ -222,6 +222,107 @@ describe('Clinical Safety, Practitioner Provenance & Actionable Triage', () => {
             expect(safety.active_conditions).toHaveLength(1);
             expect(safety.active_conditions[0].condition_name).toBe('Hypertension');
         });
+
+        it('updates existing allergies, conditions, and medications', () => {
+            // Allergy update
+            const allergy = service.saveAllergy({
+                patient_id: 1,
+                substance: 'Peanuts',
+                criticality: 'low',
+                status: 'active'
+            }, 10);
+            expect(allergy.criticality).toBe('low');
+
+            const updatedAllergy = service.saveAllergy({
+                id: allergy.id,
+                patient_id: 1,
+                substance: 'Peanuts',
+                criticality: 'high',
+                severity: 'severe',
+                status: 'active'
+            }, 10);
+            expect(updatedAllergy.criticality).toBe('high');
+            expect(updatedAllergy.severity).toBe('severe');
+
+            // Condition update and delete
+            const condition = service.saveCondition({
+                patient_id: 1,
+                condition_name: 'Asthma',
+                clinical_status: 'active'
+            }, 10);
+            expect(condition.condition_name).toBe('Asthma');
+
+            const updatedCondition = service.saveCondition({
+                id: condition.id,
+                patient_id: 1,
+                condition_name: 'Severe Asthma',
+                clinical_status: 'resolved'
+            }, 10);
+            expect(updatedCondition.condition_name).toBe('Severe Asthma');
+            expect(updatedCondition.clinical_status).toBe('resolved');
+
+            service.deleteCondition(condition.id, 10);
+            expect(service.getConditions(1)).toHaveLength(0);
+
+            // Medication update and delete
+            const med = service.saveMedication({
+                patient_id: 1,
+                medicine_name: 'Metformin 500mg',
+                dosage: '1 tab',
+                frequency: 'BD'
+            }, 10);
+            expect(med.medicine_name).toBe('Metformin 500mg');
+
+            const updatedMed = service.saveMedication({
+                id: med.id,
+                patient_id: 1,
+                medicine_name: 'Metformin 1000mg',
+                dosage: '1 tab',
+                frequency: 'BD',
+                status: 'active'
+            }, 10);
+            expect(updatedMed.medicine_name).toBe('Metformin 1000mg');
+
+            service.deleteMedication(med.id, 10);
+            expect(service.getMedications(1)).toHaveLength(0);
+        });
+
+        it('enforces input validation rules on allergy, condition, and medication mutations', () => {
+            expect(() => service.saveAllergy(null)).toThrow('Allergy data is required');
+            expect(() => service.saveAllergy({})).toThrow('patient_id is required');
+            expect(() => service.saveAllergy({ patient_id: 1 })).toThrow('substance is required');
+
+            expect(() => service.saveCondition(null)).toThrow('Condition data is required');
+            expect(() => service.saveCondition({})).toThrow('patient_id is required');
+            expect(() => service.saveCondition({ patient_id: 1 })).toThrow('condition_name is required');
+
+            expect(() => service.saveMedication(null)).toThrow('Medication data is required');
+            expect(() => service.saveMedication({})).toThrow('patient_id is required');
+            expect(() => service.saveMedication({ patient_id: 1 })).toThrow('medicine_name is required');
+        });
+
+        it('does not duplicate active medications when auto-syncing duplicate prescribed drugs', () => {
+            service.saveMedication({
+                patient_id: 1,
+                medicine_name: 'Cetirizine 10mg',
+                status: 'active'
+            }, 10);
+
+            const q = queuePatient(1);
+            const enc = service.beginConsultation({ patientId: 1, queueEntryId: Number(q.lastInsertRowid), startRequestId: 'req-dup-med' }, 10);
+
+            service.completeConsultation({
+                encounterId: enc.id,
+                visit: {
+                    prescription: [
+                        { medicine: 'Cetirizine 10mg', dosage: '1 tab', frequency: 'HS' }
+                    ]
+                }
+            }, 10);
+
+            const meds = service.getMedications(1);
+            expect(meds.filter((m: any) => m.medicine_name === 'Cetirizine 10mg')).toHaveLength(1);
+        });
     });
 
     describe('Track C: Actionable Urgency, Triage History & Abnormal Vitals (Issue #17 & #53)', () => {
@@ -352,6 +453,37 @@ describe('Clinical Safety, Practitioner Provenance & Actionable Triage', () => {
 
             const updated = service.getEncounterById(enc.id);
             expect(updated.diagnosis).toBe('Admin initial intake');
+        });
+
+        it('enforces validation rules for triage reassessment', () => {
+            const added = service.addToQueue(1, { urgency: 'routine', priority: 1 }, 20);
+            const queueId = Number(added.lastInsertRowid);
+
+            expect(() => service.reassessQueueTriage(0, 'urgent', 'Patient worsening')).toThrow('queueId is required');
+            expect(() => service.reassessQueueTriage(queueId, '', 'Patient worsening')).toThrow('newUrgency is required');
+            expect(() => service.reassessQueueTriage(queueId, 'urgent', '')).toThrow('A clinical reason is required for triage reassessment');
+            expect(() => service.reassessQueueTriage(queueId, 'urgent', '   ')).toThrow('A clinical reason is required for triage reassessment');
+            expect(() => service.reassessQueueTriage(999999, 'urgent', 'Patient worsening')).toThrow('Queue entry not found');
+        });
+
+        it('delegates condition and medicine catalog search and creation', () => {
+            const cond = service.createCondition({
+                name: 'Asthma, unspecified'
+            });
+            expect(cond).toBeTruthy();
+
+            const condResults = service.searchConditions('Asthma');
+            expect(condResults.length).toBeGreaterThan(0);
+
+            const med = service.createMedicine({
+                name: 'Amoxicillin 500mg Capsule',
+                dosage_form: 'capsule',
+                strength: '500mg'
+            });
+            expect(med).toBeTruthy();
+
+            const medResults = service.searchMedicines('Amoxicillin');
+            expect(medResults.length).toBeGreaterThan(0);
         });
     });
 });

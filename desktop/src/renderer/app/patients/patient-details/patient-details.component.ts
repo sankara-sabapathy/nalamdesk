@@ -7,6 +7,7 @@ import { DataService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { DialogService } from '../../shared/services/dialog.service';
 import { DatePickerComponent } from '../../shared/components/date-picker/date-picker.component';
+import { newRequestId } from '../../services/request-id';
 
 @Component({
     selector: 'app-patient-details',
@@ -1048,7 +1049,7 @@ export class PatientDetailsComponent implements OnInit {
                 : await this.dataService.invoke<any>('beginConsultation', {
                     patientId: this.patientId,
                     queueEntryId: queueEntry.id,
-                    startRequestId: globalThis.crypto?.randomUUID?.() || `consult-${Date.now()}-${Math.random()}`,
+                    startRequestId: newRequestId(),
                     ...(doctorId ? { doctorId } : {})
                 });
             this.router.navigate(['/visit', this.patientId], {
