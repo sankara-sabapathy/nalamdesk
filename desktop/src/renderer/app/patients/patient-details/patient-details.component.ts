@@ -1026,6 +1026,14 @@ export class PatientDetailsComponent implements OnInit {
         if (this.startingConsult) return;
         this.startingConsult = true;
         try {
+            let doctorId: number | undefined;
+            if (this.currentUser?.role === 'admin') {
+                const doctors = await this.dataService.invoke<any[]>('getDoctors').catch(() => []);
+                if (doctors && doctors.length > 0) {
+                    doctorId = doctors[0].id;
+                }
+            }
+
             let queue = await this.dataService.invoke<any[]>('getQueue');
             let queueEntry = queue.find(item => item.patient_id === this.patientId);
             if (!queueEntry) {
@@ -1040,7 +1048,8 @@ export class PatientDetailsComponent implements OnInit {
                 : await this.dataService.invoke<any>('beginConsultation', {
                     patientId: this.patientId,
                     queueEntryId: queueEntry.id,
-                    startRequestId: globalThis.crypto?.randomUUID?.() || `consult-${Date.now()}-${Math.random()}`
+                    startRequestId: globalThis.crypto?.randomUUID?.() || `consult-${Date.now()}-${Math.random()}`,
+                    ...(doctorId ? { doctorId } : {})
                 });
             this.router.navigate(['/visit', this.patientId], {
                 state: { isConsulting: true, encounterId: encounter.id }

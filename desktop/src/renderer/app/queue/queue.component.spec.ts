@@ -23,8 +23,13 @@ describe('QueueComponent', () => {
     let mockDataService: any;
     let mockRouter: any;
     let mockDialogService: any;
+    let mockAuthService: any;
 
     beforeEach(() => {
+        mockAuthService = {
+            getUser: vi.fn().mockReturnValue({ role: 'doctor', id: 10 })
+        };
+
         mockDataService = {
             invoke: vi.fn().mockImplementation((endpoint: string) => {
                 if (endpoint === 'getQueue') {
@@ -35,6 +40,9 @@ describe('QueueComponent', () => {
                 }
                 if (endpoint === 'beginConsultation') return Promise.resolve({ id: 101, patient_id: 11 });
                 if (endpoint === 'resumeConsultation') return Promise.resolve({ id: 102, patient_id: 11 });
+                if (endpoint === 'getDoctors') return Promise.resolve([{ id: 10, name: 'Dr. Smith' }]);
+                if (endpoint === 'getQueueTriageHistory') return Promise.resolve([{ id: 1, new_urgency: 'urgent', reason: 'Fever' }]);
+                if (endpoint === 'reassessQueueTriage') return Promise.resolve({ id: 1, urgency: 'urgent' });
                 return Promise.resolve(null);
             })
         };
@@ -47,7 +55,7 @@ describe('QueueComponent', () => {
             open: vi.fn().mockResolvedValue(true)
         };
 
-        component = new QueueComponent(mockRouter, mockDataService, mockDialogService);
+        component = new QueueComponent(mockRouter, mockDataService, mockDialogService, mockAuthService);
     });
 
     it('should resume the exact linked encounter for a postponed queue item', async () => {
@@ -157,5 +165,129 @@ describe('QueueComponent', () => {
         expect(component.selectedPatientIdForVitals).toBeNull();
         expect(component.selectedQueueEntryIdForVitals).toBeNull();
         expect(component.selectedVisitIdForVitals).toBeNull();
+    });
+
+    it('opens vitals modal with numeric patient id', () => {
+        component.openVitals(99);
+        expect(component.showVitalsModal).toBe(true);
+        expect(component.selectedPatientIdForVitals).toBe(99);
+        expect(component.selectedQueueEntryIdForVitals).toBeNull();
+        expect(component.selectedVisitIdForVitals).toBeNull();
+
+        component.onVitalsSaved({});
+        expect(component.showVitalsModal).toBe(false);
+    });
+
+    it('opens and loads triage history modal', async () => {
+        const item = { id: 1, patient_name: 'Alice', urgency: 'priority' };
+        await component.openTriageModal(item);
+
+        expect(component.showTriageModal).toBe(true);
+        expect(component.selectedQueueItem).toBe(item);
+        expect(component.selectedUrgency).toBe('priority');
+        expect(component.triageHistory).toHaveLength(1);
+        expect(component.triageHistory[0].new_urgency).toBe('urgent');
+
+        component.closeTriageModal();
+        expect(component.showTriageModal).toBe(false);
+        expect(component.selectedQueueItem).toBeNull();
+        expect(component.triageHistory).toHaveLength(0);
+    });
+
+    it('handles triage history loading failure gracefully', async () => {
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'getQueueTriageHistory') return Promise.reject(new Error('DB error'));
+            return Promise.resolve(null);
+        });
+
+        const item = { id: 2, patient_name: 'Bob' };
+        await component.openTriageModal(item);
+
+        expect(component.showTriageModal).toBe(true);
+        expect(component.triageHistory).toEqual([]);
+    });
+
+    it('submits triage reassessment and refreshes queue', async () => {
+        const item = { id: 1, patient_name: 'Alice', urgency: 'routine' };
+        await component.openTriageModal(item);
+
+        // Does nothing if reason is empty
+        component.triageReason = '   ';
+        await component.submitTriageReassessment();
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('reassessQueueTriage', expect.anything());
+
+        // Submits with clinical reason
+        component.selectedUrgency = 'immediate';
+        component.triageReason = 'Patient has acute respiratory distress';
+        await component.submitTriageReassessment();
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('reassessQueueTriage', {
+            queueId: 1,
+            urgency: 'immediate',
+            reason: 'Patient has acute respiratory distress'
+        });
+        expect(component.showTriageModal).toBe(false);
+        expect(mockDataService.invoke).toHaveBeenCalledWith('getQueue');
+    });
+
+    it('surfaces triage update failure via dialog', async () => {
+        const item = { id: 1, patient_name: 'Alice', urgency: 'routine' };
+        await component.openTriageModal(item);
+
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'reassessQueueTriage') return Promise.reject(new Error('Cannot update completed'));
+            return Promise.resolve(null);
+        });
+
+        component.triageReason = 'Condition worsened';
+        await component.submitTriageReassessment();
+
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            title: 'Triage Update Failed',
+            type: 'error',
+            message: 'Cannot update completed'
+        }));
+        expect(component.savingTriage).toBe(false);
+    });
+
+    it('associates active doctor when admin starts consultation', async () => {
+        mockAuthService.getUser.mockReturnValue({ role: 'admin', id: 99 });
+        const item = { id: 1, patient_id: 11, patient_name: 'P1' };
+
+        await component.startConsult(item);
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('getDoctors');
+        expect(mockDataService.invoke).toHaveBeenCalledWith('beginConsultation', expect.objectContaining({
+            patientId: 11,
+            queueEntryId: 1,
+            doctorId: 10
+        }));
+    });
+
+    it('computes wait time string accurately', () => {
+        expect(component.getWaitTime('')).toBe('');
+        expect(component.getWaitTime('invalid-date')).toBe('');
+
+        // Future date (clock skew) returns 0m
+        const future = new Date(Date.now() + 60000).toISOString();
+        expect(component.getWaitTime(future)).toBe('0m');
+
+        // 15 minutes ago
+        const past15m = new Date(Date.now() - 15 * 60000).toISOString();
+        expect(component.getWaitTime(past15m)).toBe('15m');
+
+        // 2 hours 10 minutes ago
+        const past2h = new Date(Date.now() - (130 * 60000)).toISOString();
+        expect(component.getWaitTime(past2h)).toBe('2h 10m');
+    });
+
+    it('navigates back and cleans up timer on destroy', () => {
+        component.goBack();
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/dashboard']);
+
+        component.refreshIntervalId = 12345;
+        const clearSpy = vi.spyOn(globalThis, 'clearInterval');
+        component.ngOnDestroy();
+        expect(clearSpy).toHaveBeenCalledWith(12345);
     });
 });

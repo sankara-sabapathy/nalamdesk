@@ -291,5 +291,67 @@ describe('Clinical Safety, Practitioner Provenance & Actionable Triage', () => {
             expect(() => service.reassessQueueTriage(queueId, 'immediate', 'Too late', 10))
                 .toThrow('Cannot reassess triage for completed queue entry');
         });
+
+        it('correctly evaluates Celsius vitals in the queue without false hypothermia', () => {
+            const added = service.addToQueue(1, { urgency: 'routine', priority: 1 }, 20);
+            const queueId = Number(added.lastInsertRowid);
+
+            service.saveVitals({
+                patient_id: 1,
+                queue_entry_id: queueId,
+                temperature: 37,
+                pulse: 72,
+                systolic_bp: 120,
+                diastolic_bp: 80,
+                units: { temperature: '°C' }
+            }, 20);
+
+            const queue = service.getQueue();
+            expect(queue[0].has_abnormal_vitals).toBe(false);
+            expect(queue[0].vitals_alerts).toHaveLength(0);
+        });
+
+        it('preserves triage history audit records when queue entries are removed', () => {
+            const added = service.addToQueue(1, { urgency: 'routine', priority: 1 }, 20);
+            const queueId = Number(added.lastInsertRowid);
+
+            service.reassessQueueTriage(queueId, 'urgent', 'Patient feels dizzy', 20);
+            const historyBefore = service.getQueueTriageHistory(queueId);
+            expect(historyBefore).toHaveLength(2);
+
+            service.removeFromQueue(queueId, 99);
+
+            const historyAfter = service.getQueueTriageHistory(queueId);
+            expect(historyAfter).toHaveLength(2);
+            expect(historyAfter[0].urgency_label).toBe('urgent');
+            expect(historyAfter[0].reason).toBe('Patient feels dizzy');
+        });
+
+        it('allows admin or non-doctor staff to start consultation when providing doctorId', () => {
+            const added = service.addToQueue(1, { urgency: 'routine', priority: 1 }, 20);
+            const queueId = Number(added.lastInsertRowid);
+
+            // Admin starts consultation providing doctorId
+            const enc = service.beginConsultation({
+                patientId: 1,
+                queueEntryId: queueId,
+                startRequestId: 'req-admin-delegated',
+                doctorId: 10
+            }, 99);
+
+            expect(enc).toBeTruthy();
+            expect(enc.doctor_id).toBe(10); // Active doctor Dr. Smith
+            expect(enc.author_id).toBe(99); // Admin actor
+            expect(enc.doctor_license?.license_number).toBe('MED-12345');
+
+            // Admin who authored it can also save consultation progress
+            service.saveConsultationProgress({
+                encounterId: enc.id,
+                visit: { diagnosis: 'Admin initial intake', amount_paid: 50 }
+            }, 99);
+
+            const updated = service.getEncounterById(enc.id);
+            expect(updated.diagnosis).toBe('Admin initial intake');
+        });
     });
 });

@@ -609,7 +609,7 @@ export const MIGRATIONS = [
             db.exec(`
                 CREATE TABLE IF NOT EXISTS queue_triage_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    queue_id INTEGER NOT NULL REFERENCES patient_queue(id) ON DELETE CASCADE,
+                    queue_id INTEGER NOT NULL,
                     previous_priority INTEGER NOT NULL,
                     new_priority INTEGER NOT NULL,
                     urgency_label TEXT NOT NULL,
@@ -652,8 +652,7 @@ export const MIGRATIONS = [
                         WHEN priority = 3 THEN 'urgent'
                         WHEN priority = 2 THEN 'priority'
                         ELSE 'routine'
-                    END
-                    WHERE urgency IS NULL;
+                    END;
                 `);
             } catch (e) { }
 
@@ -662,7 +661,8 @@ export const MIGRATIONS = [
                 'getAllergies', 'saveAllergy', 'deleteAllergy',
                 'getConditions', 'saveCondition', 'deleteCondition',
                 'getMedications', 'saveMedication', 'deleteMedication',
-                'reassessQueueTriage', 'getQueueTriageHistory'
+                'reassessQueueTriage', 'getQueueTriageHistory',
+                'getPatientSafetyContext'
             ];
             ['doctor', 'nurse', 'receptionist', 'admin'].forEach(roleName => {
                 try {

@@ -1246,13 +1246,16 @@ export class DatabaseService {
 
         return rows.map(q => {
             const vitals = this.db.prepare(`
-                SELECT systolic_bp, diastolic_bp, pulse, temperature, respiratory_rate, spo2, bmi, status
+                SELECT systolic_bp, diastolic_bp, pulse, temperature, respiratory_rate, spo2, bmi, status, units_json
                 FROM vitals
                 WHERE queue_entry_id = ? OR (patient_id = ? AND date(effective_time) = date('now'))
                 ORDER BY id DESC LIMIT 1
-            `).get(q.id, q.patient_id);
+            `).get(q.id, q.patient_id) as any;
 
-            const evaluated = evaluateVitalsAbnormalities(vitals as Record<string, unknown> | undefined);
+            const evaluated = evaluateVitalsAbnormalities(vitals ? {
+                ...vitals,
+                units: this.safeParseJson(vitals.units_json, DEFAULT_VITAL_UNITS)
+            } : undefined);
             return {
                 ...q,
                 urgency: q.urgency || this.priorityToUrgency(q.priority),

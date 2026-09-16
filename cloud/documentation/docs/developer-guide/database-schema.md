@@ -158,7 +158,7 @@ Audit log tracking every triage priority reassessment with clinical reason and a
 | Column | Type | Description |
 | :--- | :--- | :--- |
 | `id` | INTEGER PK | History entry ID. |
-| `queue_id` | INTEGER FK | Links to `patient_queue.id`. |
+| `queue_id` | INTEGER | Queue entry ID (preserved as an immutable audit record even after queue removal). |
 | `previous_priority` | INTEGER | Priority value prior to change. |
 | `new_priority` | INTEGER | New priority value after reassessment. |
 | `urgency_label` | TEXT | New urgency label (`immediate`, `urgent`, `priority`, `routine`). |

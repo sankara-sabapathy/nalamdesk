@@ -388,6 +388,7 @@ describe('Database Migrations', () => {
             expect(doctorPerms).toContain('saveMedication');
             expect(doctorPerms).toContain('reassessQueueTriage');
             expect(doctorPerms).toContain('getQueueTriageHistory');
+            expect(doctorPerms).toContain('getPatientSafetyContext');
         });
     });
 

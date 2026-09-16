@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { DataService } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
 import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
 import { newRequestId } from '../services/request-id';
 import { DialogService } from '../shared/services/dialog.service';
@@ -250,7 +251,8 @@ export class QueueComponent implements OnInit, OnDestroy {
   constructor(
     private router: Router,
     private dataService: DataService,
-    private dialogService: DialogService
+    private dialogService: DialogService,
+    private authService?: AuthService
   ) { }
 
   ngOnInit() {
@@ -284,10 +286,19 @@ export class QueueComponent implements OnInit, OnDestroy {
       } else {
         const startRequestId = this.startRequestIds.get(item.id) || newRequestId();
         this.startRequestIds.set(item.id, startRequestId);
+        let doctorId: number | undefined;
+        const currentUser = this.authService?.getUser();
+        if (currentUser?.role === 'admin') {
+          const doctors = await this.dataService.invoke<any[]>('getDoctors').catch(() => []);
+          if (doctors && doctors.length > 0) {
+            doctorId = doctors[0].id;
+          }
+        }
         encounter = await this.dataService.invoke<any>('beginConsultation', {
           patientId: item.patient_id,
           queueEntryId: item.id,
-          startRequestId
+          startRequestId,
+          ...(doctorId ? { doctorId } : {})
         });
         this.startRequestIds.delete(item.id);
       }
@@ -329,7 +340,8 @@ export class QueueComponent implements OnInit, OnDestroy {
     if (!dateStr) return '';
     // Normalize SQL date space to T for reliable parsing
     const normalized = dateStr.replace(' ', 'T');
-    const start = new Date(normalized + 'Z').getTime();
+    const timestampStr = normalized.endsWith('Z') ? normalized : normalized + 'Z';
+    const start = new Date(timestampStr).getTime();
     const now = new Date().getTime();
 
     if (isNaN(start)) return '';
