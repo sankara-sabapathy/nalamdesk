@@ -31,7 +31,7 @@ const ALLOWED_IPC_METHODS = [
     'getVisits', 'getAllVisits', 'saveVisit', 'deleteVisit',
     'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress',
     'completeConsultation', 'postponeConsultation', 'resumeConsultation', 'beginNextConsultation',
-    'getVitals', 'saveVitals',
+    'getVitals', 'saveVitals', 'getEncounterVitals', 'getVitalsHistory',
     'getSettings', 'getPublicSettings', 'saveSettings',
     'getDoctors',
     'getUsers', 'saveUser', 'deleteUser', 'updateUserPassword',

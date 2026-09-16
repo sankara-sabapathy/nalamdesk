@@ -46,6 +46,32 @@ Records clinical encounters.
 | `prescription_json` | TEXT | JSON string array of medicines. |
 | `amount_paid` | NUMERIC(12,2) | Consultation fee collected. |
 
+## Vitals (Observations) Table
+Stores structured clinical observations (FHIR Observation aligned) linked durably to patients, encounters, and pre-consultation queues. Supports non-destructive amendment history.
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | INTEGER PK | Auto-incrementing Observation ID. |
+| `visit_id` | INTEGER FK | Links to `visits.id` (Encounter linkage). NULL if recorded pre-consultation. |
+| `patient_id` | INTEGER FK | Links to `patients.id`. |
+| `systolic_bp` | INTEGER | Systolic blood pressure (mmHg, 50–300). Required if diastolic is present. |
+| `diastolic_bp` | INTEGER | Diastolic blood pressure (mmHg, 30–200). Systolic must be strictly > Diastolic. |
+| `pulse` | INTEGER | Heart rate (bpm, 30–250). |
+| `temperature` | REAL | Body temperature (50–115 °F). |
+| `weight` | REAL | Patient weight (0.5–500 kg). |
+| `height` | REAL | Patient height (20–300 cm). |
+| `bmi` | REAL | Body Mass Index (auto-calculated from height & weight). |
+| `created_at` | DATETIME | Timestamp row was created. |
+| `effective_time` | DATETIME | Clinical observation timestamp (when vitals were measured). |
+| `recorded_at` | DATETIME | System entry timestamp. |
+| `performer_id` | INTEGER FK | Links to `users.id` (clinician who measured the vitals). |
+| `status` | TEXT | FHIR status: `preliminary`, `final`, `amended`, `corrected`, `entered-in-error`. |
+| `units_json` | TEXT | JSON object specifying units (e.g., `{"temperature":"F","weight":"kg"}`). |
+| `queue_entry_id` | INTEGER FK | Links to `patient_queue.id` for queue-side vitals persistence. |
+| `replaces_id` | INTEGER FK | Self-reference to previous vitals ID when amended/corrected. |
+| `amendment_reason` | TEXT | Clinical justification for amendment. |
+| `client_request_id` | TEXT | Idempotency key to prevent accidental duplicate submissions. |
+
 ## Condition catalog
 Clinic-local diagnoses for Plan & Rx typeahead. Unique `name` among **active** rows. Soft-retire sets `active = 0` and does not rewrite historical visit text.
 

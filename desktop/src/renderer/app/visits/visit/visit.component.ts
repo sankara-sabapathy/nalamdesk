@@ -10,6 +10,7 @@ import { AuthService } from '../../services/auth.service';
 import { DataService } from '../../services/api.service';
 import { newRequestId } from '../../services/request-id';
 import { combineLatest } from 'rxjs';
+import { VitalsFormComponent } from '../vitals/vitals-form.component';
 
 interface PrescriptionItem {
   medicine: string;
@@ -34,7 +35,7 @@ interface Visit {
 @Component({
   selector: 'app-visit',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReactiveFormsModule, PrescriptionComponent, CatalogTypeaheadComponent],
+  imports: [CommonModule, FormsModule, ReactiveFormsModule, PrescriptionComponent, CatalogTypeaheadComponent, VitalsFormComponent],
   template: `
     <div class="flex h-full bg-gray-50 font-sans overflow-hidden relative">
       
@@ -167,11 +168,26 @@ interface Visit {
                             <div class="w-8 h-8 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center font-bold text-sm">O</div>
                             <h3 class="text-lg font-bold">Objective</h3>
                         </div>
-                        <!-- Vitals Pill -->
-                        <div *ngIf="patientVitals" class="bg-teal-50 text-teal-800 text-xs px-3 py-1.5 rounded-full font-medium border border-teal-100 flex flex-wrap gap-3">
-                            <span>BP: <b>{{ patientVitals.systolic_bp }}/{{ patientVitals.diastolic_bp }}</b></span>
-                            <span>Pulse: <b>{{ patientVitals.pulse }}</b></span>
-                            <span>Temp: <b>{{ patientVitals.temperature }}</b></span>
+                        <!-- Vitals Pill & Actions -->
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <div *ngIf="hasVitalsToDisplay(patientVitals)" 
+                                 (click)="openVitalsModal()"
+                                 title="Click to view or amend vitals"
+                                 class="bg-teal-50 text-teal-800 text-xs px-3 py-1.5 rounded-full font-medium border border-teal-100 flex flex-wrap items-center gap-2.5 cursor-pointer hover:bg-teal-100 transition">
+                                <span *ngIf="hasBp(patientVitals)">BP: <b>{{ patientVitals.systolic_bp }}/{{ patientVitals.diastolic_bp }}</b></span>
+                                <span *ngIf="isVitalPresent(patientVitals.pulse)">Pulse: <b>{{ patientVitals.pulse }}</b></span>
+                                <span *ngIf="isVitalPresent(patientVitals.temperature)">Temp: <b>{{ patientVitals.temperature }}</b></span>
+                                <span *ngIf="isVitalPresent(patientVitals.spo2)">SpO2: <b>{{ patientVitals.spo2 }}%</b></span>
+                                <span *ngIf="patientVitals.status === 'amended'" class="text-[10px] bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded font-bold">Amended</span>
+                                <span *ngIf="canEditChart" class="text-teal-600 font-bold ml-1 text-xs">✎</span>
+                            </div>
+
+                            <button *ngIf="!hasVitalsToDisplay(patientVitals) && canEditChart" 
+                                    type="button" 
+                                    (click)="openVitalsModal()"
+                                    class="text-xs text-teal-700 hover:text-teal-900 border border-teal-200 hover:border-teal-400 bg-teal-50 px-2.5 py-1 rounded-full flex items-center gap-1 font-medium transition">
+                                <span>+ Record Vitals</span>
+                            </button>
                         </div>
                     </div>
                     <textarea formControlName="examination_notes" rows="3" placeholder="Physical exam findings, labs, observations..." 
@@ -271,13 +287,22 @@ interface Visit {
                    </button>
                </ng-container>
 
-               <ng-template #noConsult>
-                   <div class="text-sm text-gray-400 italic">Read-only mode</div>
-               </ng-template>
-            </div>
-        </div>
+                <ng-template #noConsult>
+                    <div class="text-sm text-gray-400 italic">Read-only mode</div>
+                </ng-template>
+             </div>
+         </div>
 
       </div>
+
+      <!-- Vitals Modal -->
+      <app-vitals-form *ngIf="showVitalsModal"
+          [patientId]="patientId"
+          [visitId]="encounterId"
+          [existingVitals]="patientVitals"
+          (closeDialog)="closeVitalsModal()"
+          (vitalsSaved)="onVitalsSaved($event)">
+      </app-vitals-form>
     </div>
   `,
   styles: []
@@ -300,6 +325,7 @@ export class VisitComponent implements OnInit {
   currentUser: any;
   patientVitals: any;
   showMobileHistory = false;
+  showVitalsModal = false;
 
   currentPrescription: any[] = [];
   private conditionPresetGeneration = 0;
@@ -478,8 +504,10 @@ export class VisitComponent implements OnInit {
 
           // Auto-Fill Vitals into Objective if empty
           if (this.patientVitals && !this.visitForm.get('examination_notes')?.value) {
-            const v = this.patientVitals;
-            const text = `BP: ${v.systolic_bp}/${v.diastolic_bp}\nPulse: ${v.pulse}\nTemp: ${v.temperature}`;
+            const formatted = this.formatVitalsObjective(this.patientVitals);
+            if (formatted) {
+              this.visitForm.patchValue({ examination_notes: formatted });
+            }
           }
         }
       });
@@ -496,8 +524,17 @@ export class VisitComponent implements OnInit {
         });
         this.consultationStartPending = false;
         this.startRequestId = null;
+
+        let linkedVitals: any = null;
+        try {
+          linkedVitals = await this.dataService.invoke<any>('getEncounterVitals', encounter.id);
+        } catch { }
+
         this.ngZone.run(() => {
           this.encounterId = encounter.id;
+          if (linkedVitals) {
+            this.patientVitals = linkedVitals;
+          }
           this.patchEncounter(encounter);
           this.setChartWritable(true);
         });
@@ -813,6 +850,52 @@ export class VisitComponent implements OnInit {
   private isAuthorizationError(error: unknown): boolean {
     const message = String((error as Error)?.message ?? error ?? '');
     return /responsible practitioner|forbidden|unauthorized/i.test(message);
+  }
+
+  openVitalsModal(): void {
+    if (!this.canEditChart) return;
+    this.showVitalsModal = true;
+  }
+
+  closeVitalsModal(): void {
+    this.showVitalsModal = false;
+  }
+
+  onVitalsSaved(vitals: any): void {
+    this.patientVitals = vitals;
+    this.closeVitalsModal();
+  }
+
+  hasBp(v: any): boolean {
+    return Boolean(v && this.isVitalPresent(v.systolic_bp) && this.isVitalPresent(v.diastolic_bp));
+  }
+
+  isVitalPresent(val: unknown): boolean {
+    return val !== null && val !== undefined && val !== '' && !Number.isNaN(val);
+  }
+
+  hasVitalsToDisplay(v: any): boolean {
+    if (!v) return false;
+    return this.hasBp(v) ||
+      this.isVitalPresent(v.pulse) ||
+      this.isVitalPresent(v.temperature) ||
+      this.isVitalPresent(v.spo2) ||
+      this.isVitalPresent(v.weight) ||
+      this.isVitalPresent(v.height);
+  }
+
+  formatVitalsObjective(v: any): string {
+    if (!v) return '';
+    const parts: string[] = [];
+    if (this.hasBp(v)) parts.push(`BP: ${v.systolic_bp}/${v.diastolic_bp} mmHg`);
+    if (this.isVitalPresent(v.pulse)) parts.push(`Pulse: ${v.pulse} bpm`);
+    if (this.isVitalPresent(v.temperature)) parts.push(`Temp: ${v.temperature} °F`);
+    if (this.isVitalPresent(v.spo2)) parts.push(`SpO2: ${v.spo2}%`);
+    if (this.isVitalPresent(v.respiratory_rate)) parts.push(`RR: ${v.respiratory_rate} bpm`);
+    if (this.isVitalPresent(v.weight)) parts.push(`Weight: ${v.weight} kg`);
+    if (this.isVitalPresent(v.height)) parts.push(`Height: ${v.height} cm`);
+    if (this.isVitalPresent(v.bmi)) parts.push(`BMI: ${v.bmi}`);
+    return parts.join('\n');
   }
 
   goBack() {

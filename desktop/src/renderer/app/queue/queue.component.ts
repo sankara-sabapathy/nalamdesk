@@ -94,7 +94,7 @@ import { DialogService } from '../shared/services/dialog.service';
                     <td class="text-right">
                       <div class="join opacity-0 group-hover:opacity-100 transition-opacity">
                         <button *ngIf="item.status === 'waiting'" 
-                                (click)="openVitals(item.patient_id)"
+                                (click)="openVitals(item)"
                                 class="btn btn-secondary btn-sm join-item">
                           Vitals
                         </button>
@@ -139,8 +139,10 @@ import { DialogService } from '../shared/services/dialog.service';
       <!-- Vitals Modal -->
       <app-vitals-form *ngIf="showVitalsModal" 
         (closeDialog)="closeVitalsModal()" 
-        (save)="onVitalsSaved($event)"
-        [patientId]="selectedPatientIdForVitals">
+        (vitalsSaved)="onVitalsSaved($event)"
+        [patientId]="selectedPatientIdForVitals"
+        [queueEntryId]="selectedQueueEntryIdForVitals"
+        [visitId]="selectedVisitIdForVitals">
       </app-vitals-form>
     </div>
   `
@@ -250,19 +252,30 @@ export class QueueComponent implements OnInit, OnDestroy {
   // Vitals Logic
   showVitalsModal = false;
   selectedPatientIdForVitals: number | null = null;
+  selectedQueueEntryIdForVitals: number | null = null;
+  selectedVisitIdForVitals: number | null = null;
 
-  openVitals(patientId: number) {
-    this.selectedPatientIdForVitals = patientId;
+  openVitals(item: any) {
+    if (typeof item === 'number') {
+      this.selectedPatientIdForVitals = item;
+      this.selectedQueueEntryIdForVitals = null;
+      this.selectedVisitIdForVitals = null;
+    } else if (item && typeof item === 'object') {
+      this.selectedPatientIdForVitals = item.patient_id;
+      this.selectedQueueEntryIdForVitals = item.id;
+      this.selectedVisitIdForVitals = item.active_encounter_id || null;
+    }
     this.showVitalsModal = true;
   }
 
   closeVitalsModal() {
     this.showVitalsModal = false;
     this.selectedPatientIdForVitals = null;
+    this.selectedQueueEntryIdForVitals = null;
+    this.selectedVisitIdForVitals = null;
   }
 
-  onVitalsSaved(data: any) {
+  onVitalsSaved(_data: any) {
     this.closeVitalsModal();
-    // Optional: Show success toast
   }
 }

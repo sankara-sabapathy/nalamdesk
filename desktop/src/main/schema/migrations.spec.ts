@@ -33,8 +33,8 @@ describe('Database Migrations', () => {
             });
         });
 
-        it('should have 9 migrations total', () => {
-            expect(MIGRATIONS).toHaveLength(9);
+        it('should have 10 migrations total', () => {
+            expect(MIGRATIONS).toHaveLength(10);
         });
     });
 
@@ -282,6 +282,49 @@ describe('Database Migrations', () => {
             expect(permissions).toContain('searchConditions');
             expect(permissions).toContain('createMedicine');
             expect(permissions).toContain('getConditionMedPresets');
+        });
+    });
+
+    describe('Migration v10 (Encounter-Linked Vitals & Observation Model)', () => {
+        it('adds observation columns and indexes for vitals', () => {
+            MIGRATIONS[9].up(mockDb);
+            const sql = executedSql.join('\n');
+            expect(sql).toContain('ALTER TABLE vitals ADD COLUMN effective_time');
+            expect(sql).toContain('ALTER TABLE vitals ADD COLUMN recorded_at');
+            expect(sql).toContain('ALTER TABLE vitals ADD COLUMN performer_id');
+            expect(sql).toContain('ALTER TABLE vitals ADD COLUMN status');
+            expect(sql).toContain('ALTER TABLE vitals ADD COLUMN units_json');
+            expect(sql).toContain('ALTER TABLE vitals ADD COLUMN queue_entry_id');
+            expect(sql).toContain('ALTER TABLE vitals ADD COLUMN replaces_id');
+            expect(sql).toContain('ALTER TABLE vitals ADD COLUMN amendment_reason');
+            expect(sql).toContain('ALTER TABLE vitals ADD COLUMN client_request_id');
+            expect(sql).toContain('idx_vitals_patient_effective');
+            expect(sql).toContain('idx_vitals_queue_entry');
+            expect(sql).toContain('idx_vitals_replaces');
+        });
+
+        it('adds vitals permissions to doctor, nurse, and receptionist roles', () => {
+            const run = vi.fn();
+            mockDb.prepare = vi.fn().mockReturnValue({
+                run,
+                get: vi.fn().mockImplementation((roleName: string) => ({
+                    permissions: JSON.stringify(['getQueue', 'getPatients'])
+                })),
+                all: vi.fn()
+            });
+            MIGRATIONS[9].up(mockDb);
+            expect(run).toHaveBeenCalled();
+            const calledRoles = run.mock.calls.map(call => call[1]);
+            expect(calledRoles).toContain('doctor');
+            expect(calledRoles).toContain('nurse');
+            expect(calledRoles).toContain('receptionist');
+
+            const doctorCall = run.mock.calls.find(call => call[1] === 'doctor');
+            const doctorPerms = JSON.parse(doctorCall[0]);
+            expect(doctorPerms).toContain('getVitals');
+            expect(doctorPerms).toContain('saveVitals');
+            expect(doctorPerms).toContain('getVitalsHistory');
+            expect(doctorPerms).toContain('getEncounterVitals');
         });
     });
 

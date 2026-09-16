@@ -165,4 +165,23 @@ describe('PatientDetailsComponent', () => {
         // Check currentUser
         expect(component.currentUser?.role).toBe('receptionist');
     });
+
+    it('suppresses malformed vitals and identifies absent observations', () => {
+        expect(component.hasBp(null)).toBe(false);
+        expect(component.hasBp({})).toBe(false);
+        expect(component.hasBp({ systolic_bp: 120 })).toBe(false);
+        expect(component.hasBp({ diastolic_bp: 80 })).toBe(false);
+        expect(component.hasBp({ systolic_bp: 120, diastolic_bp: 80 })).toBe(true);
+
+        expect(component.hasVitalsToDisplay(null)).toBe(false);
+        expect(component.hasVitalsToDisplay({})).toBe(false);
+        expect(component.hasVitalsToDisplay({ pulse: 80 })).toBe(true);
+
+        expect(component.isVitalPresent(null)).toBe(false);
+        expect(component.isVitalPresent(undefined)).toBe(false);
+        expect(component.isVitalPresent('')).toBe(false);
+        expect(component.isVitalPresent(NaN)).toBe(false);
+        expect(component.isVitalPresent(0)).toBe(true);
+        expect(component.isVitalPresent(80)).toBe(true);
+    });
 });

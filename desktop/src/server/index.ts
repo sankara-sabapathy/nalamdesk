@@ -18,7 +18,7 @@ console.log(`[Server] Starting...`);
 console.log(`[Server] DB Path: ${DB_PATH}`);
 
 // 1. Initialize Database
-let db;
+let db: any;
 try {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL'); // Performance

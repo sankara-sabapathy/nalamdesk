@@ -142,4 +142,20 @@ describe('QueueComponent', () => {
             message: expect.stringContaining('Failed to remove from queue')
         }));
     });
+
+    it('opens vitals modal with queue entry id and patient id', () => {
+        const item = { id: 42, patient_id: 11, status: 'waiting', active_encounter_id: 105 };
+        component.openVitals(item);
+
+        expect(component.showVitalsModal).toBe(true);
+        expect(component.selectedPatientIdForVitals).toBe(11);
+        expect(component.selectedQueueEntryIdForVitals).toBe(42);
+        expect(component.selectedVisitIdForVitals).toBe(105);
+
+        component.closeVitalsModal();
+        expect(component.showVitalsModal).toBe(false);
+        expect(component.selectedPatientIdForVitals).toBeNull();
+        expect(component.selectedQueueEntryIdForVitals).toBeNull();
+        expect(component.selectedVisitIdForVitals).toBeNull();
+    });
 });
