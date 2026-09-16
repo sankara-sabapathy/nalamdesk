@@ -273,7 +273,8 @@ describe('encounter integrity transactions', () => {
             .toThrow('not in consultation');
         expect(() => service.postponeConsultation({ encounterId: encounter.id }, 10)).toThrow('not in consultation');
         expect(service.beginNextConsultation({ startRequestId: 'implicit-handoff-doctor' }, 11)).toBeNull();
-        expect(service.beginNextConsultation({ startRequestId: 'implicit-handoff-admin' }, 99)).toBeNull();
+        expect(() => service.beginNextConsultation({ startRequestId: 'implicit-handoff-admin' }, 99))
+            .toThrow('Clinical authoring requires an active licensed practitioner');
 
         const stored = db.prepare('SELECT diagnosis, status FROM visits WHERE id = ?').get(encounter.id);
         expect(stored).toMatchObject({ diagnosis: 'Saved draft', status: 'in-progress' });
@@ -344,7 +345,7 @@ describe('migration v7 compatibility', () => {
             expect(migrated.status).toBe('finished');
             expect(migrated.started_at).toBeTruthy();
             expect(migrated.completed_at).toBeTruthy();
-            expect(db.pragma('user_version', { simple: true })).toBe(10);
+            expect(db.pragma('user_version', { simple: true })).toBe(11);
         } finally {
             db.close();
         }
@@ -377,7 +378,7 @@ describe('migration v7 compatibility', () => {
 
             await expect(service.migrate()).resolves.toBeUndefined();
             expect(db.prepare('SELECT count(*) count FROM encounter_requests').get().count).toBe(0);
-            expect(db.pragma('user_version', { simple: true })).toBe(10);
+            expect(db.pragma('user_version', { simple: true })).toBe(11);
         } finally {
             db.close();
         }

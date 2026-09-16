@@ -122,4 +122,66 @@ describe('VitalsFormComponent', () => {
             pulse: 75
         }));
     });
+
+    it('handles temperature unit toggle between °F and °C without range errors', () => {
+        // Set 98.6 °F
+        component.vitalsForm.patchValue({ temperature: 98.6 });
+        expect(component.tempUnit).toBe('°F');
+        expect(component.vitalsForm.get('temperature')?.valid).toBe(true);
+
+        // Toggle to °C -> should convert to 37 °C and stay valid
+        component.toggleTempUnit('°C');
+        expect(component.tempUnit).toBe('°C');
+        expect(component.vitalsForm.get('temperature')?.value).toBe(37);
+        expect(component.vitalsForm.get('temperature')?.valid).toBe(true);
+
+        // Toggle back to °F -> should convert to 98.6 °F and stay valid
+        component.toggleTempUnit('°F');
+        expect(component.tempUnit).toBe('°F');
+        expect(component.vitalsForm.get('temperature')?.value).toBe(98.6);
+        expect(component.vitalsForm.get('temperature')?.valid).toBe(true);
+    });
+
+    it('handles weight unit toggle between kg and lbs with correct BMI', () => {
+        // 180 cm, 70 kg -> BMI 21.6
+        component.vitalsForm.patchValue({ height: 180, weight: 70 });
+        expect(component.weightUnit).toBe('kg');
+        expect(component.bmi).toBe('21.6');
+        expect(component.vitalsForm.get('weight')?.valid).toBe(true);
+
+        // Toggle to lbs -> 70 kg ~ 154.3 lbs
+        component.toggleWeightUnit('lbs');
+        expect(component.weightUnit).toBe('lbs');
+        expect(component.vitalsForm.get('weight')?.value).toBe(154.3);
+        expect(component.vitalsForm.get('weight')?.valid).toBe(true);
+        // BMI remains ~21.6
+        expect(component.bmi).toBe('21.6');
+    });
+
+    it('submits canonical UCUM units in saveVitals payload', async () => {
+        component.patientId = 7;
+        component.toggleTempUnit('°C');
+        component.toggleWeightUnit('lbs');
+        component.vitalsForm.patchValue({
+            temperature: 37.0,
+            weight: 154.3,
+            systolic_bp: 120,
+            diastolic_bp: 80
+        });
+
+        await component.saveVitals();
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('saveVitals', expect.objectContaining({
+            units: expect.objectContaining({
+                temperature: '°C',
+                weight: 'lbs'
+            }),
+            ucum_units: expect.objectContaining({
+                temperature: 'Cel',
+                weight: '[lb_av]',
+                systolic_bp: 'mm[Hg]',
+                diastolic_bp: 'mm[Hg]'
+            })
+        }));
+    });
 });

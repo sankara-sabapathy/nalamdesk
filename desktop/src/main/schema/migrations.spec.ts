@@ -33,8 +33,8 @@ describe('Database Migrations', () => {
             });
         });
 
-        it('should have 10 migrations total', () => {
-            expect(MIGRATIONS).toHaveLength(10);
+        it('should have 11 migrations total', () => {
+            expect(MIGRATIONS).toHaveLength(11);
         });
     });
 
@@ -325,6 +325,69 @@ describe('Database Migrations', () => {
             expect(doctorPerms).toContain('saveVitals');
             expect(doctorPerms).toContain('getVitalsHistory');
             expect(doctorPerms).toContain('getEncounterVitals');
+        });
+    });
+
+    describe('Migration v11 (Clinical Safety, Allergies, Problem List & Actionable Triage)', () => {
+        beforeEach(() => {
+            MIGRATIONS[10].up(mockDb);
+        });
+
+        it('creates patient_allergies, conditions, medications, and triage tables', () => {
+            const sql = executedSql.join('\n');
+            expect(sql).toContain('CREATE TABLE IF NOT EXISTS patient_allergies');
+            expect(sql).toContain('CREATE TABLE IF NOT EXISTS patient_conditions');
+            expect(sql).toContain('CREATE TABLE IF NOT EXISTS patient_medications');
+            expect(sql).toContain('CREATE TABLE IF NOT EXISTS queue_triage_history');
+            expect(sql).toContain('idx_patient_allergies_patient');
+            expect(sql).toContain('idx_patient_conditions_patient');
+            expect(sql).toContain('idx_patient_medications_patient');
+            expect(sql).toContain('idx_queue_triage_hist_queue');
+        });
+
+        it('adds author_id, doctor_license_snapshot, and allergy_override_reason to visits', () => {
+            const sql = executedSql.join('\n');
+            expect(sql).toContain('ALTER TABLE visits ADD COLUMN author_id');
+            expect(sql).toContain('ALTER TABLE visits ADD COLUMN doctor_license_snapshot');
+            expect(sql).toContain('ALTER TABLE visits ADD COLUMN allergy_override_reason');
+        });
+
+        it('adds urgency and triage columns to patient_queue and backfills urgency', () => {
+            const sql = executedSql.join('\n');
+            expect(sql).toContain('ALTER TABLE patient_queue ADD COLUMN urgency');
+            expect(sql).toContain('ALTER TABLE patient_queue ADD COLUMN triage_notes');
+            expect(sql).toContain('ALTER TABLE patient_queue ADD COLUMN triage_assessor_id');
+            expect(sql).toContain('ALTER TABLE patient_queue ADD COLUMN triaged_at');
+            expect(sql).toContain("WHEN priority >= 4 THEN 'immediate'");
+        });
+
+        it('adds clinical safety permissions to roles', () => {
+            const run = vi.fn();
+            mockDb.prepare = vi.fn().mockReturnValue({
+                run,
+                get: vi.fn().mockImplementation((roleName: string) => ({
+                    permissions: JSON.stringify(['getQueue', 'getPatients'])
+                })),
+                all: vi.fn()
+            });
+            MIGRATIONS[10].up(mockDb);
+            expect(run).toHaveBeenCalled();
+            const calledRoles = run.mock.calls.map(call => call[1]);
+            expect(calledRoles).toContain('doctor');
+            expect(calledRoles).toContain('nurse');
+            expect(calledRoles).toContain('receptionist');
+            expect(calledRoles).toContain('admin');
+
+            const doctorCall = run.mock.calls.find(call => call[1] === 'doctor');
+            const doctorPerms = JSON.parse(doctorCall[0]);
+            expect(doctorPerms).toContain('getAllergies');
+            expect(doctorPerms).toContain('saveAllergy');
+            expect(doctorPerms).toContain('getConditions');
+            expect(doctorPerms).toContain('saveCondition');
+            expect(doctorPerms).toContain('getMedications');
+            expect(doctorPerms).toContain('saveMedication');
+            expect(doctorPerms).toContain('reassessQueueTriage');
+            expect(doctorPerms).toContain('getQueueTriageHistory');
         });
     });
 

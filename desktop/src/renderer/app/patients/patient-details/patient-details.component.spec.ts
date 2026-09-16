@@ -184,4 +184,102 @@ describe('PatientDetailsComponent', () => {
         expect(component.isVitalPresent(0)).toBe(true);
         expect(component.isVitalPresent(80)).toBe(true);
     });
+
+    it('loads clinical safety context, allergies, conditions, and medications', async () => {
+        const mockSafetyContext = {
+            patient_id: 123,
+            allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', status: 'active' }],
+            active_allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', status: 'active' }],
+            has_active_allergies: true,
+            has_life_threatening_allergies: true,
+            conditions: [{ id: 1, condition_name: 'Hypertension', clinical_status: 'active' }],
+            active_conditions: [{ id: 1, condition_name: 'Hypertension', clinical_status: 'active' }],
+            medications: [{ id: 1, medicine_name: 'Amlodipine', status: 'active' }],
+            active_medications: [{ id: 1, medicine_name: 'Amlodipine', status: 'active' }]
+        };
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'getPatientById') return Promise.resolve({ id: 123, name: 'Test Patient' });
+            if (endpoint === 'getVisits') return Promise.resolve([]);
+            if (endpoint === 'getVitals') return Promise.resolve(null);
+            if (endpoint === 'getPatientSafetyContext') return Promise.resolve(mockSafetyContext);
+            return Promise.resolve(null);
+        });
+
+        component.ngOnInit();
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(component.safetyContext).toEqual(mockSafetyContext);
+        expect(component.allergies.length).toBe(1);
+        expect(component.conditions.length).toBe(1);
+        expect(component.medications.length).toBe(1);
+        expect(component.safetyContext.has_active_allergies).toBe(true);
+    });
+
+    it('manages allergies lifecycle (add and delete)', async () => {
+        component.patientId = 123;
+        component.openAddAllergyModal();
+        expect(component.showAllergyModal).toBe(true);
+
+        component.allergyForm.patchValue({
+            substance: 'Amoxicillin',
+            criticality: 'high',
+            severity: 'severe',
+            reaction: 'Anaphylaxis'
+        });
+
+        await component.saveAllergy();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('saveAllergy', expect.objectContaining({
+            substance: 'Amoxicillin',
+            patient_id: 123
+        }));
+        expect(component.showAllergyModal).toBe(false);
+
+        await component.deleteAllergy(10);
+        expect(mockDataService.invoke).toHaveBeenCalledWith('deleteAllergy', 10);
+    });
+
+    it('manages conditions lifecycle (add and delete)', async () => {
+        component.patientId = 123;
+        component.openAddConditionModal();
+        expect(component.showConditionModal).toBe(true);
+
+        component.conditionForm.patchValue({
+            condition_name: 'Type 2 Diabetes',
+            code: 'E11.9',
+            clinical_status: 'active'
+        });
+
+        await component.saveCondition();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('saveCondition', expect.objectContaining({
+            condition_name: 'Type 2 Diabetes',
+            patient_id: 123
+        }));
+        expect(component.showConditionModal).toBe(false);
+
+        await component.deleteCondition(20);
+        expect(mockDataService.invoke).toHaveBeenCalledWith('deleteCondition', 20);
+    });
+
+    it('manages medications lifecycle (add and delete)', async () => {
+        component.patientId = 123;
+        component.openAddMedicationModal();
+        expect(component.showMedicationModal).toBe(true);
+
+        component.medicationForm.patchValue({
+            medicine_name: 'Metformin',
+            dosage: '500mg',
+            frequency: '1-0-1'
+        });
+
+        await component.saveMedication();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('saveMedication', expect.objectContaining({
+            medicine_name: 'Metformin',
+            patient_id: 123
+        }));
+        expect(component.showMedicationModal).toBe(false);
+
+        await component.deleteMedication(30);
+        expect(mockDataService.invoke).toHaveBeenCalledWith('deleteMedication', 30);
+    });
 });
+

@@ -136,17 +136,114 @@ import { DatePickerComponent } from '../../shared/components/date-picker/date-pi
                     <div class="text-sm text-gray-400 italic text-center py-4">No vitals recorded.</div>
                 </ng-template>
             </div>
-        </div>
-
-        <!-- RIGHT COL: Visit History -->
-        <div class="col-span-12 md:col-span-8">
-             <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-full">
-                <div class="px-6 py-4 border-b flex justify-between items-center bg-gray-50/50 rounded-t-xl">
-                    <h3 class="font-bold text-gray-800 text-lg">Visit History</h3>
-                    <button (click)="loadData()" class="text-xs text-blue-600 hover:underline">Refresh</button>
+            <!-- Clinical Safety Summary Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-bold text-gray-800 flex items-center gap-2">
+                        <span class="text-rose-500">🛡️</span> Clinical Safety
+                    </h3>
+                    <span *ngIf="safetyContext?.has_active_allergies" class="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                        {{ safetyContext.active_allergies.length }} Allergy Alert
+                    </span>
+                    <span *ngIf="safetyContext && !safetyContext.has_active_allergies" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                        ✓ No Known Allergies
+                    </span>
                 </div>
 
-                <div class="flex-1 overflow-auto">
+                <div class="space-y-2 text-xs">
+                    <div class="p-2.5 rounded-lg border flex items-center justify-between cursor-pointer hover:bg-gray-50 transition"
+                         [ngClass]="safetyContext?.has_active_allergies ? 'bg-red-50/70 border-red-200' : 'bg-gray-50 border-gray-100'"
+                         (click)="activeTab = 'allergies'">
+                        <span class="font-medium text-gray-600">Allergies</span>
+                        <span class="font-bold" [ngClass]="safetyContext?.has_active_allergies ? 'text-red-700' : 'text-gray-500'">
+                            {{ safetyContext?.active_allergies?.length || 0 }} Active
+                        </span>
+                    </div>
+                    <div class="p-2.5 rounded-lg border bg-gray-50 border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-100 transition"
+                         (click)="activeTab = 'conditions'">
+                        <span class="font-medium text-gray-600">Active Problems</span>
+                        <span class="font-bold text-gray-700">
+                            {{ safetyContext?.active_conditions?.length || 0 }}
+                        </span>
+                    </div>
+                    <div class="p-2.5 rounded-lg border bg-gray-50 border-gray-100 flex items-center justify-between cursor-pointer hover:bg-gray-100 transition"
+                         (click)="activeTab = 'medications'">
+                        <span class="font-medium text-gray-600">Active Medications</span>
+                        <span class="font-bold text-gray-700">
+                            {{ safetyContext?.active_medications?.length || 0 }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COL: Tabbed Clinical Chart -->
+        <div class="col-span-12 md:col-span-8">
+             <div class="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-full min-h-[500px]">
+                <div class="px-6 py-3 border-b flex flex-wrap justify-between items-center bg-gray-50/50 rounded-t-xl gap-2">
+                    <!-- Tabs -->
+                    <div class="flex items-center gap-2">
+                        <button type="button" (click)="activeTab = 'visits'"
+                                [class.bg-white]="activeTab === 'visits'"
+                                [class.shadow-sm]="activeTab === 'visits'"
+                                [class.text-blue-600]="activeTab === 'visits'"
+                                [class.font-bold]="activeTab === 'visits'"
+                                [class.text-gray-600]="activeTab !== 'visits'"
+                                class="px-3 py-1.5 rounded-lg text-sm transition">
+                            Visits ({{ visits.length }})
+                        </button>
+                        <button type="button" (click)="activeTab = 'allergies'"
+                                [class.bg-white]="activeTab === 'allergies'"
+                                [class.shadow-sm]="activeTab === 'allergies'"
+                                [class.text-rose-600]="activeTab === 'allergies'"
+                                [class.font-bold]="activeTab === 'allergies'"
+                                [class.text-gray-600]="activeTab !== 'allergies'"
+                                class="px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1.5">
+                            <span>Allergies</span>
+                            <span *ngIf="safetyContext?.active_allergies?.length" class="text-[10px] bg-red-100 text-red-700 font-bold px-1.5 py-0.5 rounded-full">
+                                {{ safetyContext.active_allergies.length }}
+                            </span>
+                            <span *ngIf="!safetyContext?.active_allergies?.length" class="text-[10px] text-gray-400">
+                                ({{ allergies.length }})
+                            </span>
+                        </button>
+                        <button type="button" (click)="activeTab = 'conditions'"
+                                [class.bg-white]="activeTab === 'conditions'"
+                                [class.shadow-sm]="activeTab === 'conditions'"
+                                [class.text-amber-600]="activeTab === 'conditions'"
+                                [class.font-bold]="activeTab === 'conditions'"
+                                [class.text-gray-600]="activeTab !== 'conditions'"
+                                class="px-3 py-1.5 rounded-lg text-sm transition">
+                            Problems ({{ conditions.length }})
+                        </button>
+                        <button type="button" (click)="activeTab = 'medications'"
+                                [class.bg-white]="activeTab === 'medications'"
+                                [class.shadow-sm]="activeTab === 'medications'"
+                                [class.text-emerald-600]="activeTab === 'medications'"
+                                [class.font-bold]="activeTab === 'medications'"
+                                [class.text-gray-600]="activeTab !== 'medications'"
+                                class="px-3 py-1.5 rounded-lg text-sm transition">
+                            Medications ({{ medications.length }})
+                        </button>
+                    </div>
+
+                    <!-- Right Actions depending on tab -->
+                    <div class="flex items-center gap-2">
+                        <button *ngIf="activeTab === 'allergies'" (click)="openAddAllergyModal()" class="text-xs bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 font-bold px-2.5 py-1.5 rounded flex items-center gap-1 transition">
+                            <span>+</span> Add Allergy
+                        </button>
+                        <button *ngIf="activeTab === 'conditions'" (click)="openAddConditionModal()" class="text-xs bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 font-bold px-2.5 py-1.5 rounded flex items-center gap-1 transition">
+                            <span>+</span> Add Problem
+                        </button>
+                        <button *ngIf="activeTab === 'medications'" (click)="openAddMedicationModal()" class="text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 font-bold px-2.5 py-1.5 rounded flex items-center gap-1 transition">
+                            <span>+</span> Add Medication
+                        </button>
+                        <button (click)="loadData()" class="text-xs text-blue-600 hover:underline">Refresh</button>
+                    </div>
+                </div>
+
+                <!-- TAB: VISITS -->
+                <div *ngIf="activeTab === 'visits'" class="flex-1 overflow-auto">
                     <table class="w-full text-left">
                         <thead class="bg-gray-50 text-gray-500 text-xs uppercase font-bold sticky top-0">
                             <tr>
@@ -187,6 +284,150 @@ import { DatePickerComponent } from '../../shared/components/date-picker/date-pi
                         </tbody>
                     </table>
                 </div>
+
+                <!-- TAB: ALLERGIES -->
+                <div *ngIf="activeTab === 'allergies'" class="flex-1 overflow-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-50 text-gray-500 text-xs uppercase font-bold sticky top-0">
+                            <tr>
+                                <th class="px-6 py-3">Substance</th>
+                                <th class="px-6 py-3">Criticality</th>
+                                <th class="px-6 py-3">Severity & Reaction</th>
+                                <th class="px-6 py-3">Status</th>
+                                <th class="px-6 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <tr *ngFor="let allergy of allergies" class="hover:bg-rose-50/40 transition group">
+                                <td class="px-6 py-4 text-sm text-gray-800 font-bold">
+                                    {{ allergy.substance }}
+                                    <span *ngIf="allergy.notes" class="block text-xs font-normal text-gray-500">{{ allergy.notes }}</span>
+                                </td>
+                                <td class="px-6 py-4 text-xs font-semibold">
+                                    <span [ngClass]="{
+                                        'bg-red-100 text-red-800 border-red-200': allergy.criticality === 'high',
+                                        'bg-amber-100 text-amber-800 border-amber-200': allergy.criticality === 'low',
+                                        'bg-gray-100 text-gray-700 border-gray-200': allergy.criticality !== 'high' && allergy.criticality !== 'low'
+                                    }" class="px-2 py-0.5 rounded border uppercase text-[10px]">
+                                        {{ allergy.criticality || 'low' }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-sm text-gray-600">
+                                    <span class="capitalize font-medium">{{ allergy.severity || '-' }}</span>
+                                    <span *ngIf="allergy.reaction" class="text-xs text-gray-500 block">{{ allergy.reaction }}</span>
+                                </td>
+                                <td class="px-6 py-4 text-xs">
+                                    <span class="px-2 py-0.5 rounded uppercase text-[10px] font-bold"
+                                          [ngClass]="allergy.status === 'active' ? 'bg-rose-100 text-rose-800' : 'bg-gray-100 text-gray-600'">
+                                        {{ allergy.status || 'active' }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <button (click)="deleteAllergy(allergy.id)" class="text-gray-400 hover:text-red-600 font-medium text-xs hover:bg-red-50 p-1.5 rounded transition">
+                                        🗑
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr *ngIf="allergies.length === 0">
+                                <td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">
+                                    No recorded allergies or intolerances.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- TAB: CONDITIONS / PROBLEMS -->
+                <div *ngIf="activeTab === 'conditions'" class="flex-1 overflow-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-50 text-gray-500 text-xs uppercase font-bold sticky top-0">
+                            <tr>
+                                <th class="px-6 py-3">Problem / Condition</th>
+                                <th class="px-6 py-3">ICD-10 Code</th>
+                                <th class="px-6 py-3">Status</th>
+                                <th class="px-6 py-3">Onset Date</th>
+                                <th class="px-6 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <tr *ngFor="let cond of conditions" class="hover:bg-amber-50/40 transition group">
+                                <td class="px-6 py-4 text-sm text-gray-800 font-bold">
+                                    {{ cond.condition_name }}
+                                    <span *ngIf="cond.notes" class="block text-xs font-normal text-gray-500">{{ cond.notes }}</span>
+                                </td>
+                                <td class="px-6 py-4 text-xs font-mono text-gray-600">
+                                    {{ cond.code || '-' }}
+                                </td>
+                                <td class="px-6 py-4 text-xs">
+                                    <span class="px-2 py-0.5 rounded uppercase text-[10px] font-bold"
+                                          [ngClass]="cond.clinical_status === 'active' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'">
+                                        {{ cond.clinical_status || 'active' }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-xs text-gray-600">
+                                    {{ cond.onset_date || '-' }}
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <button (click)="deleteCondition(cond.id)" class="text-gray-400 hover:text-red-600 font-medium text-xs hover:bg-red-50 p-1.5 rounded transition">
+                                        🗑
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr *ngIf="conditions.length === 0">
+                                <td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">
+                                    No active problems or conditions recorded.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- TAB: MEDICATIONS -->
+                <div *ngIf="activeTab === 'medications'" class="flex-1 overflow-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-50 text-gray-500 text-xs uppercase font-bold sticky top-0">
+                            <tr>
+                                <th class="px-6 py-3">Medication</th>
+                                <th class="px-6 py-3">Dosage & Frequency</th>
+                                <th class="px-6 py-3">Status</th>
+                                <th class="px-6 py-3">Duration</th>
+                                <th class="px-6 py-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <tr *ngFor="let med of medications" class="hover:bg-emerald-50/40 transition group">
+                                <td class="px-6 py-4 text-sm text-gray-800 font-bold">
+                                    {{ med.medicine_name }}
+                                    <span *ngIf="med.notes" class="block text-xs font-normal text-gray-500">{{ med.notes }}</span>
+                                </td>
+                                <td class="px-6 py-4 text-xs text-gray-700">
+                                    <span class="font-medium">{{ med.dosage || '-' }}</span>
+                                    <span *ngIf="med.frequency" class="text-gray-500 ml-1">({{ med.frequency }})</span>
+                                </td>
+                                <td class="px-6 py-4 text-xs">
+                                    <span class="px-2 py-0.5 rounded uppercase text-[10px] font-bold"
+                                          [ngClass]="med.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'">
+                                        {{ med.status || 'active' }}
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 text-xs text-gray-600">
+                                    {{ med.start_date || '-' }} <span *ngIf="med.end_date">to {{ med.end_date }}</span>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <button (click)="deleteMedication(med.id)" class="text-gray-400 hover:text-red-600 font-medium text-xs hover:bg-red-50 p-1.5 rounded transition">
+                                        🗑
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr *ngIf="medications.length === 0">
+                                <td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">
+                                    No longitudinal medications recorded.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
              </div>
         </div>
 
@@ -461,6 +702,146 @@ import { DatePickerComponent } from '../../shared/components/date-picker/date-pi
             </div>
         </div>
       </div>
+
+      <!-- Add Allergy Modal -->
+      <div *ngIf="showAllergyModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl w-[500px] max-h-[90vh] shadow-xl flex flex-col overflow-hidden">
+              <div class="px-6 py-4 border-b bg-rose-50 flex justify-between items-center">
+                  <h3 class="font-bold text-rose-900">Add Patient Allergy / Intolerance</h3>
+                  <button (click)="showAllergyModal = false" class="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+              <form [formGroup]="allergyForm" (ngSubmit)="saveAllergy()" class="p-6 space-y-4 overflow-y-auto">
+                  <div>
+                      <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Substance / Drug <span class="text-red-500">*</span></label>
+                      <input formControlName="substance" placeholder="e.g. Penicillin, Peanuts, Aspirin" class="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-rose-500">
+                  </div>
+                  <div class="grid grid-cols-2 gap-3">
+                      <div>
+                          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Criticality</label>
+                          <select formControlName="criticality" class="w-full border p-2 rounded text-sm">
+                              <option value="low">Low Risk</option>
+                              <option value="high">High Risk / Life Threatening</option>
+                              <option value="unable-to-assess">Unable to Assess</option>
+                          </select>
+                      </div>
+                      <div>
+                          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Severity</label>
+                          <select formControlName="severity" class="w-full border p-2 rounded text-sm">
+                              <option value="mild">Mild</option>
+                              <option value="moderate">Moderate</option>
+                              <option value="severe">Severe</option>
+                          </select>
+                      </div>
+                  </div>
+                  <div>
+                      <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Reaction Manifestation</label>
+                      <input formControlName="reaction" placeholder="e.g. Hives, Anaphylaxis, Rash" class="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-rose-500">
+                  </div>
+                  <div>
+                      <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Clinical Notes</label>
+                      <textarea formControlName="notes" rows="2" placeholder="Clinical context, previous episodes..." class="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-rose-500"></textarea>
+                  </div>
+                  <div class="flex justify-end gap-2 pt-2 border-t">
+                      <button type="button" (click)="showAllergyModal = false" class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100 text-sm">Cancel</button>
+                      <button type="submit" [disabled]="allergyForm.invalid" class="px-4 py-2 bg-rose-600 text-white font-bold rounded hover:bg-rose-700 text-sm disabled:opacity-50">Save Allergy</button>
+                  </div>
+              </form>
+          </div>
+      </div>
+
+      <!-- Add Condition / Problem Modal -->
+      <div *ngIf="showConditionModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl w-[500px] max-h-[90vh] shadow-xl flex flex-col overflow-hidden">
+              <div class="px-6 py-4 border-b bg-amber-50 flex justify-between items-center">
+                  <h3 class="font-bold text-amber-900">Add Problem / Condition</h3>
+                  <button (click)="showConditionModal = false" class="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+              <form [formGroup]="conditionForm" (ngSubmit)="saveCondition()" class="p-6 space-y-4 overflow-y-auto">
+                  <div>
+                      <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Problem / Condition Name <span class="text-red-500">*</span></label>
+                      <input formControlName="condition_name" placeholder="e.g. Type 2 Diabetes, Essential Hypertension" class="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-amber-500">
+                  </div>
+                  <div class="grid grid-cols-2 gap-3">
+                      <div>
+                          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">ICD-10 Code (Optional)</label>
+                          <input formControlName="code" placeholder="e.g. E11.9, I10" class="w-full border p-2 rounded text-sm font-mono uppercase">
+                      </div>
+                      <div>
+                          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Clinical Status</label>
+                          <select formControlName="clinical_status" class="w-full border p-2 rounded text-sm">
+                              <option value="active">Active</option>
+                              <option value="recurrence">Recurrence</option>
+                              <option value="relapse">Relapse</option>
+                              <option value="inactive">Inactive</option>
+                              <option value="remission">Remission</option>
+                              <option value="resolved">Resolved</option>
+                          </select>
+                      </div>
+                  </div>
+                  <div>
+                      <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Onset Date</label>
+                      <input type="date" formControlName="onset_date" class="w-full border p-2 rounded text-sm">
+                  </div>
+                  <div>
+                      <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Clinical Notes</label>
+                      <textarea formControlName="notes" rows="2" placeholder="Onset context, severity, notes..." class="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-amber-500"></textarea>
+                  </div>
+                  <div class="flex justify-end gap-2 pt-2 border-t">
+                      <button type="button" (click)="showConditionModal = false" class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100 text-sm">Cancel</button>
+                      <button type="submit" [disabled]="conditionForm.invalid" class="px-4 py-2 bg-amber-600 text-white font-bold rounded hover:bg-amber-700 text-sm disabled:opacity-50">Save Problem</button>
+                  </div>
+              </form>
+          </div>
+      </div>
+
+      <!-- Add Medication Modal -->
+      <div *ngIf="showMedicationModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div class="bg-white rounded-xl w-[500px] max-h-[90vh] shadow-xl flex flex-col overflow-hidden">
+              <div class="px-6 py-4 border-b bg-emerald-50 flex justify-between items-center">
+                  <h3 class="font-bold text-emerald-900">Add Active Medication</h3>
+                  <button (click)="showMedicationModal = false" class="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+              <form [formGroup]="medicationForm" (ngSubmit)="saveMedication()" class="p-6 space-y-4 overflow-y-auto">
+                  <div>
+                      <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Medicine Name <span class="text-red-500">*</span></label>
+                      <input formControlName="medicine_name" placeholder="e.g. Metformin 500mg, Atorvastatin 20mg" class="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-emerald-500">
+                  </div>
+                  <div class="grid grid-cols-2 gap-3">
+                      <div>
+                          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Dosage</label>
+                          <input formControlName="dosage" placeholder="e.g. 500mg, 1 tablet" class="w-full border p-2 rounded text-sm">
+                      </div>
+                      <div>
+                          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Frequency</label>
+                          <input formControlName="frequency" placeholder="e.g. 1-0-1 After Food, Daily" class="w-full border p-2 rounded text-sm">
+                      </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-3">
+                      <div>
+                          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Start Date</label>
+                          <input type="date" formControlName="start_date" class="w-full border p-2 rounded text-sm">
+                      </div>
+                      <div>
+                          <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Status</label>
+                          <select formControlName="status" class="w-full border p-2 rounded text-sm">
+                              <option value="active">Active</option>
+                              <option value="completed">Completed</option>
+                              <option value="stopped">Stopped</option>
+                              <option value="on-hold">On Hold</option>
+                          </select>
+                      </div>
+                  </div>
+                  <div>
+                      <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Clinical Notes</label>
+                      <textarea formControlName="notes" rows="2" placeholder="Prescribing indication, compliance..." class="w-full border p-2 rounded text-sm outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+                  </div>
+                  <div class="flex justify-end gap-2 pt-2 border-t">
+                      <button type="button" (click)="showMedicationModal = false" class="px-4 py-2 border rounded text-gray-600 hover:bg-gray-100 text-sm">Cancel</button>
+                      <button type="submit" [disabled]="medicationForm.invalid" class="px-4 py-2 bg-emerald-600 text-white font-bold rounded hover:bg-emerald-700 text-sm disabled:opacity-50">Save Medication</button>
+                  </div>
+              </form>
+          </div>
+      </div>
     </div>
   `
 })
@@ -471,6 +852,13 @@ export class PatientDetailsComponent implements OnInit {
     vitals: any;
     currentUser: any;
 
+    // Clinical Safety & Longitudinal Records
+    activeTab: 'visits' | 'allergies' | 'conditions' | 'medications' = 'visits';
+    safetyContext: any = null;
+    allergies: any[] = [];
+    conditions: any[] = [];
+    medications: any[] = [];
+
     // Modal State
     showVisitModal = false;
     selectedVisit: any = null;
@@ -478,6 +866,16 @@ export class PatientDetailsComponent implements OnInit {
     // Edit Patient Modal
     showEditModal = false;
     patientForm!: FormGroup;
+
+    // Clinical Modals
+    showAllergyModal = false;
+    allergyForm!: FormGroup;
+
+    showConditionModal = false;
+    conditionForm!: FormGroup;
+
+    showMedicationModal = false;
+    medicationForm!: FormGroup;
 
     constructor(
         private route: ActivatedRoute,
@@ -489,6 +887,7 @@ export class PatientDetailsComponent implements OnInit {
         private dialogService: DialogService
     ) {
         this.initForm();
+        this.initClinicalForms();
     }
 
     get today(): string {
@@ -553,6 +952,43 @@ export class PatientDetailsComponent implements OnInit {
         });
     }
 
+    initClinicalForms() {
+        this.allergyForm = this.fb.group({
+            id: [null],
+            patient_id: [null],
+            substance: ['', [Validators.required, Validators.minLength(2)]],
+            reaction: [''],
+            severity: ['moderate'],
+            criticality: ['low'],
+            verification_status: ['confirmed'],
+            status: ['active'],
+            notes: ['']
+        });
+
+        this.conditionForm = this.fb.group({
+            id: [null],
+            patient_id: [null],
+            condition_name: ['', [Validators.required, Validators.minLength(2)]],
+            code: [''],
+            category: ['problem-list-item'],
+            clinical_status: ['active'],
+            onset_date: [''],
+            notes: ['']
+        });
+
+        this.medicationForm = this.fb.group({
+            id: [null],
+            patient_id: [null],
+            medicine_name: ['', [Validators.required, Validators.minLength(2)]],
+            dosage: [''],
+            frequency: [''],
+            status: ['active'],
+            start_date: [''],
+            end_date: [''],
+            notes: ['']
+        });
+    }
+
     ngOnInit() {
         this.currentUser = this.authService.getUser();
         this.route.params.subscribe(params => {
@@ -563,16 +999,21 @@ export class PatientDetailsComponent implements OnInit {
 
     async loadData() {
         try {
-            const [patient, visits, vitals] = await Promise.all([
+            const [patient, visits, vitals, safetyContext] = await Promise.all([
                 this.dataService.invoke<any>('getPatientById', this.patientId),
                 this.dataService.invoke<any[]>('getVisits', this.patientId),
-                this.dataService.invoke<any>('getVitals', this.patientId)
+                this.dataService.invoke<any>('getVitals', this.patientId),
+                this.dataService.invoke<any>('getPatientSafetyContext', this.patientId).catch(() => null)
             ]);
 
             this.ngZone.run(() => {
                 this.patient = patient;
-                this.visits = visits;
+                this.visits = visits || [];
                 this.vitals = vitals;
+                this.safetyContext = safetyContext;
+                this.allergies = safetyContext?.allergies || [];
+                this.conditions = safetyContext?.conditions || [];
+                this.medications = safetyContext?.medications || [];
             });
         } catch (e) {
             console.error('Failed to load patient details', e);
@@ -738,5 +1179,166 @@ export class PatientDetailsComponent implements OnInit {
             this.isVitalPresent(v.spo2) ||
             this.isVitalPresent(v.weight) ||
             this.isVitalPresent(v.height);
+    }
+
+    openAddAllergyModal() {
+        this.allergyForm.reset({
+            patient_id: this.patientId,
+            substance: '',
+            reaction: '',
+            severity: 'moderate',
+            criticality: 'low',
+            verification_status: 'confirmed',
+            status: 'active',
+            notes: ''
+        });
+        this.showAllergyModal = true;
+    }
+
+    async saveAllergy() {
+        if (this.allergyForm.invalid) {
+            this.allergyForm.markAllAsTouched();
+            return;
+        }
+        try {
+            await this.dataService.invoke('saveAllergy', {
+                ...this.allergyForm.value,
+                patient_id: this.patientId
+            });
+            this.showAllergyModal = false;
+            await this.loadData();
+        } catch (e) {
+            console.error('Failed to save allergy', e);
+            this.dialogService.open({
+                title: 'Error',
+                message: 'Failed to save allergy record.',
+                type: 'error'
+            });
+        }
+    }
+
+    async deleteAllergy(id: number) {
+        const confirmed = await this.dialogService.open({
+            title: 'Delete Allergy?',
+            message: 'Are you sure you want to remove this allergy record?',
+            type: 'confirm',
+            confirmText: 'Delete',
+            cancelText: 'Cancel'
+        });
+        if (confirmed) {
+            try {
+                await this.dataService.invoke('deleteAllergy', id);
+                await this.loadData();
+            } catch (e) {
+                console.error('Failed to delete allergy', e);
+            }
+        }
+    }
+
+    openAddConditionModal() {
+        this.conditionForm.reset({
+            patient_id: this.patientId,
+            condition_name: '',
+            code: '',
+            category: 'problem-list-item',
+            clinical_status: 'active',
+            onset_date: '',
+            notes: ''
+        });
+        this.showConditionModal = true;
+    }
+
+    async saveCondition() {
+        if (this.conditionForm.invalid) {
+            this.conditionForm.markAllAsTouched();
+            return;
+        }
+        try {
+            await this.dataService.invoke('saveCondition', {
+                ...this.conditionForm.value,
+                patient_id: this.patientId
+            });
+            this.showConditionModal = false;
+            await this.loadData();
+        } catch (e) {
+            console.error('Failed to save condition', e);
+            this.dialogService.open({
+                title: 'Error',
+                message: 'Failed to save condition record.',
+                type: 'error'
+            });
+        }
+    }
+
+    async deleteCondition(id: number) {
+        const confirmed = await this.dialogService.open({
+            title: 'Delete Condition?',
+            message: 'Are you sure you want to remove this problem from the active list?',
+            type: 'confirm',
+            confirmText: 'Delete',
+            cancelText: 'Cancel'
+        });
+        if (confirmed) {
+            try {
+                await this.dataService.invoke('deleteCondition', id);
+                await this.loadData();
+            } catch (e) {
+                console.error('Failed to delete condition', e);
+            }
+        }
+    }
+
+    openAddMedicationModal() {
+        this.medicationForm.reset({
+            patient_id: this.patientId,
+            medicine_name: '',
+            dosage: '',
+            frequency: '',
+            status: 'active',
+            start_date: '',
+            end_date: '',
+            notes: ''
+        });
+        this.showMedicationModal = true;
+    }
+
+    async saveMedication() {
+        if (this.medicationForm.invalid) {
+            this.medicationForm.markAllAsTouched();
+            return;
+        }
+        try {
+            await this.dataService.invoke('saveMedication', {
+                ...this.medicationForm.value,
+                patient_id: this.patientId
+            });
+            this.showMedicationModal = false;
+            await this.loadData();
+        } catch (e) {
+            console.error('Failed to save medication', e);
+            this.dialogService.open({
+                title: 'Error',
+                message: 'Failed to save medication record.',
+                type: 'error'
+            });
+        }
+    }
+
+    async deleteMedication(id: number) {
+        const confirmed = await this.dialogService.open({
+            title: 'Delete Medication?',
+            message: 'Are you sure you want to remove this medication from the active list?',
+            type: 'confirm',
+            confirmText: 'Delete',
+            cancelText: 'Cancel'
+        });
+        if (confirmed) {
+            try {
+                await this.dataService.invoke('deleteMedication', id);
+                await this.loadData();
+            } catch (e) {
+                console.error('Failed to delete medication', e);
+            }
+        }
     }
 }

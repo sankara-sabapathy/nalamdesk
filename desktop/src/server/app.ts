@@ -21,7 +21,7 @@ if (process.env['NODE_ENV'] === 'production' && !process.env['JWT_SECRET']) {
 const JWT_SECRET = process.env['JWT_SECRET'] || crypto.randomBytes(64).toString('hex');
 
 const ALLOWED_IPC_METHODS = [
-    'getQueue', 'addToQueue', 'updateQueueStatus', 'updateQueueStatusByPatientId', 'removeFromQueue',
+    'getQueue', 'addToQueue', 'reassessQueueTriage', 'getQueueTriageHistory', 'updateQueueStatus', 'updateQueueStatusByPatientId', 'removeFromQueue',
     'getAuditLogs',
     'getAppointmentRequests', 'updateAppointmentRequestStatus',
     'getAppointments', 'saveAppointment',
@@ -32,6 +32,10 @@ const ALLOWED_IPC_METHODS = [
     'beginConsultation', 'getActiveConsultation', 'saveConsultationProgress',
     'completeConsultation', 'postponeConsultation', 'resumeConsultation', 'beginNextConsultation',
     'getVitals', 'saveVitals', 'getEncounterVitals', 'getVitalsHistory',
+    'getAllergies', 'saveAllergy', 'deleteAllergy',
+    'getConditions', 'saveCondition', 'deleteCondition',
+    'getMedications', 'saveMedication', 'deleteMedication',
+    'getPatientSafetyContext',
     'getSettings', 'getPublicSettings', 'saveSettings',
     'getDoctors',
     'getUsers', 'saveUser', 'deleteUser', 'updateUserPassword',

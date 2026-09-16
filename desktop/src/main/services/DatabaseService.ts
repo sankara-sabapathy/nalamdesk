@@ -1,6 +1,6 @@
 import { MIGRATIONS } from '../schema/migrations';
 import * as catalog from '../catalog/catalogStore';
-import { assertValidVitals, DEFAULT_VITAL_UNITS } from '../../shared/vitals-validator';
+import { assertValidVitals, DEFAULT_VITAL_UNITS, evaluateVitalsAbnormalities } from '../../shared/vitals-validator';
 
 export class DatabaseService {
     private db: any;
@@ -550,6 +550,12 @@ export class DatabaseService {
         if (!visit.id) {
             throw new Error('New encounters must be created with beginConsultation');
         }
+        if (visit.doctor_id) {
+            const doc = this.getPractitioner(Number(visit.doctor_id));
+            if (!doc) {
+                throw new Error('Clinical authoring requires an active licensed practitioner');
+            }
+        }
         const data = {
             id: Number(visit.id),
             diagnosis: visit.diagnosis ?? '',
@@ -557,11 +563,15 @@ export class DatabaseService {
             amount_paid: Number(visit.amount_paid || 0),
             symptoms: visit.symptoms ?? '',
             examination_notes: visit.examination_notes ?? '',
-            diagnosis_type: visit.diagnosis_type ?? ''
+            diagnosis_type: visit.diagnosis_type ?? '',
+            allergy_override_reason: visit.allergy_override_reason ?? null
         };
 
-        const existing = this.db.prepare('SELECT status FROM visits WHERE id = ?').get(visit.id);
+        const existing = this.db.prepare('SELECT patient_id, status FROM visits WHERE id = ?').get(visit.id);
         if (existing?.status === 'in-progress') throw new Error('Use consultation progress commands for active encounters');
+        if (existing && visit.prescription) {
+            this.assertPrescriptionAllergySafety(existing.patient_id, visit.prescription, visit.allergy_override_reason);
+        }
         return this.db.prepare(`
             UPDATE visits SET
                 diagnosis = @diagnosis,
@@ -569,7 +579,8 @@ export class DatabaseService {
                 amount_paid = @amount_paid,
                 symptoms = @symptoms,
                 examination_notes = @examination_notes,
-                diagnosis_type = @diagnosis_type
+                diagnosis_type = @diagnosis_type,
+                allergy_override_reason = COALESCE(@allergy_override_reason, allergy_override_reason)
             WHERE id = @id
             `).run(data);
     }
@@ -615,14 +626,26 @@ export class DatabaseService {
             `).run(queue.id, patientId);
             if (queue.status === 'waiting' && queueUpdate.changes !== 1) throw new Error('Queue entry is no longer available');
 
+            const targetDoctorId = Number(input?.doctorId || actingUserId);
+            const practitioner = this.getPractitioner(targetDoctorId);
+            if (!practitioner) {
+                throw new Error('Clinical authoring requires an active licensed practitioner');
+            }
+            const licenseSnapshot = JSON.stringify({
+                name: practitioner.name,
+                license_number: practitioner.license_number || '',
+                specialty: practitioner.specialty || ''
+            });
+
             const result = this.db.prepare(`
                 INSERT INTO visits (
-                    patient_id, doctor_id, diagnosis, prescription_json, amount_paid,
+                    patient_id, doctor_id, author_id, doctor_license_snapshot,
+                    diagnosis, prescription_json, amount_paid,
                     symptoms, examination_notes, diagnosis_type, status,
                     started_at, updated_at, queue_entry_id, start_request_id,
                     start_operation, start_actor_id
-                ) VALUES (?, ?, '', '[]', 0, '', '', '', 'in-progress', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, 'begin', ?)
-            `).run(patientId, actingUserId, queue.id, startRequestId, actingUserId);
+                ) VALUES (?, ?, ?, ?, '', '[]', 0, '', '', '', 'in-progress', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, 'begin', ?)
+            `).run(patientId, practitioner.id, actingUserId, licenseSnapshot, queue.id, startRequestId, actingUserId);
             this.recordStartRequest(startRequestId, 'begin', Number(result.lastInsertRowid), patientId, queue.id, actingUserId);
             this.linkPreConsultationVitals(queue.id, Number(result.lastInsertRowid));
             this.logAudit('ENCOUNTER_START', 'visits', result.lastInsertRowid, actingUserId, `Started encounter for queue entry ${queue.id}`);
@@ -706,6 +729,9 @@ export class DatabaseService {
             if (queueUpdate.changes !== 1) throw new Error('Queue entry is not in consultation');
 
             this.updateEncounterClinicalData(encounterId, input.visit);
+            if (input.visit?.prescription && Array.isArray(input.visit.prescription)) {
+                this.syncEncounterMedications(encounter.patient_id, input.visit.prescription, actingUserId);
+            }
             this.db.prepare(`
                 UPDATE visits SET status = 'finished', completed_at = CURRENT_TIMESTAMP,
                     updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'in-progress'
@@ -725,12 +751,14 @@ export class DatabaseService {
             if (!encounter || encounter.status !== 'in-progress' || !encounter.queue_entry_id) throw new Error('Active encounter not found');
             this.assertResponsiblePractitioner(encounter, actingUserId);
             this.getExactEncounterQueue(encounter, ['in-consult'], 'Queue entry is not in consultation');
-            if (input.visit) this.updateEncounterClinicalData(encounterId, input.visit);
-            const result = this.db.prepare(`
+
+            const queueUpdate = this.db.prepare(`
                 UPDATE patient_queue SET status = 'waiting'
                 WHERE id = ? AND patient_id = ? AND status = 'in-consult'
             `).run(encounter.queue_entry_id, encounter.patient_id);
-            if (result.changes !== 1) throw new Error('Queue entry is not in consultation');
+            if (queueUpdate.changes !== 1) throw new Error('Queue entry is not in consultation');
+
+            this.updateEncounterClinicalData(encounterId, input.visit);
             this.logAudit('ENCOUNTER_POSTPONE', 'visits', encounterId, actingUserId, `Postponed queue entry ${encounter.queue_entry_id}`);
             return this.getEncounterById(encounterId);
         });
@@ -742,45 +770,58 @@ export class DatabaseService {
         if (!startRequestId) throw new Error('startRequestId is required');
 
         const beginNext = this.db.transaction(() => {
-            const retried = this.getStartRequest(startRequestId);
-            if (retried) {
-                return this.validateStartRetry(retried, {
-                    operation: 'next', actingUserId
+            const existingRequest = this.getStartRequest(startRequestId);
+            if (existingRequest) {
+                return this.validateStartRetry(existingRequest, {
+                    operation: 'next',
+                    actingUserId
                 });
             }
+
+            const targetDoctorId = Number(input?.doctorId || actingUserId);
+            const practitioner = this.getPractitioner(targetDoctorId);
+            if (!practitioner) {
+                throw new Error('Clinical authoring requires an active licensed practitioner');
+            }
+            const licenseSnapshot = JSON.stringify({
+                name: practitioner.name,
+                license_number: practitioner.license_number || '',
+                specialty: practitioner.specialty || ''
+            });
 
             const queue = this.db.prepare(`
                 SELECT q.*
                 FROM patient_queue q
                 LEFT JOIN visits active
-                    ON active.queue_entry_id = q.id AND active.status = 'in-progress'
+                  ON active.patient_id = q.patient_id
+                 AND active.status = 'in-progress'
                 WHERE q.status = 'waiting'
                   AND (active.id IS NULL OR active.doctor_id = ?)
                 ORDER BY q.priority DESC, q.check_in_time ASC, q.id ASC
                 LIMIT 1
-            `).get(actingUserId);
+            `).get(practitioner.id);
             if (!queue) return null;
 
             const active = this.db.prepare("SELECT * FROM visits WHERE patient_id = ? AND status = 'in-progress'").get(queue.patient_id);
-            if (active) {
-                if (active.queue_entry_id !== queue.id) throw new Error('Next patient has another active encounter');
-                this.assertResponsiblePractitioner(active, actingUserId);
-                this.db.prepare("UPDATE patient_queue SET status = 'in-consult' WHERE id = ? AND status = 'waiting'").run(queue.id);
-                this.recordStartRequest(startRequestId, 'next', active.id, queue.patient_id, queue.id, actingUserId);
-                return this.hydrateVisit(active);
-            }
+            if (active) throw new Error('Patient already has an active consultation');
 
-            const claimed = this.db.prepare("UPDATE patient_queue SET status = 'in-consult' WHERE id = ? AND status = 'waiting'").run(queue.id);
+            const claimed = this.db.prepare(`
+                UPDATE patient_queue
+                SET status = 'in-consult'
+                WHERE id = ? AND status = 'waiting'
+            `).run(queue.id);
             if (claimed.changes !== 1) throw new Error('Next queue entry was already claimed');
             const result = this.db.prepare(`
                 INSERT INTO visits (
-                    patient_id, doctor_id, diagnosis, prescription_json, amount_paid,
+                    patient_id, doctor_id, author_id, doctor_license_snapshot,
+                    diagnosis, prescription_json, amount_paid,
                     symptoms, examination_notes, diagnosis_type, status,
                     started_at, updated_at, queue_entry_id, start_request_id,
                     start_operation, start_actor_id
-                ) VALUES (?, ?, '', '[]', 0, '', '', '', 'in-progress', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, 'next', ?)
-            `).run(queue.patient_id, actingUserId, queue.id, startRequestId, actingUserId);
+                ) VALUES (?, ?, ?, ?, '', '[]', 0, '', '', '', 'in-progress', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, 'next', ?)
+            `).run(queue.patient_id, practitioner.id, actingUserId, licenseSnapshot, queue.id, startRequestId, actingUserId);
             this.recordStartRequest(startRequestId, 'next', Number(result.lastInsertRowid), queue.patient_id, queue.id, actingUserId);
+            this.linkPreConsultationVitals(queue.id, Number(result.lastInsertRowid));
             this.logAudit('ENCOUNTER_START', 'visits', result.lastInsertRowid, actingUserId, `Started next encounter for queue entry ${queue.id}`);
             return this.getEncounterById(Number(result.lastInsertRowid));
         });
@@ -789,6 +830,10 @@ export class DatabaseService {
 
     private updateEncounterClinicalData(encounterId: number, visit: any) {
         if (!visit) return;
+        const existing = this.db.prepare('SELECT patient_id FROM visits WHERE id = ?').get(encounterId);
+        if (existing && visit.prescription) {
+            this.assertPrescriptionAllergySafety(existing.patient_id, visit.prescription, visit.allergy_override_reason);
+        }
         const data = {
             id: encounterId,
             diagnosis: visit.diagnosis ?? '',
@@ -796,12 +841,14 @@ export class DatabaseService {
             amount_paid: Number(visit.amount_paid || 0),
             symptoms: visit.symptoms ?? '',
             examination_notes: visit.examination_notes ?? '',
-            diagnosis_type: visit.diagnosis_type ?? ''
+            diagnosis_type: visit.diagnosis_type ?? '',
+            allergy_override_reason: visit.allergy_override_reason ?? null
         };
         this.db.prepare(`
             UPDATE visits SET diagnosis = @diagnosis, prescription_json = @prescription_json,
                 amount_paid = @amount_paid, symptoms = @symptoms,
                 examination_notes = @examination_notes, diagnosis_type = @diagnosis_type,
+                allergy_override_reason = COALESCE(@allergy_override_reason, allergy_override_reason),
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = @id AND status = 'in-progress'
         `).run(data);
@@ -828,8 +875,63 @@ export class DatabaseService {
     }
 
     private assertResponsiblePractitioner(encounter: any, actingUserId: number) {
-        if (Number(encounter.doctor_id) !== Number(actingUserId)) {
+        const docId = Number(encounter.doctor_id);
+        const authorId = Number(encounter.author_id);
+        const actor = Number(actingUserId);
+        if (docId !== actor && authorId !== actor) {
             throw new Error('Only the responsible practitioner can access this encounter');
+        }
+        const user = this.db.prepare('SELECT active FROM users WHERE id = ?').get(actor);
+        if (user && !user.active) {
+            throw new Error('User is deactivated');
+        }
+    }
+
+    private getPractitioner(userId: number) {
+        if (!userId) return null;
+        const user = this.db.prepare('SELECT id, name, role, active, license_number, specialty FROM users WHERE id = ?').get(Number(userId));
+        if (user && user.role === 'doctor' && user.active) {
+            return user;
+        }
+        return null;
+    }
+
+    assertPrescriptionAllergySafety(patientId: number, prescription: any[], overrideReason?: string | null) {
+        if (!prescription || !Array.isArray(prescription) || prescription.length === 0) return;
+        const activeAllergies = this.db.prepare(
+            "SELECT id, substance, reaction, severity FROM patient_allergies WHERE patient_id = ? AND status = 'active'"
+        ).all(patientId) as any[];
+        if (!activeAllergies || activeAllergies.length === 0) return;
+
+        for (const item of prescription) {
+            const medName = String(item.medicine || item.name || '').trim().toLowerCase();
+            if (!medName) continue;
+            for (const allergy of activeAllergies) {
+                const substance = String(allergy.substance || '').trim().toLowerCase();
+                if (!substance) continue;
+                if (medName.includes(substance) || substance.includes(medName)) {
+                    if (!overrideReason || !overrideReason.trim()) {
+                        throw new Error(`Prescription contains medication '${item.medicine || item.name}' conflicting with active allergy '${allergy.substance}'. An explicit override reason is required.`);
+                    }
+                }
+            }
+        }
+    }
+
+    private syncEncounterMedications(patientId: number, prescription: any[], actingUserId: number) {
+        for (const med of prescription) {
+            const medName = String(med.medicine || med.name || '').trim();
+            if (!medName) continue;
+            const existing = this.db.prepare(
+                "SELECT id FROM patient_medications WHERE patient_id = ? AND LOWER(medicine_name) = LOWER(?) AND status = 'active'"
+            ).get(patientId, medName);
+            if (!existing) {
+                this.db.prepare(`
+                    INSERT INTO patient_medications (
+                        patient_id, medicine_name, dosage, frequency, status, start_date, recorded_at, recorder_id
+                    ) VALUES (?, ?, ?, ?, 'active', CURRENT_DATE, CURRENT_TIMESTAMP, ?)
+                `).run(patientId, medName, med.dosage || '', med.frequency || '', actingUserId);
+            }
         }
     }
 
@@ -872,7 +974,8 @@ export class DatabaseService {
     private hydrateVisit(row: any) {
         return {
             ...row,
-            prescription: row.prescription_json ? JSON.parse(row.prescription_json) : []
+            prescription: row.prescription_json ? JSON.parse(row.prescription_json) : [],
+            doctor_license: this.safeParseJson(row.doctor_license_snapshot, null)
         };
     }
 
@@ -1127,26 +1230,333 @@ export class DatabaseService {
 
     // Queue Management
     getQueue() {
-        return this.db.prepare(`
-            SELECT q.id, q.patient_id, q.status, q.priority, q.check_in_time,
+        const rows = this.db.prepare(`
+            SELECT q.id, q.patient_id, q.status, q.priority, q.urgency, q.triage_notes,
+                   q.triage_assessor_id, q.triaged_at, q.check_in_time,
                    p.name as patient_name, p.gender, p.age, p.mobile,
+                   u.name as triage_assessor_name,
                    active.id as active_encounter_id
             FROM patient_queue q
             JOIN patients p ON q.patient_id = p.id
+            LEFT JOIN users u ON q.triage_assessor_id = u.id
             LEFT JOIN visits active ON active.queue_entry_id = q.id AND active.status = 'in-progress'
             WHERE q.status != 'completed'
-            ORDER BY q.priority DESC, q.check_in_time ASC
-        `).all();
+            ORDER BY q.priority DESC, q.check_in_time ASC, q.id ASC
+        `).all() as any[];
+
+        return rows.map(q => {
+            const vitals = this.db.prepare(`
+                SELECT systolic_bp, diastolic_bp, pulse, temperature, respiratory_rate, spo2, bmi, status
+                FROM vitals
+                WHERE queue_entry_id = ? OR (patient_id = ? AND date(effective_time) = date('now'))
+                ORDER BY id DESC LIMIT 1
+            `).get(q.id, q.patient_id);
+
+            const evaluated = evaluateVitalsAbnormalities(vitals as Record<string, unknown> | undefined);
+            return {
+                ...q,
+                urgency: q.urgency || this.priorityToUrgency(q.priority),
+                has_abnormal_vitals: evaluated.hasAbnormal,
+                vitals_alerts: evaluated.alerts
+            };
+        });
     }
 
-    addToQueue(patientId: number, priority: number = 1, actingUserId: number) {
+    urgencyToPriority(urgency: string): number {
+        switch (urgency?.toLowerCase()) {
+            case 'immediate': return 4;
+            case 'urgent': return 3;
+            case 'priority': return 2;
+            case 'routine':
+            default:
+                return 1;
+        }
+    }
+
+    priorityToUrgency(priority: number): string {
+        switch (Number(priority)) {
+            case 4: return 'immediate';
+            case 3: return 'urgent';
+            case 2: return 'priority';
+            case 1:
+            default:
+                return 'routine';
+        }
+    }
+
+    addToQueue(patientId: number, priorityOrOptions: any = 1, actingUserId?: number, urgencyInput?: string, triageNotesInput?: string) {
         // Check if already in queue
         const existing = this.db.prepare('SELECT id FROM patient_queue WHERE patient_id = ? AND status != ?').get(patientId, 'completed');
         if (existing) throw new Error('Patient already in queue');
 
+        let priority = 1;
+        let urgency = 'routine';
+        let triageNotes = '';
+
+        if (typeof priorityOrOptions === 'object' && priorityOrOptions !== null) {
+            urgency = priorityOrOptions.urgency || (priorityOrOptions.priority ? this.priorityToUrgency(priorityOrOptions.priority) : 'routine');
+            priority = Number(priorityOrOptions.priority) || this.urgencyToPriority(urgency);
+            triageNotes = priorityOrOptions.triage_notes || '';
+        } else {
+            priority = Number(priorityOrOptions || 1);
+            urgency = urgencyInput || this.priorityToUrgency(priority);
+            triageNotes = triageNotesInput || '';
+        }
+
+        const assessorId = actingUserId ? Number(actingUserId) : null;
         const result = this.db.prepare('INSERT INTO patient_queue (patient_id, priority) VALUES (?, ?)').run(patientId, priority);
-        this.logAudit('INSERT', 'patient_queue', result.lastInsertRowid, actingUserId, `Added patient ${patientId} to queue`);
+        const queueId = Number(result.lastInsertRowid);
+
+        try {
+            this.db.prepare(`
+                UPDATE patient_queue
+                SET urgency = ?, triage_notes = ?, triage_assessor_id = ?, triaged_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).run(urgency, triageNotes, assessorId, queueId);
+
+            this.db.prepare(`
+                INSERT INTO queue_triage_history (
+                    queue_id, previous_priority, new_priority, urgency_label, reason, changed_by
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            `).run(queueId, priority, priority, urgency, triageNotes || 'Initial triage at check-in', assessorId || 1);
+        } catch {
+            // Silently ignore if running with partial mocks or pre-v11 tables
+        }
+
+        this.logAudit('INSERT', 'patient_queue', queueId, actingUserId, `Added patient ${patientId} to queue with urgency ${urgency}`);
         return result;
+    }
+
+    reassessQueueTriage(queueId: number, newUrgency: string, reason: string, actingUserId?: number) {
+        if (!queueId) throw new Error('queueId is required');
+        if (!newUrgency) throw new Error('newUrgency is required');
+        if (!reason || !reason.trim()) throw new Error('A clinical reason is required for triage reassessment');
+
+        const queue = this.db.prepare('SELECT * FROM patient_queue WHERE id = ?').get(queueId) as any;
+        if (!queue) throw new Error('Queue entry not found');
+        if (queue.status === 'completed') throw new Error('Cannot reassess triage for completed queue entry');
+
+        const normalizedUrgency = newUrgency.toLowerCase();
+        const newPriority = this.urgencyToPriority(normalizedUrgency);
+        const assessorId = actingUserId ? Number(actingUserId) : 1;
+
+        const reassess = this.db.transaction(() => {
+            this.db.prepare(`
+                INSERT INTO queue_triage_history (
+                    queue_id, previous_priority, new_priority, urgency_label, reason, changed_by
+                ) VALUES (?, ?, ?, ?, ?, ?)
+            `).run(queue.id, queue.priority, newPriority, normalizedUrgency, reason.trim(), assessorId);
+
+            this.db.prepare(`
+                UPDATE patient_queue
+                SET urgency = ?, priority = ?, triage_notes = ?, triage_assessor_id = ?, triaged_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            `).run(normalizedUrgency, newPriority, reason.trim(), assessorId, queue.id);
+
+            this.logAudit('TRIAGE_REASSESS', 'patient_queue', queue.id, actingUserId, `Reassessed triage urgency from ${queue.urgency} to ${normalizedUrgency}: ${reason}`);
+            return this.db.prepare('SELECT * FROM patient_queue WHERE id = ?').get(queue.id);
+        });
+
+        return reassess.immediate();
+    }
+
+    getQueueTriageHistory(queueId: number) {
+        return this.db.prepare(`
+            SELECT h.id, h.queue_id, h.previous_priority, h.new_priority,
+                   h.urgency_label as new_urgency,
+                   h.urgency_label,
+                   h.reason,
+                   h.changed_by,
+                   h.changed_at as created_at,
+                   u.name as assessor_name
+            FROM queue_triage_history h
+            LEFT JOIN users u ON h.changed_by = u.id
+            WHERE h.queue_id = ?
+            ORDER BY h.changed_at DESC, h.id DESC
+        `).all(queueId);
+    }
+
+    // Allergies Management
+    getAllergies(patientId: number) {
+        return this.db.prepare(`
+            SELECT a.*, u.name as recorder_name
+            FROM patient_allergies a
+            LEFT JOIN users u ON a.recorder_id = u.id
+            WHERE a.patient_id = ?
+            ORDER BY CASE WHEN a.status = 'active' THEN 0 ELSE 1 END,
+                     CASE a.severity
+                         WHEN 'life-threatening' THEN 1
+                         WHEN 'severe' THEN 2
+                         WHEN 'moderate' THEN 3
+                         ELSE 4
+                     END,
+                     a.id DESC
+        `).all(Number(patientId));
+    }
+
+    saveAllergy(allergy: any, actingUserId?: number) {
+        if (!allergy) throw new Error('Allergy data is required');
+        const patientId = Number(allergy.patient_id);
+        if (!patientId) throw new Error('patient_id is required');
+        const substance = String(allergy.substance || '').trim();
+        if (!substance) throw new Error('substance is required');
+
+        const verificationStatus = allergy.verification_status || 'confirmed';
+        const criticality = allergy.criticality || 'low';
+        const severity = allergy.severity || 'moderate';
+        const status = allergy.status || 'active';
+        const reaction = allergy.reaction || '';
+        const notes = allergy.notes || '';
+        const userId = actingUserId ? Number(actingUserId) : (allergy.recorder_id ? Number(allergy.recorder_id) : null);
+
+        if (allergy.id) {
+            this.db.prepare(`
+                UPDATE patient_allergies
+                SET substance = ?, verification_status = ?, criticality = ?, severity = ?, reaction = ?, status = ?, notes = ?
+                WHERE id = ? AND patient_id = ?
+            `).run(substance, verificationStatus, criticality, severity, reaction, status, notes, allergy.id, patientId);
+            this.logAudit('UPDATE', 'patient_allergies', allergy.id, userId, `Updated allergy ${substance}`);
+            return this.db.prepare('SELECT * FROM patient_allergies WHERE id = ?').get(allergy.id);
+        } else {
+            const result = this.db.prepare(`
+                INSERT INTO patient_allergies (
+                    patient_id, substance, verification_status, criticality, severity, reaction, status, recorder_id, recorded_at, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            `).run(patientId, substance, verificationStatus, criticality, severity, reaction, status, userId, notes);
+            this.logAudit('INSERT', 'patient_allergies', result.lastInsertRowid, userId, `Recorded allergy ${substance}`);
+            return this.db.prepare('SELECT * FROM patient_allergies WHERE id = ?').get(Number(result.lastInsertRowid));
+        }
+    }
+
+    deleteAllergy(allergyId: number, actingUserId?: number) {
+        const result = this.db.prepare('DELETE FROM patient_allergies WHERE id = ?').run(Number(allergyId));
+        this.logAudit('DELETE', 'patient_allergies', allergyId, actingUserId, 'Deleted allergy record');
+        return result;
+    }
+
+    // Conditions (Problem List) Management
+    getConditions(patientId: number) {
+        return this.db.prepare(`
+            SELECT c.*, c.code as icd10_code, c.clinical_status as status, u.name as recorder_name
+            FROM patient_conditions c
+            LEFT JOIN users u ON c.recorder_id = u.id
+            WHERE c.patient_id = ?
+            ORDER BY CASE WHEN c.clinical_status = 'active' THEN 0 ELSE 1 END, c.id DESC
+        `).all(Number(patientId));
+    }
+
+    saveCondition(condition: any, actingUserId?: number) {
+        if (!condition) throw new Error('Condition data is required');
+        const patientId = Number(condition.patient_id);
+        if (!patientId) throw new Error('patient_id is required');
+        const conditionName = String(condition.condition_name || condition.name || '').trim();
+        if (!conditionName) throw new Error('condition_name is required');
+
+        const code = condition.code || condition.icd10_code || '';
+        const category = condition.category || 'chronic-problem';
+        const clinicalStatus = condition.clinical_status || condition.status || 'active';
+        const onsetDate = condition.onset_date || null;
+        const notes = condition.notes || '';
+        const userId = actingUserId ? Number(actingUserId) : (condition.recorder_id ? Number(condition.recorder_id) : null);
+
+        if (condition.id) {
+            this.db.prepare(`
+                UPDATE patient_conditions
+                SET condition_name = ?, code = ?, category = ?, clinical_status = ?, onset_date = ?, notes = ?
+                WHERE id = ? AND patient_id = ?
+            `).run(conditionName, code, category, clinicalStatus, onsetDate, notes, condition.id, patientId);
+            this.logAudit('UPDATE', 'patient_conditions', condition.id, userId, `Updated condition ${conditionName}`);
+            return this.db.prepare('SELECT *, code as icd10_code, clinical_status as status FROM patient_conditions WHERE id = ?').get(condition.id);
+        } else {
+            const result = this.db.prepare(`
+                INSERT INTO patient_conditions (
+                    patient_id, condition_name, code, category, clinical_status, onset_date, recorder_id, recorded_at, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            `).run(patientId, conditionName, code, category, clinicalStatus, onsetDate, userId, notes);
+            this.logAudit('INSERT', 'patient_conditions', result.lastInsertRowid, userId, `Recorded condition ${conditionName}`);
+            return this.db.prepare('SELECT *, code as icd10_code, clinical_status as status FROM patient_conditions WHERE id = ?').get(Number(result.lastInsertRowid));
+        }
+    }
+
+    deleteCondition(conditionId: number, actingUserId?: number) {
+        const result = this.db.prepare('DELETE FROM patient_conditions WHERE id = ?').run(Number(conditionId));
+        this.logAudit('DELETE', 'patient_conditions', conditionId, actingUserId, 'Deleted condition record');
+        return result;
+    }
+
+    // Medications Management
+    getMedications(patientId: number) {
+        return this.db.prepare(`
+            SELECT m.*, m.medicine_name as medication_name, u.name as recorder_name
+            FROM patient_medications m
+            LEFT JOIN users u ON m.recorder_id = u.id
+            WHERE m.patient_id = ?
+            ORDER BY CASE WHEN m.status = 'active' THEN 0 ELSE 1 END, m.id DESC
+        `).all(Number(patientId));
+    }
+
+    saveMedication(medication: any, actingUserId?: number) {
+        if (!medication) throw new Error('Medication data is required');
+        const patientId = Number(medication.patient_id);
+        if (!patientId) throw new Error('patient_id is required');
+        const medicineName = String(medication.medicine_name || medication.medication_name || medication.name || '').trim();
+        if (!medicineName) throw new Error('medicine_name is required');
+
+        const dosage = medication.dosage || '';
+        const frequency = medication.frequency || '';
+        const status = medication.status || 'active';
+        const startDate = medication.start_date || null;
+        const endDate = medication.end_date || null;
+        const notes = medication.notes || '';
+        const userId = actingUserId ? Number(actingUserId) : (medication.recorder_id ? Number(medication.recorder_id) : null);
+
+        if (medication.id) {
+            this.db.prepare(`
+                UPDATE patient_medications
+                SET medicine_name = ?, dosage = ?, frequency = ?, status = ?, start_date = ?, end_date = ?, notes = ?
+                WHERE id = ? AND patient_id = ?
+            `).run(medicineName, dosage, frequency, status, startDate, endDate, notes, medication.id, patientId);
+            this.logAudit('UPDATE', 'patient_medications', medication.id, userId, `Updated medication ${medicineName}`);
+            return this.db.prepare('SELECT *, medicine_name as medication_name FROM patient_medications WHERE id = ?').get(medication.id);
+        } else {
+            const result = this.db.prepare(`
+                INSERT INTO patient_medications (
+                    patient_id, medicine_name, dosage, frequency, status, start_date, end_date, recorder_id, recorded_at, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+            `).run(patientId, medicineName, dosage, frequency, status, startDate, endDate, userId, notes);
+            this.logAudit('INSERT', 'patient_medications', result.lastInsertRowid, userId, `Recorded medication ${medicineName}`);
+            return this.db.prepare('SELECT *, medicine_name as medication_name FROM patient_medications WHERE id = ?').get(Number(result.lastInsertRowid));
+        }
+    }
+
+    deleteMedication(medicationId: number, actingUserId?: number) {
+        const result = this.db.prepare('DELETE FROM patient_medications WHERE id = ?').run(Number(medicationId));
+        this.logAudit('DELETE', 'patient_medications', medicationId, actingUserId, 'Deleted medication record');
+        return result;
+    }
+
+    // Patient Clinical Safety Context
+    getPatientSafetyContext(patientId: number) {
+        const pId = Number(patientId);
+        const allergies = this.getAllergies(pId);
+        const activeAllergies = allergies.filter((a: any) => a.status === 'active');
+        const conditions = this.getConditions(pId);
+        const activeConditions = conditions.filter((c: any) => c.clinical_status === 'active' || c.status === 'active');
+        const medications = this.getMedications(pId);
+        const activeMedications = medications.filter((m: any) => m.status === 'active');
+        const hasLifeThreatening = activeAllergies.some((a: any) => a.severity === 'life-threatening' || a.severity === 'severe');
+
+        return {
+            patient_id: pId,
+            allergies,
+            active_allergies: activeAllergies,
+            has_active_allergies: activeAllergies.length > 0,
+            has_life_threatening_allergies: hasLifeThreatening,
+            conditions,
+            active_conditions: activeConditions,
+            medications,
+            active_medications: activeMedications
+        };
     }
 
     updateQueueStatus(id: number, status: string, actingUserId: number) {

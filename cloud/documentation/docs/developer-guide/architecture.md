@@ -66,6 +66,25 @@ Access control is enforced at the API level in `server.ts`.
 | Role | Permissions |
 | :--- | :--- |
 | **Admin** | **Full Access**. User management, Clinic Settings, Backup/Restore. |
-| **Doctor** | Patient Records, Prescriptions, Queue Management, Vitals. |
-| **Receptionist** | Patient Registration, Queue Management, Vitals. |
-| **Nurse** | Patient Vitals, Queue Monitoring. |
+| **Doctor** | Responsible licensed practitioner. Clinical Encounters, Prescriptions, Queue Triage, Vitals. |
+| **Receptionist** | Patient Registration, Queue Management & Triage, Vitals. |
+| **Nurse** | Patient Vitals, Queue Triage & Monitoring. |
+
+## Clinical Safety & Governance Architecture
+
+### 1. Responsible Licensed Practitioner Provenance
+To ensure medico-legal compliance and patient safety:
+- **Licensed Practitioner Assertion**: Every clinical encounter and prescription requires a responsible licensed practitioner with role `doctor`. Non-practitioner accounts (administrators, receptionists) cannot independently finalize prescriptions or complete encounters without associating a licensed doctor.
+- **License Snapshotting**: When an encounter is completed, the responsible practitioner's license number is durably snapshotted onto `visits.practitioner_license_snapshot`, freezing the practitioner's credentials as they existed at the moment of signing.
+- **Authorship vs. Attending Doctor**: Scribe and assistant entries distinguish the acting user (`author_id`) from the attending responsible practitioner (`doctor_id`).
+
+### 2. Longitudinal Clinical Safety Engine
+- **Longitudinal Records**: NalamDesk tracks patient allergies/intolerances, active problems (conditions), and active medications across all past encounters.
+- **Automated Prescription Medication Sync**: Upon completion of a consultation, prescribed medications are automatically reflected in the patient's active medication list.
+- **Prescribing Allergy Conflict Detection**: Real-time cross-checks compare newly prescribed drugs against documented active allergies. If a conflict is detected, the practitioner is alerted and must provide an explicit clinical override reason (e.g. "Desensitized, patient tolerated previously") before the prescription can be saved.
+
+### 3. Actionable Queue Triage & Dual-Unit Vitals Engine
+- **4-Tier Urgency Hierarchy**: Patient flow supports 4 standard urgency tiers (`immediate` [Priority 4], `urgent` [Priority 3], `priority` [Priority 2], `routine` [Priority 1]).
+- **Triage Audit Trail**: Every priority reassessment records a historical audit entry in `queue_triage_history` with the previous priority, new priority, clinical reason, and staff ID.
+- **Abnormal Vitals Detection**: Vitals observations are automatically evaluated against clinical thresholds; abnormal vitals trigger warning badges in the patient queue to facilitate rapid clinical intervention.
+- **Standardized Dual-Unit Vitals Engine**: The vitals engine accepts measurements in clinical units (°F or °C, kg or lbs), persists canonical values, and aligns with standard LOINC codes and UCUM unit symbols.

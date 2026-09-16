@@ -2,7 +2,7 @@ import { Component, NgZone, OnInit, Input, Output, EventEmitter } from '@angular
 import { CommonModule } from '@angular/common';
 import { AbstractControl, FormBuilder, FormGroup, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
 import { DataService } from '../../services/api.service';
-import { DEFAULT_VITAL_UNITS, VITALS_PHYSIOLOGICAL_RANGES } from '../../../../shared/vitals-validator';
+import { DEFAULT_VITAL_UNITS, VITALS_PHYSIOLOGICAL_RANGES, fToC, cToF, kgToLbs, lbsToKg, toCanonicalUcumUnit } from '../../../../shared/vitals-validator';
 
 function isPresent(val: unknown): boolean {
     return val !== null && val !== undefined && val !== '' && !Number.isNaN(val);
@@ -78,9 +78,23 @@ export const bloodPressurePairValidator: ValidatorFn = (control: AbstractControl
                     <p *ngIf="vitalsForm.get('height')?.errors?.['min'] || vitalsForm.get('height')?.errors?.['max']" class="text-xs text-red-500 mt-1">20 - 300 cm</p>
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
-                    <input type="number" step="0.1" formControlName="weight" placeholder="e.g. 70" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
-                    <p *ngIf="vitalsForm.get('weight')?.errors?.['min'] || vitalsForm.get('weight')?.errors?.['max']" class="text-xs text-red-500 mt-1">0.5 - 500 kg</p>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-sm font-medium text-gray-700">Weight</label>
+                        <div class="inline-flex rounded-md shadow-sm text-xs" role="group">
+                            <button type="button" (click)="toggleWeightUnit('kg')" 
+                                    [class.bg-teal-600]="weightUnit === 'kg'" [class.text-white]="weightUnit === 'kg'"
+                                    [class.bg-gray-100]="weightUnit !== 'kg'" [class.text-gray-700]="weightUnit !== 'kg'"
+                                    class="px-2 py-0.5 rounded-l border border-gray-300 font-medium transition">kg</button>
+                            <button type="button" (click)="toggleWeightUnit('lbs')" 
+                                    [class.bg-teal-600]="weightUnit === 'lbs'" [class.text-white]="weightUnit === 'lbs'"
+                                    [class.bg-gray-100]="weightUnit !== 'lbs'" [class.text-gray-700]="weightUnit !== 'lbs'"
+                                    class="px-2 py-0.5 rounded-r border-t border-b border-r border-gray-300 font-medium transition">lbs</button>
+                        </div>
+                    </div>
+                    <input type="number" step="0.1" formControlName="weight" [placeholder]="weightUnit === 'kg' ? 'e.g. 70' : 'e.g. 154'" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <p *ngIf="vitalsForm.get('weight')?.errors?.['min'] || vitalsForm.get('weight')?.errors?.['max']" class="text-xs text-red-500 mt-1">
+                        {{ weightUnit === 'kg' ? '0.5 - 500 kg' : '1.1 - 1100 lbs' }}
+                    </p>
                 </div>
 
                 <div>
@@ -88,9 +102,23 @@ export const bloodPressurePairValidator: ValidatorFn = (control: AbstractControl
                     <input type="text" [value]="bmi" disabled class="w-full border p-2 rounded-lg bg-gray-100 text-gray-700 font-mono">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Temperature (°F)</label>
-                    <input type="number" step="0.1" formControlName="temperature" placeholder="e.g. 98.6" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
-                    <p *ngIf="vitalsForm.get('temperature')?.errors?.['min'] || vitalsForm.get('temperature')?.errors?.['max']" class="text-xs text-red-500 mt-1">50 - 115 °F</p>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-sm font-medium text-gray-700">Temperature</label>
+                        <div class="inline-flex rounded-md shadow-sm text-xs" role="group">
+                            <button type="button" (click)="toggleTempUnit('°F')" 
+                                    [class.bg-teal-600]="tempUnit === '°F'" [class.text-white]="tempUnit === '°F'"
+                                    [class.bg-gray-100]="tempUnit !== '°F'" [class.text-gray-700]="tempUnit !== '°F'"
+                                    class="px-2 py-0.5 rounded-l border border-gray-300 font-medium transition">°F</button>
+                            <button type="button" (click)="toggleTempUnit('°C')" 
+                                    [class.bg-teal-600]="tempUnit === '°C'" [class.text-white]="tempUnit === '°C'"
+                                    [class.bg-gray-100]="tempUnit !== '°C'" [class.text-gray-700]="tempUnit !== '°C'"
+                                    class="px-2 py-0.5 rounded-r border-t border-b border-r border-gray-300 font-medium transition">°C</button>
+                        </div>
+                    </div>
+                    <input type="number" step="0.1" formControlName="temperature" [placeholder]="tempUnit === '°F' ? 'e.g. 98.6' : 'e.g. 37.0'" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <p *ngIf="vitalsForm.get('temperature')?.errors?.['min'] || vitalsForm.get('temperature')?.errors?.['max']" class="text-xs text-red-500 mt-1">
+                        {{ tempUnit === '°F' ? '50 - 115 °F' : '10 - 46.2 °C' }}
+                    </p>
                 </div>
 
                 <div>
@@ -156,6 +184,8 @@ export class VitalsFormComponent implements OnInit {
 
     submitting = false;
     formSubmitted = false;
+    tempUnit: '°F' | '°C' = '°F';
+    weightUnit: 'kg' | 'lbs' = 'kg';
 
     get isAmending(): boolean {
         return Boolean(this.existingVitals && (this.existingVitals.id || this.existingVitals.vital_id));
@@ -164,9 +194,11 @@ export class VitalsFormComponent implements OnInit {
     get bmi(): string {
         const h = this.vitalsForm.get('height')?.value;
         const w = this.vitalsForm.get('weight')?.value;
-        if (h && w) {
-            const hM = h / 100;
-            const calculated = w / (hM * hM);
+        if (isPresent(h) && isPresent(w)) {
+            const hM = Number(h) / 100;
+            const wNum = Number(w);
+            const wKg = this.weightUnit === 'lbs' ? lbsToKg(wNum) : wNum;
+            const calculated = wKg / (hM * hM);
             return Number.isFinite(calculated) ? calculated.toFixed(1) : '';
         }
         return '';
@@ -194,6 +226,50 @@ export class VitalsFormComponent implements OnInit {
         this.populateExistingVitalsIfPresent();
     }
 
+    toggleTempUnit(targetUnit: '°F' | '°C'): void {
+        if (this.tempUnit === targetUnit) return;
+        const currentVal = this.vitalsForm.get('temperature')?.value;
+        this.tempUnit = targetUnit;
+        const range = targetUnit === '°C'
+            ? VITALS_PHYSIOLOGICAL_RANGES['temperature_c']
+            : VITALS_PHYSIOLOGICAL_RANGES['temperature_f'];
+        this.vitalsForm.get('temperature')?.setValidators([
+            Validators.min(range.min),
+            Validators.max(range.max)
+        ]);
+
+        if (isPresent(currentVal)) {
+            const num = Number(currentVal);
+            if (!Number.isNaN(num)) {
+                const converted = targetUnit === '°C' ? fToC(num) : cToF(num);
+                this.vitalsForm.patchValue({ temperature: converted }, { emitEvent: false });
+            }
+        }
+        this.vitalsForm.get('temperature')?.updateValueAndValidity();
+    }
+
+    toggleWeightUnit(targetUnit: 'kg' | 'lbs'): void {
+        if (this.weightUnit === targetUnit) return;
+        const currentVal = this.vitalsForm.get('weight')?.value;
+        this.weightUnit = targetUnit;
+        const range = targetUnit === 'lbs'
+            ? VITALS_PHYSIOLOGICAL_RANGES['weight_lbs']
+            : VITALS_PHYSIOLOGICAL_RANGES['weight'];
+        this.vitalsForm.get('weight')?.setValidators([
+            Validators.min(range.min),
+            Validators.max(range.max)
+        ]);
+
+        if (isPresent(currentVal)) {
+            const num = Number(currentVal);
+            if (!Number.isNaN(num)) {
+                const converted = targetUnit === 'lbs' ? kgToLbs(num) : lbsToKg(num);
+                this.vitalsForm.patchValue({ weight: converted }, { emitEvent: false });
+            }
+        }
+        this.vitalsForm.get('weight')?.updateValueAndValidity();
+    }
+
     private getCurrentLocalIsoTime(): string {
         const now = new Date();
         const offset = now.getTimezoneOffset() * 60000;
@@ -203,6 +279,14 @@ export class VitalsFormComponent implements OnInit {
     private populateExistingVitalsIfPresent(): void {
         if (!this.existingVitals) return;
         const v = this.existingVitals;
+
+        if (v.units?.temperature) {
+            this.tempUnit = String(v.units.temperature).includes('C') ? '°C' : '°F';
+        }
+        if (v.units?.weight) {
+            this.weightUnit = String(v.units.weight).includes('lb') ? 'lbs' : 'kg';
+        }
+
         this.vitalsForm.patchValue({
             height: v.height ?? null,
             weight: v.weight ?? null,
@@ -231,6 +315,23 @@ export class VitalsFormComponent implements OnInit {
         const originalId = this.existingVitals ? (this.existingVitals.id || this.existingVitals.vital_id) : null;
         const clientRequestId = `req-vitals-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
+        const units: Record<string, string> = {
+            ...DEFAULT_VITAL_UNITS,
+            temperature: this.tempUnit,
+            weight: this.weightUnit
+        };
+        const ucumUnits: Record<string, string> = {
+            temperature: toCanonicalUcumUnit('temperature', this.tempUnit),
+            weight: toCanonicalUcumUnit('weight', this.weightUnit),
+            height: toCanonicalUcumUnit('height', 'cm'),
+            systolic_bp: toCanonicalUcumUnit('systolic_bp', 'mmHg'),
+            diastolic_bp: toCanonicalUcumUnit('diastolic_bp', 'mmHg'),
+            pulse: toCanonicalUcumUnit('pulse', 'bpm'),
+            respiratory_rate: toCanonicalUcumUnit('respiratory_rate', 'bpm'),
+            spo2: toCanonicalUcumUnit('spo2', '%'),
+            bmi: toCanonicalUcumUnit('bmi', 'kg/m2')
+        };
+
         const data: Record<string, unknown> = {
             patient_id: this.patientId,
             queue_entry_id: this.queueEntryId,
@@ -245,7 +346,8 @@ export class VitalsFormComponent implements OnInit {
             spo2: formVal.spo2 != null && formVal.spo2 !== '' ? Number(formVal.spo2) : null,
             bmi: this.bmi ? parseFloat(this.bmi) : null,
             effective_time: formVal.effective_time ? new Date(formVal.effective_time).toISOString() : new Date().toISOString(),
-            units: DEFAULT_VITAL_UNITS,
+            units,
+            ucum_units: ucumUnits,
             client_request_id: clientRequestId
         };
 

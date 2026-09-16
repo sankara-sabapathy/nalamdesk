@@ -52,10 +52,33 @@ declare global {
                 deleteUser: (id: number) => Promise<any>;
                 // Queue
                 getQueue: () => Promise<any[]>;
-                addToQueue: (data: { patientId: number, priority: number }) => Promise<any>;
+                addToQueue: (data: { patientId: number, priority?: number, urgency?: string, triage_notes?: string }) => Promise<any>;
+                reassessQueueTriage: (data: { queueId: number; urgency: string; reason: string }) => Promise<any>;
+                getQueueTriageHistory: (queueId: number) => Promise<any[]>;
                 updateQueueStatus: (data: { id: number, status: string }) => Promise<any>;
                 updateQueueStatusByPatientId: (data: { patientId: number, status: string }) => Promise<any>;
                 removeFromQueue: (id: number) => Promise<any>;
+                // Clinical Safety & Longitudinal Records
+                getAllergies: (patientId: number) => Promise<any[]>;
+                saveAllergy: (allergy: any) => Promise<any>;
+                deleteAllergy: (id: number) => Promise<any>;
+                getConditions: (patientId: number) => Promise<any[]>;
+                saveCondition: (condition: any) => Promise<any>;
+                deleteCondition: (id: number) => Promise<any>;
+                getMedications: (patientId: number) => Promise<any[]>;
+                saveMedication: (medication: any) => Promise<any>;
+                deleteMedication: (id: number) => Promise<any>;
+                getPatientSafetyContext: (patientId: number) => Promise<{
+                    patient_id: number;
+                    allergies: any[];
+                    active_allergies: any[];
+                    has_active_allergies: boolean;
+                    has_life_threatening_allergies: boolean;
+                    conditions: any[];
+                    active_conditions: any[];
+                    medications: any[];
+                    active_medications: any[];
+                }>;
                 // Audit
                 getAuditLogs: (limit: number) => Promise<any[]>;
                 searchConditions: (query: string, limit?: number) => Promise<any[]>;

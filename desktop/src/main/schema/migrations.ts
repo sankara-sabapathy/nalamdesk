@@ -543,5 +543,138 @@ export const MIGRATIONS = [
                 } catch (e) { }
             });
         }
+    },
+    {
+        version: 11,
+        up: (db: any) => {
+            console.log('Running Migration v11 (Clinical Safety, Allergies, Problem List & Actionable Triage)...');
+
+            // 1. patient_allergies
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS patient_allergies (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+                    substance TEXT NOT NULL,
+                    verification_status TEXT DEFAULT 'confirmed',
+                    criticality TEXT DEFAULT 'low',
+                    severity TEXT DEFAULT 'moderate',
+                    reaction TEXT,
+                    status TEXT DEFAULT 'active',
+                    recorder_id INTEGER REFERENCES users(id),
+                    recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    notes TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_patient_allergies_patient
+                    ON patient_allergies(patient_id, status);
+            `);
+
+            // 2. patient_conditions (Problem list)
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS patient_conditions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+                    condition_name TEXT NOT NULL,
+                    code TEXT,
+                    category TEXT DEFAULT 'chronic-problem',
+                    clinical_status TEXT DEFAULT 'active',
+                    onset_date TEXT,
+                    recorder_id INTEGER REFERENCES users(id),
+                    recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    notes TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_patient_conditions_patient
+                    ON patient_conditions(patient_id, clinical_status);
+            `);
+
+            // 3. patient_medications (Active/Current medications)
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS patient_medications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+                    medicine_name TEXT NOT NULL,
+                    dosage TEXT,
+                    frequency TEXT,
+                    status TEXT DEFAULT 'active',
+                    start_date TEXT,
+                    end_date TEXT,
+                    recorder_id INTEGER REFERENCES users(id),
+                    recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    notes TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_patient_medications_patient
+                    ON patient_medications(patient_id, status);
+            `);
+
+            // 4. queue_triage_history
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS queue_triage_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    queue_id INTEGER NOT NULL REFERENCES patient_queue(id) ON DELETE CASCADE,
+                    previous_priority INTEGER NOT NULL,
+                    new_priority INTEGER NOT NULL,
+                    urgency_label TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    changed_by INTEGER NOT NULL REFERENCES users(id),
+                    changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_queue_triage_hist_queue
+                    ON queue_triage_history(queue_id);
+            `);
+
+            // 5. Enhance visits table for practitioner provenance and allergy overrides
+            const visitCols = [
+                'author_id INTEGER REFERENCES users(id)',
+                'doctor_license_snapshot TEXT',
+                'allergy_override_reason TEXT'
+            ];
+            visitCols.forEach(col => {
+                try { db.exec(`ALTER TABLE visits ADD COLUMN ${col}`); } catch (e) { }
+            });
+
+            // 6. Enhance patient_queue table for actionable urgency and triage
+            const queueCols = [
+                'priority INTEGER DEFAULT 4',
+                "urgency TEXT DEFAULT 'routine'",
+                'triage_notes TEXT',
+                'triage_assessor_id INTEGER REFERENCES users(id)',
+                'triaged_at DATETIME'
+            ];
+            queueCols.forEach(col => {
+                try { db.exec(`ALTER TABLE patient_queue ADD COLUMN ${col}`); } catch (e) { }
+            });
+
+            // Backfill urgency based on existing numeric priority (higher priority number = higher urgency)
+            try {
+                db.exec(`
+                    UPDATE patient_queue
+                    SET urgency = CASE
+                        WHEN priority >= 4 THEN 'immediate'
+                        WHEN priority = 3 THEN 'urgent'
+                        WHEN priority = 2 THEN 'priority'
+                        ELSE 'routine'
+                    END
+                    WHERE urgency IS NULL;
+                `);
+            } catch (e) { }
+
+            // 7. Role permissions update
+            const safetyPermissions = [
+                'getAllergies', 'saveAllergy', 'deleteAllergy',
+                'getConditions', 'saveCondition', 'deleteCondition',
+                'getMedications', 'saveMedication', 'deleteMedication',
+                'reassessQueueTriage', 'getQueueTriageHistory'
+            ];
+            ['doctor', 'nurse', 'receptionist', 'admin'].forEach(roleName => {
+                try {
+                    const role = db.prepare('SELECT permissions FROM roles WHERE name = ?').get(roleName);
+                    if (role?.permissions) {
+                        const permissions = new Set<string>(JSON.parse(role.permissions));
+                        safetyPermissions.forEach(p => permissions.add(p));
+                        db.prepare('UPDATE roles SET permissions = ? WHERE name = ?')
+                            .run(JSON.stringify([...permissions]), roleName);
+                    }
+                } catch (e) { }
+            });
+        }
     }
 ];

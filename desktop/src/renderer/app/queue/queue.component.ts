@@ -1,6 +1,7 @@
 
 import { Component, OnInit, OnDestroy, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { DataService } from '../services/api.service';
 import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
@@ -8,10 +9,9 @@ import { newRequestId } from '../services/request-id';
 import { DialogService } from '../shared/services/dialog.service';
 
 @Component({
-  // ... (omitted for brevity, keeping same template)
   selector: 'app-queue',
   standalone: true,
-  imports: [CommonModule, VitalsFormComponent],
+  imports: [CommonModule, FormsModule, VitalsFormComponent],
   template: `
     <div class="h-full bg-gray-50 p-4 md:p-8 font-sans flex flex-col overflow-hidden">
       <div class="w-full">
@@ -23,7 +23,7 @@ import { DialogService } from '../shared/services/dialog.service';
              </button>
              <div>
                <h1 class="text-3xl font-bold text-blue-900">Patient Queue</h1>
-               <p class="text-gray-600">Manage waiting list and consultations</p>
+               <p class="text-gray-600">Actionable clinical triage and consultations</p>
              </div>
            </div>
            
@@ -42,23 +42,32 @@ import { DialogService } from '../shared/services/dialog.service';
               <table class="table table-lg">
                 <thead class="bg-base-200/50 text-base-content/70 sticky top-0 z-10 backdrop-blur-sm">
                   <tr>
-                    <th class="min-w-[100px]">Priority</th>
+                    <th class="min-w-[120px]">Urgency / Triage</th>
                     <th class="min-w-[200px]">Patient Details</th>
                     <th class="min-w-[140px]">Check-in Time</th>
                     <th class="min-w-[120px]">Status</th>
-                    <th class="text-right min-w-[140px]">Actions</th>
+                    <th class="text-right min-w-[180px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr *ngFor="let item of queue()" 
                       class="hover:bg-base-200/50 transition-colors border-b border-base-200 last:border-0 group">
                     <td>
-                      <div class="flex items-center gap-2">
-                         <div class="w-2 h-12 rounded-r-md" 
-                              [class.bg-error]="item.priority === 2"
-                              [class.bg-base-300]="item.priority === 1"></div>
-                         <div *ngIf="item.priority === 2" class="badge badge-error badge-sm animate-pulse">EMERGENCY</div>
-                         <div *ngIf="item.priority === 1" class="badge badge-ghost badge-sm">Normal</div>
+                      <div class="flex flex-col gap-1">
+                        <div class="flex items-center gap-2">
+                          <span class="badge badge-sm font-bold uppercase tracking-wider"
+                                [ngClass]="{
+                                  'badge-error text-white animate-pulse': item.urgency === 'immediate',
+                                  'badge-warning text-white': item.urgency === 'urgent',
+                                  'badge-info text-white': item.urgency === 'priority',
+                                  'badge-ghost text-gray-700': item.urgency === 'routine' || !item.urgency
+                                }">
+                            {{ item.urgency || (item.priority >= 4 ? 'immediate' : (item.priority === 3 ? 'urgent' : (item.priority === 2 ? 'priority' : 'routine'))) }}
+                          </span>
+                        </div>
+                        <span *ngIf="item.triage_notes" class="text-xs text-gray-500 italic max-w-[160px] truncate" [title]="item.triage_notes">
+                          {{ item.triage_notes }}
+                        </span>
                       </div>
                     </td>
                     <td>
@@ -69,8 +78,16 @@ import { DialogService } from '../shared/services/dialog.service';
                           </div>
                         </div>
                         <div>
-                          <div class="font-bold text-lg">{{ item.patient_name }}</div>
+                          <div class="font-bold text-lg flex items-center gap-2">
+                            {{ item.patient_name }}
+                          </div>
                           <div class="text-sm opacity-60">{{ item.age }} years • {{ item.gender }}</div>
+                          <div *ngIf="item.has_abnormal_vitals" 
+                               class="badge badge-error badge-outline gap-1 text-xs cursor-help mt-1 font-semibold"
+                               [title]="item.vitals_alerts?.join('\n')">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                            Abnormal Vitals
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -93,6 +110,11 @@ import { DialogService } from '../shared/services/dialog.service';
                     </td>
                     <td class="text-right">
                       <div class="join opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button *ngIf="item.status === 'waiting'" 
+                                (click)="openTriageModal(item)"
+                                class="btn btn-warning btn-outline btn-sm join-item">
+                          Triage
+                        </button>
                         <button *ngIf="item.status === 'waiting'" 
                                 (click)="openVitals(item)"
                                 class="btn btn-secondary btn-sm join-item">
@@ -136,6 +158,79 @@ import { DialogService } from '../shared/services/dialog.service';
         </div>
       </div>
       
+      <!-- Reassess Triage Modal -->
+      <div *ngIf="showTriageModal" class="modal modal-open">
+        <div class="modal-box max-w-lg">
+          <h3 class="font-bold text-lg flex items-center gap-2 text-blue-900">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+            Triage Reassessment: {{ selectedQueueItem?.patient_name }}
+          </h3>
+          <p class="text-sm text-gray-500 mt-1">Current Urgency: <span class="font-bold uppercase text-gray-700">{{ selectedQueueItem?.urgency }}</span></p>
+
+          <div class="form-control mt-4">
+            <label class="label"><span class="label-text font-semibold">Select New Urgency Tier</span></label>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" 
+                      (click)="selectedUrgency = 'immediate'" 
+                      class="btn btn-sm"
+                      [ngClass]="selectedUrgency === 'immediate' ? 'btn-error text-white' : 'btn-outline btn-error'">
+                Immediate (Red)
+              </button>
+              <button type="button" 
+                      (click)="selectedUrgency = 'urgent'" 
+                      class="btn btn-sm"
+                      [ngClass]="selectedUrgency === 'urgent' ? 'btn-warning text-white' : 'btn-outline btn-warning'">
+                Urgent (Orange)
+              </button>
+              <button type="button" 
+                      (click)="selectedUrgency = 'priority'" 
+                      class="btn btn-sm"
+                      [ngClass]="selectedUrgency === 'priority' ? 'btn-info text-white' : 'btn-outline btn-info'">
+                Priority (Yellow)
+              </button>
+              <button type="button" 
+                      (click)="selectedUrgency = 'routine'" 
+                      class="btn btn-sm"
+                      [ngClass]="selectedUrgency === 'routine' ? 'btn-neutral text-white' : 'btn-outline'">
+                Routine (Green)
+              </button>
+            </div>
+          </div>
+
+          <div class="form-control mt-4">
+            <label class="label"><span class="label-text font-semibold">Clinical Reason for Reassessment *</span></label>
+            <textarea [(ngModel)]="triageReason" 
+                      rows="2" 
+                      placeholder="Enter clinical reason (e.g., patient condition worsening, chest pain onset...)" 
+                      class="textarea textarea-bordered w-full"></textarea>
+          </div>
+
+          <!-- Triage History -->
+          <div *ngIf="triageHistory.length > 0" class="mt-4 border-t pt-3">
+            <h4 class="text-xs font-bold uppercase text-gray-500 mb-2">Triage Audit Trail</h4>
+            <div class="max-h-32 overflow-y-auto space-y-2 text-xs">
+              <div *ngFor="let h of triageHistory" class="p-2 bg-gray-100 rounded flex justify-between items-start">
+                <div>
+                  <span class="font-bold uppercase text-blue-800">{{ h.new_urgency || h.urgency_label }}</span>
+                  <span class="text-gray-600 ml-1">- {{ h.reason }}</span>
+                </div>
+                <div class="text-gray-400 text-right shrink-0 ml-2">
+                  <div>{{ h.assessor_name || 'Staff' }}</div>
+                  <div>{{ h.created_at | date:'shortTime' }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-action">
+            <button type="button" class="btn btn-ghost" (click)="closeTriageModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" [disabled]="!triageReason.trim() || savingTriage" (click)="submitTriageReassessment()">
+              {{ savingTriage ? 'Saving...' : 'Update Urgency' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Vitals Modal -->
       <app-vitals-form *ngIf="showVitalsModal" 
         (closeDialog)="closeVitalsModal()" 
@@ -277,5 +372,54 @@ export class QueueComponent implements OnInit, OnDestroy {
 
   onVitalsSaved(_data: any) {
     this.closeVitalsModal();
+  }
+
+  // Triage Reassessment Logic
+  showTriageModal = false;
+  selectedQueueItem: any = null;
+  selectedUrgency = 'routine';
+  triageReason = '';
+  triageHistory: any[] = [];
+  savingTriage = false;
+
+  async openTriageModal(item: any) {
+    this.selectedQueueItem = item;
+    this.selectedUrgency = item.urgency || 'routine';
+    this.triageReason = '';
+    this.showTriageModal = true;
+    try {
+      this.triageHistory = await this.dataService.invoke('getQueueTriageHistory', item.id);
+    } catch {
+      this.triageHistory = [];
+    }
+  }
+
+  closeTriageModal() {
+    this.showTriageModal = false;
+    this.selectedQueueItem = null;
+    this.triageReason = '';
+    this.triageHistory = [];
+  }
+
+  async submitTriageReassessment() {
+    if (!this.selectedQueueItem || !this.triageReason.trim()) return;
+    this.savingTriage = true;
+    try {
+      await this.dataService.invoke('reassessQueueTriage', {
+        queueId: this.selectedQueueItem.id,
+        urgency: this.selectedUrgency,
+        reason: this.triageReason.trim()
+      });
+      this.closeTriageModal();
+      await this.refreshQueue();
+    } catch (e: any) {
+      await this.dialogService.open({
+        title: 'Triage Update Failed',
+        message: e.message || 'Could not update triage urgency',
+        type: 'error'
+      });
+    } finally {
+      this.savingTriage = false;
+    }
   }
 }
