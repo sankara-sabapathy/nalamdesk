@@ -465,5 +465,83 @@ export const MIGRATIONS = [
                     .run(JSON.stringify([...permissions]), 'doctor');
             }
         }
+    },
+    {
+        version: 10,
+        up: (db: any) => {
+            console.log('Running Migration v10 (Encounter-Linked Vitals & Observation Model)...');
+
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS vitals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    visit_id INTEGER,
+                    patient_id INTEGER,
+                    height REAL,
+                    weight REAL,
+                    bmi REAL,
+                    temperature REAL,
+                    systolic_bp INTEGER,
+                    diastolic_bp INTEGER,
+                    pulse INTEGER,
+                    respiratory_rate INTEGER,
+                    spo2 INTEGER,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(visit_id) REFERENCES visits(id) ON DELETE CASCADE,
+                    FOREIGN KEY(patient_id) REFERENCES patients(id) ON DELETE CASCADE
+                );
+            `);
+
+            const vitalsCols = [
+                'effective_time DATETIME DEFAULT CURRENT_TIMESTAMP',
+                'recorded_at DATETIME DEFAULT CURRENT_TIMESTAMP',
+                'performer_id INTEGER REFERENCES users(id)',
+                "status TEXT DEFAULT 'final'",
+                'units_json TEXT',
+                'queue_entry_id INTEGER REFERENCES patient_queue(id)',
+                'replaces_id INTEGER REFERENCES vitals(id)',
+                'amendment_reason TEXT',
+                'client_request_id TEXT'
+            ];
+            vitalsCols.forEach(col => {
+                try { db.exec(`ALTER TABLE vitals ADD COLUMN ${col}`); } catch (e) { }
+            });
+
+            db.exec(`
+                UPDATE vitals
+                SET effective_time = COALESCE(effective_time, timestamp, CURRENT_TIMESTAMP),
+                    recorded_at = COALESCE(recorded_at, timestamp, CURRENT_TIMESTAMP),
+                    status = COALESCE(status, 'final'),
+                    units_json = COALESCE(units_json, '{"height":"cm","weight":"kg","bmi":"kg/m2","temperature":"°F","systolic_bp":"mmHg","diastolic_bp":"mmHg","pulse":"bpm","respiratory_rate":"bpm","spo2":"%"}')
+                WHERE effective_time IS NULL OR recorded_at IS NULL OR status IS NULL OR units_json IS NULL;
+
+                UPDATE vitals
+                SET queue_entry_id = (SELECT v.queue_entry_id FROM visits v WHERE v.id = vitals.visit_id)
+                WHERE visit_id IS NOT NULL AND queue_entry_id IS NULL;
+
+                CREATE INDEX IF NOT EXISTS idx_vitals_patient_effective
+                    ON vitals(patient_id, effective_time);
+                CREATE INDEX IF NOT EXISTS idx_vitals_visit
+                    ON vitals(visit_id);
+                CREATE INDEX IF NOT EXISTS idx_vitals_queue_entry
+                    ON vitals(queue_entry_id);
+                CREATE INDEX IF NOT EXISTS idx_vitals_replaces
+                    ON vitals(replaces_id);
+                CREATE INDEX IF NOT EXISTS idx_vitals_request
+                    ON vitals(client_request_id) WHERE client_request_id IS NOT NULL;
+            `);
+
+            const newPermissions = ['getVitals', 'saveVitals', 'getVitalsHistory', 'getEncounterVitals'];
+            ['doctor', 'nurse', 'receptionist'].forEach(roleName => {
+                try {
+                    const role = db.prepare('SELECT permissions FROM roles WHERE name = ?').get(roleName);
+                    if (role?.permissions) {
+                        const permissions = new Set<string>(JSON.parse(role.permissions));
+                        newPermissions.forEach(p => permissions.add(p));
+                        db.prepare('UPDATE roles SET permissions = ? WHERE name = ?')
+                            .run(JSON.stringify([...permissions]), roleName);
+                    }
+                } catch (e) { }
+            });
+        }
     }
 ];

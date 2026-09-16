@@ -677,7 +677,17 @@ handleDb('db:getVitals', (_, patientId) => {
 handleDb('db:saveVitals', (_, vitals) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
-    return databaseService.saveVitals(vitals);
+    return databaseService.saveVitals(vitals, user.id);
+});
+handleDb('db:getEncounterVitals', (_, encounterId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getEncounterVitals(encounterId);
+});
+handleDb('db:getVitalsHistory', (_, patientId, visitId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getVitalsHistory(patientId, visitId);
 });
 
 // Users

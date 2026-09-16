@@ -763,4 +763,40 @@ describe('VisitComponent', () => {
         component.onDiagnosisTyped('Free text diagnosis');
         expect(component.visitForm.patchValue).toHaveBeenCalledWith({ diagnosis: 'Free text diagnosis' });
     });
+
+    it('validates vitals presence and suppresses malformed placeholders', () => {
+        expect(component.hasBp(null)).toBe(false);
+        expect(component.hasBp({})).toBe(false);
+        expect(component.hasBp({ systolic_bp: 120 })).toBe(false);
+        expect(component.hasBp({ diastolic_bp: 80 })).toBe(false);
+        expect(component.hasBp({ systolic_bp: 120, diastolic_bp: 80 })).toBe(true);
+
+        expect(component.hasVitalsToDisplay(null)).toBe(false);
+        expect(component.hasVitalsToDisplay({})).toBe(false);
+        expect(component.hasVitalsToDisplay({ pulse: 72 })).toBe(true);
+
+        const partial = { pulse: 72, temperature: 98.6 };
+        const text = component.formatVitalsObjective(partial);
+        expect(text).not.toContain('BP:');
+        expect(text).not.toContain('undefined');
+        expect(text).toContain('Pulse: 72 bpm');
+        expect(text).toContain('Temp: 98.6 °F');
+
+        const withBp = { systolic_bp: 120, diastolic_bp: 80, pulse: 70 };
+        const textWithBp = component.formatVitalsObjective(withBp);
+        expect(textWithBp).toContain('BP: 120/80 mmHg');
+        expect(textWithBp).toContain('Pulse: 70 bpm');
+    });
+
+    it('opens and closes vitals modal during active consultation', () => {
+        component.chartWritable = true;
+        component.isConsulting = true;
+        component.openVitalsModal();
+        expect(component.showVitalsModal).toBe(true);
+
+        const newVitals = { systolic_bp: 120, diastolic_bp: 80, pulse: 72 };
+        component.onVitalsSaved(newVitals);
+        expect(component.patientVitals).toEqual(newVitals);
+        expect(component.showVitalsModal).toBe(false);
+    });
 });

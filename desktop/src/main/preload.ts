@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld('electron', {
         getDashboardStats: () => ipcRenderer.invoke('db:getDashboardStats'),
         getDoctors: () => ipcRenderer.invoke('db:getDoctors'),
         getVitals: (patientId: number) => ipcRenderer.invoke('db:getVitals', patientId),
+        getEncounterVitals: (encounterId: number) => ipcRenderer.invoke('db:getEncounterVitals', encounterId),
+        getVitalsHistory: (patientId: number, visitId?: number) => ipcRenderer.invoke('db:getVitalsHistory', patientId, visitId),
         saveVitals: (vitals: any) => ipcRenderer.invoke('db:saveVitals', vitals),
         // Users
         getUsers: () => ipcRenderer.invoke('db:getUsers'),

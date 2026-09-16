@@ -66,6 +66,6 @@ Access control is enforced at the API level in `server.ts`.
 | Role | Permissions |
 | :--- | :--- |
 | **Admin** | **Full Access**. User management, Clinic Settings, Backup/Restore. |
-| **Doctor** | Patient Records, Prescriptions, Queue Management. |
-| **Receptionist** | Patient Registration, Queue Management. |
-| **Nurse** | Patient Vitals (Future), Queue Monitoring. |
+| **Doctor** | Patient Records, Prescriptions, Queue Management, Vitals. |
+| **Receptionist** | Patient Registration, Queue Management, Vitals. |
+| **Nurse** | Patient Vitals, Queue Monitoring. |

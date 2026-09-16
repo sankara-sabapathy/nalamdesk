@@ -1,5 +1,6 @@
 import { MIGRATIONS } from '../schema/migrations';
 import * as catalog from '../catalog/catalogStore';
+import { assertValidVitals, DEFAULT_VITAL_UNITS } from '../../shared/vitals-validator';
 
 export class DatabaseService {
     private db: any;
@@ -469,11 +470,28 @@ export class DatabaseService {
                 vit.pulse,
                 vit.temperature,
                 vit.weight,
+                vit.height,
                 vit.bmi,
-                vit.spo2
+                vit.spo2,
+                vit.respiratory_rate,
+                vit.effective_time as vital_effective_time,
+                vit.recorded_at as vital_recorded_at,
+                vit.status as vital_status,
+                vit.units_json as vital_units_json,
+                vit.performer_id as vital_performer_id,
+                vit.replaces_id as vital_replaces_id,
+                vit.amendment_reason as vital_amendment_reason,
+                perf.name as vital_performer_name
             FROM visits v 
             LEFT JOIN users d ON v.doctor_id = d.id 
-            LEFT JOIN vitals vit ON vit.visit_id = v.id
+            LEFT JOIN vitals vit ON vit.id = (
+                SELECT v2.id FROM vitals v2 
+                WHERE (v2.visit_id = v.id OR (v.queue_entry_id IS NOT NULL AND v2.queue_entry_id = v.queue_entry_id))
+                  AND v2.status != 'entered-in-error'
+                ORDER BY v2.recorded_at DESC, v2.id DESC 
+                LIMIT 1
+            )
+            LEFT JOIN users perf ON perf.id = vit.performer_id
             WHERE v.patient_id = ? AND v.status = 'finished'
             ORDER BY v.date DESC
         `).all(patientId);
@@ -481,15 +499,27 @@ export class DatabaseService {
         return visits.map((v: any) => ({
             ...v,
             prescription: v.prescription_json ? JSON.parse(v.prescription_json) : [],
-            // Group vitals into a nested object if they exist
             vitals: v.vital_id ? {
+                id: v.vital_id,
+                visit_id: v.id,
+                patient_id: v.patient_id,
                 systolic_bp: v.systolic_bp,
                 diastolic_bp: v.diastolic_bp,
                 pulse: v.pulse,
                 temperature: v.temperature,
                 weight: v.weight,
+                height: v.height,
                 bmi: v.bmi,
-                spo2: v.spo2
+                spo2: v.spo2,
+                respiratory_rate: v.respiratory_rate,
+                effective_time: v.vital_effective_time,
+                recorded_at: v.vital_recorded_at,
+                status: v.vital_status,
+                performer_id: v.vital_performer_id,
+                performer_name: v.vital_performer_name,
+                replaces_id: v.vital_replaces_id,
+                amendment_reason: v.vital_amendment_reason,
+                units: this.safeParseJson(v.vital_units_json, DEFAULT_VITAL_UNITS)
             } : null
         }));
     }
@@ -594,6 +624,7 @@ export class DatabaseService {
                 ) VALUES (?, ?, '', '[]', 0, '', '', '', 'in-progress', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, 'begin', ?)
             `).run(patientId, actingUserId, queue.id, startRequestId, actingUserId);
             this.recordStartRequest(startRequestId, 'begin', Number(result.lastInsertRowid), patientId, queue.id, actingUserId);
+            this.linkPreConsultationVitals(queue.id, Number(result.lastInsertRowid));
             this.logAudit('ENCOUNTER_START', 'visits', result.lastInsertRowid, actingUserId, `Started encounter for queue entry ${queue.id}`);
             return this.getEncounterById(Number(result.lastInsertRowid));
         });
@@ -847,41 +878,250 @@ export class DatabaseService {
 
 
 
-    // Vitals
-    saveVitals(vitals: any) {
-        if (vitals.id) {
-            return this.db.prepare(`
-                UPDATE vitals SET
-                height = @height,
-                weight = @weight,
-                bmi = @bmi,
-                temperature = @temperature,
-                systolic_bp = @systolic_bp,
-                diastolic_bp = @diastolic_bp,
-                pulse = @pulse,
-                respiratory_rate = @respiratory_rate,
-                spo2 = @spo2
-                WHERE id = @id
-            `).run(vitals);
-        } else {
-            return this.db.prepare(`
-                INSERT INTO vitals(
-                    visit_id, patient_id, height, weight, bmi, 
-                    temperature, systolic_bp, diastolic_bp, pulse, respiratory_rate, spo2
-                )
-                VALUES(
-                    @visit_id, @patient_id, @height, @weight, @bmi, 
-                    @temperature, @systolic_bp, @diastolic_bp, @pulse, @respiratory_rate, @spo2
-                )
-            `).run(vitals);
+    private safeParseJson(json: string | null | undefined, fallback: any): any {
+        if (!json) return fallback;
+        try {
+            return JSON.parse(json);
+        } catch {
+            return fallback;
         }
     }
 
+    private linkPreConsultationVitals(queueEntryId: number, encounterId: number): void {
+        this.db.prepare(`
+            UPDATE vitals
+            SET visit_id = ?
+            WHERE queue_entry_id = ? AND visit_id IS NULL
+        `).run(encounterId, queueEntryId);
+    }
+
+    private hydrateVital(row: any): any {
+        if (!row) return null;
+        return {
+            ...row,
+            units: this.safeParseJson(row.units_json, DEFAULT_VITAL_UNITS)
+        };
+    }
+
+    private resolveVitalsContext(vitals: any, patientId: number): { visitId: number | null; queueEntryId: number | null } {
+        let visitId = vitals.visit_id ? Number(vitals.visit_id) : null;
+        let queueEntryId = vitals.queue_entry_id ? Number(vitals.queue_entry_id) : null;
+
+        if (visitId) {
+            const v = this.db.prepare('SELECT id, patient_id, queue_entry_id FROM visits WHERE id = ?').get(visitId) as any;
+            if (v && Number(v.patient_id) !== patientId) {
+                throw new Error(`Cross-patient violation: visit #${visitId} belongs to patient ${v.patient_id}, not ${patientId}`);
+            }
+            if (v && !queueEntryId && v.queue_entry_id) {
+                queueEntryId = Number(v.queue_entry_id);
+            }
+        }
+
+        if (queueEntryId) {
+            const q = this.db.prepare('SELECT id, patient_id FROM patient_queue WHERE id = ?').get(queueEntryId) as any;
+            if (q && Number(q.patient_id) !== patientId) {
+                throw new Error(`Cross-patient violation: queue entry #${queueEntryId} belongs to patient ${q.patient_id}, not ${patientId}`);
+            }
+        }
+
+        if (!visitId && queueEntryId) {
+            const active = this.db.prepare("SELECT id FROM visits WHERE queue_entry_id = ? AND status = 'in-progress'").get(queueEntryId) as any;
+            if (active) visitId = Number(active.id);
+        } else if (!visitId && !queueEntryId) {
+            const active = this.db.prepare("SELECT id, queue_entry_id FROM visits WHERE patient_id = ? AND status = 'in-progress'").get(patientId) as any;
+            if (active) {
+                visitId = Number(active.id);
+                queueEntryId = active.queue_entry_id ? Number(active.queue_entry_id) : null;
+            } else {
+                const waiting = this.db.prepare("SELECT id FROM patient_queue WHERE patient_id = ? AND status = 'waiting' ORDER BY id DESC LIMIT 1").get(patientId) as any;
+                if (waiting) queueEntryId = Number(waiting.id);
+            }
+        }
+        return { visitId, queueEntryId };
+    }
+
+    private findExistingDuplicateVital(vitals: any, patientId: number, visitId: number | null, queueEntryId: number | null): any {
+        if (vitals.client_request_id) {
+            const byReq = this.db.prepare('SELECT * FROM vitals WHERE client_request_id = ?').get(String(vitals.client_request_id).trim());
+            if (byReq) return this.hydrateVital(byReq);
+        }
+
+        const sys = vitals.systolic_bp != null ? Number(vitals.systolic_bp) : -1;
+        const dia = vitals.diastolic_bp != null ? Number(vitals.diastolic_bp) : -1;
+        const pulse = vitals.pulse != null ? Number(vitals.pulse) : -1;
+        const temp = vitals.temperature != null ? Number(vitals.temperature) : -1;
+
+        const candidate = this.db.prepare(`
+            SELECT * FROM vitals
+            WHERE patient_id = ?
+              AND COALESCE(queue_entry_id, 0) = COALESCE(?, 0)
+              AND COALESCE(visit_id, 0) = COALESCE(?, 0)
+              AND COALESCE(systolic_bp, -1) = ?
+              AND COALESCE(diastolic_bp, -1) = ?
+              AND COALESCE(pulse, -1) = ?
+              AND COALESCE(temperature, -1) = ?
+              AND status = 'final'
+              AND datetime(recorded_at) >= datetime('now', '-5 seconds')
+            ORDER BY id DESC LIMIT 1
+        `).get(patientId, queueEntryId, visitId, sys, dia, pulse, temp);
+
+        return candidate ? this.hydrateVital(candidate) : null;
+    }
+
+    private saveAmendedVital(
+        vitals: any,
+        originalId: number,
+        patientId: number,
+        visitId: number | null,
+        queueEntryId: number | null,
+        unitsJson: string,
+        actingUserId?: number
+    ): any {
+        const original = this.db.prepare('SELECT * FROM vitals WHERE id = ?').get(originalId) as any;
+        if (!original) {
+            throw new Error(`Original vitals observation #${originalId} not found to amend`);
+        }
+        if (Number(original.patient_id) !== Number(patientId)) {
+            throw new Error(`Cross-patient violation: original vitals #${originalId} belongs to patient ${original.patient_id}, not ${patientId}`);
+        }
+
+        const effectiveTime = vitals.effective_time || original.effective_time || new Date().toISOString();
+        const finalVisitId = visitId || original.visit_id || null;
+        const finalQueueEntryId = queueEntryId || original.queue_entry_id || null;
+        const performerId = actingUserId || vitals.performer_id || original.performer_id || null;
+        const amendmentReason = vitals.amendment_reason || 'Clinical correction';
+        const clientRequestId = vitals.client_request_id || null;
+
+        const runTx = this.db.transaction(() => {
+            this.db.prepare("UPDATE vitals SET status = 'amended' WHERE id = ?").run(original.id);
+            return this.db.prepare(`
+                INSERT INTO vitals (
+                    visit_id, patient_id, queue_entry_id,
+                    height, weight, bmi, temperature, systolic_bp, diastolic_bp, pulse, respiratory_rate, spo2,
+                    effective_time, recorded_at, performer_id, status, units_json,
+                    replaces_id, amendment_reason, client_request_id
+                ) VALUES (
+                    ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, CURRENT_TIMESTAMP, ?, 'amended', ?,
+                    ?, ?, ?
+                )
+            `).run(
+                finalVisitId, patientId, finalQueueEntryId,
+                vitals.height ?? null, vitals.weight ?? null, vitals.bmi ?? null, vitals.temperature ?? null,
+                vitals.systolic_bp ?? null, vitals.diastolic_bp ?? null, vitals.pulse ?? null,
+                vitals.respiratory_rate ?? null, vitals.spo2 ?? null,
+                effectiveTime, performerId, unitsJson,
+                original.id,
+                amendmentReason,
+                clientRequestId
+            );
+        });
+
+        const result = runTx.immediate();
+
+        this.logAudit('VITALS_AMEND', 'vitals', result.lastInsertRowid, actingUserId, `Amended vitals observation ${original.id}`);
+        const inserted = this.db.prepare('SELECT * FROM vitals WHERE id = ?').get(Number(result.lastInsertRowid));
+        return this.hydrateVital(inserted);
+    }
+
+    private insertNewVital(
+        vitals: any,
+        patientId: number,
+        visitId: number | null,
+        queueEntryId: number | null,
+        unitsJson: string,
+        actingUserId?: number
+    ): any {
+        const effectiveTime = vitals.effective_time || new Date().toISOString();
+        const status = vitals.status || 'final';
+        const performerId = actingUserId || vitals.performer_id || null;
+
+        const result = this.db.prepare(`
+            INSERT INTO vitals (
+                visit_id, patient_id, queue_entry_id,
+                height, weight, bmi, temperature, systolic_bp, diastolic_bp, pulse, respiratory_rate, spo2,
+                effective_time, recorded_at, performer_id, status, units_json, client_request_id
+            ) VALUES (
+                ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, CURRENT_TIMESTAMP, ?, ?, ?, ?
+            )
+        `).run(
+            visitId, patientId, queueEntryId,
+            vitals.height ?? null, vitals.weight ?? null, vitals.bmi ?? null, vitals.temperature ?? null,
+            vitals.systolic_bp ?? null, vitals.diastolic_bp ?? null, vitals.pulse ?? null,
+            vitals.respiratory_rate ?? null, vitals.spo2 ?? null,
+            effectiveTime, performerId, status, unitsJson,
+            vitals.client_request_id || null
+        );
+
+        this.logAudit('VITALS_RECORD', 'vitals', result.lastInsertRowid, actingUserId, 'Recorded new vitals observation');
+        const inserted = this.db.prepare('SELECT * FROM vitals WHERE id = ?').get(Number(result.lastInsertRowid));
+        return this.hydrateVital(inserted);
+    }
+
+    // Vitals
+    saveVitals(vitals: any, actingUserId?: number) {
+        assertValidVitals(vitals);
+
+        const patientId = Number(vitals.patient_id);
+        if (!Number.isInteger(patientId) || patientId <= 0) {
+            throw new Error('patient_id is required');
+        }
+
+        const { visitId, queueEntryId } = this.resolveVitalsContext(vitals, patientId);
+
+        const duplicate = this.findExistingDuplicateVital(vitals, patientId, visitId, queueEntryId);
+        if (duplicate) return duplicate;
+
+        const unitsJson = JSON.stringify(vitals.units || DEFAULT_VITAL_UNITS);
+        const originalId = vitals.replaces_id || vitals.id;
+
+        if (originalId) {
+            return this.saveAmendedVital(vitals, Number(originalId), patientId, visitId, queueEntryId, unitsJson, actingUserId);
+        }
+        return this.insertNewVital(vitals, patientId, visitId, queueEntryId, unitsJson, actingUserId);
+    }
+
     getVitals(patientId: number) {
-        // Get latest vitals for patient
-        return this.db.prepare(`
-            SELECT * FROM vitals WHERE patient_id = ? ORDER BY timestamp DESC LIMIT 1
-        `).get(patientId);
+        const row = this.db.prepare(`
+            SELECT vit.*, u.name as performer_name
+            FROM vitals vit
+            LEFT JOIN users u ON u.id = vit.performer_id
+            WHERE vit.patient_id = ? AND vit.status != 'entered-in-error'
+            ORDER BY vit.effective_time DESC, vit.id DESC LIMIT 1
+        `).get(Number(patientId));
+        return row ? this.hydrateVital(row) : null;
+    }
+
+    getEncounterVitals(encounterId: number) {
+        const row = this.db.prepare(`
+            SELECT vit.*, u.name as performer_name
+            FROM vitals vit
+            LEFT JOIN users u ON u.id = vit.performer_id
+            WHERE (vit.visit_id = ? OR (vit.queue_entry_id = (SELECT queue_entry_id FROM visits WHERE id = ?) AND vit.queue_entry_id IS NOT NULL))
+              AND vit.status != 'entered-in-error'
+            ORDER BY vit.recorded_at DESC, vit.id DESC LIMIT 1
+        `).get(Number(encounterId), Number(encounterId));
+        return row ? this.hydrateVital(row) : null;
+    }
+
+    getVitalsHistory(patientId: number, visitId?: number) {
+        let sql = `
+            SELECT vit.*, u.name as performer_name
+            FROM vitals vit
+            LEFT JOIN users u ON u.id = vit.performer_id
+            WHERE vit.patient_id = ?
+        `;
+        const params: any[] = [Number(patientId)];
+        if (visitId) {
+            sql += ' AND (vit.visit_id = ? OR (vit.queue_entry_id = (SELECT queue_entry_id FROM visits WHERE id = ?) AND vit.queue_entry_id IS NOT NULL))';
+            params.push(Number(visitId), Number(visitId));
+        }
+        sql += ' ORDER BY vit.recorded_at DESC, vit.id DESC';
+        const rows = this.db.prepare(sql).all(...params);
+        return rows.map((r: any) => this.hydrateVital(r));
     }
 
 
@@ -949,12 +1189,12 @@ export class DatabaseService {
     }
 
     // Audit Logging
-    logAudit(action: string, tableName: string, recordId: number | bigint, userId: number, details: string) {
+    logAudit(action: string, tableName: string, recordId: number | bigint, userId: number | null | undefined, details: string) {
         try {
             this.db.prepare(`
                 INSERT INTO audit_logs(action, table_name, record_id, user_id, details)
         VALUES(@action, @tableName, @recordId, @userId, @details)
-            `).run({ action, tableName, recordId: Number(recordId), userId, details });
+            `).run({ action, tableName, recordId: Number(recordId), userId: userId ?? null, details });
         } catch (e) {
             console.error('Failed to log audit:', e);
         }

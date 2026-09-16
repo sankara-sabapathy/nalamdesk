@@ -103,22 +103,33 @@ import { DatePickerComponent } from '../../shared/components/date-picker/date-pi
                 <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <span class="text-teal-500">♥</span> Last Vitals
                 </h3>
-                <div *ngIf="vitals; else noVitals" class="grid grid-cols-2 gap-4">
+                <div *ngIf="hasVitalsToDisplay(vitals); else noVitals" class="grid grid-cols-2 gap-4">
                     <div class="p-3 bg-gray-50 rounded border border-gray-100">
                         <div class="text-xs text-gray-500 uppercase font-bold">BP</div>
-                        <div class="text-lg font-mono font-bold text-gray-800">{{ vitals.systolic_bp }}/{{ vitals.diastolic_bp }}</div>
+                        <div class="text-lg font-mono font-bold text-gray-800">
+                            {{ hasBp(vitals) ? (vitals.systolic_bp + '/' + vitals.diastolic_bp) : '--' }}
+                        </div>
                     </div>
                      <div class="p-3 bg-gray-50 rounded border border-gray-100">
                         <div class="text-xs text-gray-500 uppercase font-bold">Pulse</div>
-                        <div class="text-lg font-mono font-bold text-gray-800">{{ vitals.pulse }} <span class="text-xs font-normal">bpm</span></div>
+                        <div class="text-lg font-mono font-bold text-gray-800">
+                            {{ isVitalPresent(vitals.pulse) ? vitals.pulse : '--' }}
+                            <span *ngIf="isVitalPresent(vitals.pulse)" class="text-xs font-normal">bpm</span>
+                        </div>
                     </div>
                      <div class="p-3 bg-gray-50 rounded border border-gray-100">
                         <div class="text-xs text-gray-500 uppercase font-bold">Temp</div>
-                        <div class="text-lg font-mono font-bold text-gray-800">{{ vitals.temperature }} <span class="text-xs font-normal">°F</span></div>
+                        <div class="text-lg font-mono font-bold text-gray-800">
+                            {{ isVitalPresent(vitals.temperature) ? vitals.temperature : '--' }}
+                            <span *ngIf="isVitalPresent(vitals.temperature)" class="text-xs font-normal">°F</span>
+                        </div>
                     </div>
                      <div class="p-3 bg-gray-50 rounded border border-gray-100">
                         <div class="text-xs text-gray-500 uppercase font-bold">Weight</div>
-                        <div class="text-lg font-mono font-bold text-gray-800">{{ vitals.weight }} <span class="text-xs font-normal">kg</span></div>
+                        <div class="text-lg font-mono font-bold text-gray-800">
+                            {{ isVitalPresent(vitals.weight) ? vitals.weight : '--' }}
+                            <span *ngIf="isVitalPresent(vitals.weight)" class="text-xs font-normal">kg</span>
+                        </div>
                     </div>
                 </div>
                 <ng-template #noVitals>
@@ -393,6 +404,18 @@ import { DatePickerComponent } from '../../shared/components/date-picker/date-pi
                      <div>
                         <h4 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1 font-sans">Observations</h4>
                         <p class="text-gray-700 whitespace-pre-line">{{ selectedVisit?.examination_notes || '-' }}</p>
+                    </div>
+                </div>
+
+                <!-- Encounter Vitals -->
+                <div *ngIf="selectedVisit?.vitals && hasVitalsToDisplay(selectedVisit.vitals)" class="mb-6 p-4 bg-teal-50/60 rounded-lg border border-teal-100">
+                    <h4 class="text-xs font-bold text-teal-800 uppercase tracking-widest mb-2 font-sans">Encounter Vitals</h4>
+                    <div class="flex flex-wrap gap-4 text-sm text-teal-950 font-sans">
+                        <span *ngIf="hasBp(selectedVisit.vitals)">BP: <b>{{ selectedVisit.vitals.systolic_bp }}/{{ selectedVisit.vitals.diastolic_bp }} mmHg</b></span>
+                        <span *ngIf="isVitalPresent(selectedVisit.vitals.pulse)">Pulse: <b>{{ selectedVisit.vitals.pulse }} bpm</b></span>
+                        <span *ngIf="isVitalPresent(selectedVisit.vitals.temperature)">Temp: <b>{{ selectedVisit.vitals.temperature }} °F</b></span>
+                        <span *ngIf="isVitalPresent(selectedVisit.vitals.spo2)">SpO2: <b>{{ selectedVisit.vitals.spo2 }}%</b></span>
+                        <span *ngIf="isVitalPresent(selectedVisit.vitals.weight)">Weight: <b>{{ selectedVisit.vitals.weight }} kg</b></span>
                     </div>
                 </div>
 
@@ -697,5 +720,23 @@ export class PatientDetailsComponent implements OnInit {
                 type: 'error'
             });
         }
+    }
+
+    hasBp(v: any): boolean {
+        return Boolean(v && this.isVitalPresent(v.systolic_bp) && this.isVitalPresent(v.diastolic_bp));
+    }
+
+    isVitalPresent(val: unknown): boolean {
+        return val !== null && val !== undefined && val !== '' && !Number.isNaN(val);
+    }
+
+    hasVitalsToDisplay(v: any): boolean {
+        if (!v) return false;
+        return this.hasBp(v) ||
+            this.isVitalPresent(v.pulse) ||
+            this.isVitalPresent(v.temperature) ||
+            this.isVitalPresent(v.spo2) ||
+            this.isVitalPresent(v.weight) ||
+            this.isVitalPresent(v.height);
     }
 }
