@@ -144,6 +144,8 @@ export class QueueComponent implements OnInit, OnDestroy {
     {
       headerName: 'Urgency / Triage', flex: 1.2, minWidth: 150,
       valueGetter: (params: any) => this.getItemUrgency(params.data),
+      // Clinical severity order, not lexical: immediate > urgent > priority > routine.
+      comparator: (a: any, b: any) => this.urgencyRank(a) - this.urgencyRank(b),
       cellRenderer: (params: any) => {
         const level = String(params.value || 'routine');
         const badge = level === 'immediate' ? 'badge-error text-white animate-pulse'
@@ -156,7 +158,7 @@ export class QueueComponent implements OnInit, OnDestroy {
       }
     },
     {
-      headerName: 'Patient Details', flex: 2, minWidth: 220,
+      headerName: 'Patient Details', field: 'patient_name', flex: 2, minWidth: 220,
       cellRenderer: (params: any) => {
         const item = params.data;
         if (!item) return '';
@@ -250,6 +252,15 @@ export class QueueComponent implements OnInit, OnDestroy {
     if (item?.priority === 3) return 'urgent';
     if (item?.priority === 2) return 'priority';
     return 'routine';
+  }
+
+  private urgencyRank(level: unknown): number {
+    switch (String(level || '').toLowerCase()) {
+      case 'immediate': return 4;
+      case 'urgent': return 3;
+      case 'priority': return 2;
+      default: return 1;
+    }
   }
 
   async refreshQueue() {

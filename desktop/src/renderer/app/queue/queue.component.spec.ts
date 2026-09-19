@@ -392,4 +392,16 @@ describe('QueueComponent', () => {
         expect(html).toContain('Resume Consult');
         expect(html).not.toContain('Triage');
     });
+
+    it('ranks urgency clinically rather than lexically', () => {
+        const urgencyCol: any = component.queueColumnDefs[0];
+        const levels = ['routine', 'urgent', 'immediate', 'priority'];
+        expect([...levels].sort((a, b) => urgencyCol.comparator(a, b)))
+            .toEqual(['routine', 'priority', 'urgent', 'immediate']);
+    });
+
+    it('exposes patient names for grid sort and filter', () => {
+        const patientCol: any = component.queueColumnDefs[1];
+        expect(patientCol.field).toBe('patient_name');
+    });
 });
