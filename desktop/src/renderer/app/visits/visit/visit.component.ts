@@ -40,10 +40,10 @@ interface Visit {
     <div class="flex h-full bg-gray-50 font-sans overflow-hidden relative">
       
       <!-- Mobile Backdrop -->
-      <div *ngIf="showMobileHistory" (click)="showMobileHistory = false" class="fixed inset-0 bg-black/50 z-40 md:hidden glass"></div>
+      <div *ngIf="showMobileHistory" (click)="showMobileHistory = false" class="fixed inset-0 bg-black/50 z-40 md:hidden"></div>
 
       <!-- Left Panel: History & Context (Responsive Drawer) -->
-      <div class="fixed inset-y-0 left-0 z-50 w-80 bg-white border-r border-gray-200 flex flex-col h-full shadow-2xl transition-transform duration-300 md:relative md:translate-x-0 md:shadow-none"
+      <div class="fixed inset-y-0 left-0 z-50 w-80 bg-white border-r border-gray-200 flex flex-col h-full shadow-lg transition-transform duration-300 md:relative md:translate-x-0 md:shadow-none"
            [class.translate-x-0]="showMobileHistory"
            [class.-translate-x-full]="!showMobileHistory">
         
@@ -59,8 +59,8 @@ interface Visit {
             </div>
           </div>
           <!-- Close Drawer Button (Mobile Only) -->
-           <button (click)="showMobileHistory = false" class="md:hidden text-gray-500 p-1">
-             ✕
+           <button (click)="showMobileHistory = false" class="md:hidden text-gray-500 p-1" aria-label="Close history">
+             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
            </button>
         </div>
 
@@ -82,20 +82,20 @@ interface Visit {
                  <div *ngFor="let med of history[0].prescription | slice:0:3">
                     • {{ med.medicine }}
                  </div>
-                 <div *ngIf="(history[0].prescription?.length || 0) > 3" class="text-gray-400 italic">+ more</div>
+                 <div *ngIf="(history[0].prescription?.length || 0) > 3" class="text-gray-500 italic">+ more</div>
               </div>
 
               <!-- COPY ACTION -->
               <button *ngIf="canEditChart" (click)="copyLastVisit()" class="w-full py-1.5 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded hover:bg-blue-100 hover:text-blue-900 transition flex items-center justify-center gap-2 shadow-sm">
-                <span>📋</span> Copy to Current
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.472 48.472 0 0 1 1.927-.184" /></svg><span>Copy to Current</span>
               </button>
            </div>
            <ng-template #noHistory>
-              <div class="text-center py-8 text-gray-400 text-sm italic">No previous visits.</div>
+              <div class="text-center py-8 text-gray-500 text-sm italic">No previous visits.</div>
            </ng-template>
 
            <!-- Divider -->
-           <div *ngIf="history.length > 1" class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-4 mb-2 px-1">Older History</div>
+           <div *ngIf="history.length > 1" class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-2 px-1">Older History</div>
 
            <!-- Older items -->
            <div *ngFor="let visit of history | slice:1" (click)="editVisit(visit)"
@@ -152,76 +152,76 @@ interface Visit {
               <form [formGroup]="visitForm" class="space-y-6">
                  
                  <!-- PATIENT CLINICAL SAFETY CONTEXT BANNER -->
-                 <div class="rounded-xl border p-4 shadow-sm"
+                 <div class="rounded-lg border p-4 shadow-sm"
                       [ngClass]="patientSafetyContext?.has_active_allergies ? 'bg-red-50/70 border-red-200' : 'bg-white border-gray-200'">
-                     <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                     <div class="flex flex-wrap items-center justify-between gap-2">
                          <div class="flex items-center gap-2">
-                             <span class="text-base">🛡️</span>
+                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
                              <span class="font-bold text-xs text-gray-700 uppercase tracking-wider">Patient Safety Context</span>
                          </div>
                          <div class="flex items-center gap-2">
                              <span *ngIf="patientSafetyContext?.has_active_allergies" 
                                    class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white flex items-center gap-1 shadow-sm">
-                                 <span>⚠️</span>
+                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
                                  <span>{{ patientSafetyContext.active_allergies.length }} Active {{ patientSafetyContext.active_allergies.length === 1 ? 'Allergy' : 'Allergies' }}</span>
                                  <span *ngIf="patientSafetyContext.has_life_threatening_allergies" class="ml-1 uppercase text-[10px] bg-red-900 text-red-100 px-1 rounded">High Risk</span>
                              </span>
                              <span *ngIf="patientSafetyContext && !patientSafetyContext.has_active_allergies" 
-                                   class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 flex items-center gap-1">
-                                 <span>✓</span> No Known Allergies
+                                   class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 flex items-center gap-1">
+                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg><span>No Known Allergies</span>
                              </span>
                          </div>
                      </div>
 
-                     <!-- Active Safety Details -->
-                     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                     <!-- Active Safety Details: flat groups on the banner surface, dividers not boxes -->
+                     <div class="mt-3 pt-3 border-t border-gray-200 grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-0 md:divide-x md:divide-gray-200 text-xs">
                          <!-- Active Allergies List -->
-                         <div class="p-2.5 rounded-lg border bg-white/90" [class.border-red-200]="patientSafetyContext?.has_active_allergies" [class.border-gray-100]="!patientSafetyContext?.has_active_allergies">
-                             <div class="font-bold text-gray-700 uppercase tracking-wider text-[10px] mb-1">Known Allergies</div>
+                         <div class="md:pr-4">
+                             <div class="font-bold text-gray-700 uppercase tracking-wider text-[10px] mb-1.5">Known Allergies</div>
                              <div *ngIf="patientSafetyContext?.active_allergies?.length; else noActiveAllergies" class="flex flex-wrap gap-1">
-                                 <span *ngFor="let a of patientSafetyContext.active_allergies" 
+                                 <span *ngFor="let a of patientSafetyContext.active_allergies"
                                        class="px-2 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-800 border border-red-200"
                                        [title]="(a.reaction ? 'Reaction: ' + a.reaction : '') + (a.criticality ? ' (' + a.criticality + ' criticality)' : '')">
                                      {{ a.substance }}
                                  </span>
                              </div>
                              <ng-template #noActiveAllergies>
-                                 <div class="text-gray-400 italic">None recorded</div>
+                                 <div class="text-gray-500 italic">None recorded</div>
                              </ng-template>
                          </div>
 
                          <!-- Active Problem List -->
-                         <div class="p-2.5 rounded-lg border bg-white/90 border-gray-100">
-                             <div class="font-bold text-gray-700 uppercase tracking-wider text-[10px] mb-1">Active Problems</div>
+                         <div class="md:px-4">
+                             <div class="font-bold text-gray-700 uppercase tracking-wider text-[10px] mb-1.5">Active Problems</div>
                              <div *ngIf="patientSafetyContext?.active_conditions?.length; else noActiveConditions" class="flex flex-wrap gap-1">
-                                 <span *ngFor="let c of patientSafetyContext.active_conditions" 
+                                 <span *ngFor="let c of patientSafetyContext.active_conditions"
                                        class="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200">
                                      {{ c.condition_name }}
                                  </span>
                              </div>
                              <ng-template #noActiveConditions>
-                                 <div class="text-gray-400 italic">None recorded</div>
+                                 <div class="text-gray-500 italic">None recorded</div>
                              </ng-template>
                          </div>
 
                          <!-- Current Medications -->
-                         <div class="p-2.5 rounded-lg border bg-white/90 border-gray-100">
-                             <div class="font-bold text-gray-700 uppercase tracking-wider text-[10px] mb-1">Current Medications</div>
+                         <div class="md:pl-4">
+                             <div class="font-bold text-gray-700 uppercase tracking-wider text-[10px] mb-1.5">Current Medications</div>
                              <div *ngIf="patientSafetyContext?.active_medications?.length; else noActiveMeds" class="flex flex-wrap gap-1">
-                                 <span *ngFor="let m of patientSafetyContext.active_medications" 
+                                 <span *ngFor="let m of patientSafetyContext.active_medications"
                                        class="px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-900 border border-blue-200">
                                      {{ m.medicine_name }} <span *ngIf="m.dosage" class="text-[10px] text-blue-700">({{ m.dosage }})</span>
                                  </span>
                              </div>
                              <ng-template #noActiveMeds>
-                                 <div class="text-gray-400 italic">None recorded</div>
+                                 <div class="text-gray-500 italic">None recorded</div>
                              </ng-template>
                          </div>
                      </div>
                  </div>
 
                  <!-- SECTION 1: SUBJECTIVE -->
-                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 mb-4 text-gray-800">
                         <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">S</div>
                         <h3 class="text-lg font-bold">Subjective</h3>
@@ -231,10 +231,10 @@ interface Visit {
                  </div>
 
                  <!-- SECTION 2: OBJECTIVE -->
-                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
                         <div class="flex items-center gap-3 text-gray-800">
-                            <div class="w-8 h-8 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center font-bold text-sm">O</div>
+                            <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">O</div>
                             <h3 class="text-lg font-bold">Objective</h3>
                         </div>
                         <!-- Vitals Pill & Actions -->
@@ -242,31 +242,30 @@ interface Visit {
                             <div *ngIf="hasVitalsToDisplay(patientVitals)" 
                                  (click)="openVitalsModal()"
                                  title="Click to view or amend vitals"
-                                 class="bg-teal-50 text-teal-800 text-xs px-3 py-1.5 rounded-full font-medium border border-teal-100 flex flex-wrap items-center gap-2.5 cursor-pointer hover:bg-teal-100 transition">
+                                 class="bg-blue-50 text-blue-800 text-xs px-3 py-1.5 rounded-full font-medium border border-blue-200 flex flex-wrap items-center gap-2.5 cursor-pointer hover:bg-blue-100 transition">
                                 <span *ngIf="hasBp(patientVitals)">BP: <b>{{ patientVitals.systolic_bp }}/{{ patientVitals.diastolic_bp }}</b></span>
                                 <span *ngIf="isVitalPresent(patientVitals.pulse)">Pulse: <b>{{ patientVitals.pulse }}</b></span>
                                 <span *ngIf="isVitalPresent(patientVitals.temperature)">Temp: <b>{{ patientVitals.temperature }}</b></span>
                                 <span *ngIf="isVitalPresent(patientVitals.spo2)">SpO2: <b>{{ patientVitals.spo2 }}%</b></span>
-                                <span *ngIf="patientVitals.status === 'amended'" class="text-[10px] bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded font-bold">Amended</span>
-                                <span *ngIf="canEditChart" class="text-teal-600 font-bold ml-1 text-xs">✎</span>
+                                <span *ngIf="patientVitals.status === 'amended'" class="text-[10px] bg-blue-200 text-blue-900 px-1.5 py-0.5 rounded font-bold">Amended</span>
                             </div>
 
                             <button *ngIf="!hasVitalsToDisplay(patientVitals) && canEditChart" 
                                     type="button" 
                                     (click)="openVitalsModal()"
-                                    class="text-xs text-teal-700 hover:text-teal-900 border border-teal-200 hover:border-teal-400 bg-teal-50 px-2.5 py-1 rounded-full flex items-center gap-1 font-medium transition">
+                                    class="text-xs text-blue-700 hover:text-blue-900 border border-blue-200 hover:border-blue-400 bg-blue-50 px-2.5 py-1 rounded-full flex items-center gap-1 font-medium transition">
                                 <span>+ Record Vitals</span>
                             </button>
                         </div>
                     </div>
                     <textarea formControlName="examination_notes" rows="3" placeholder="Physical exam findings, labs, observations..." 
-                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition text-gray-700 placeholder-gray-400"></textarea>
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-gray-700 placeholder-gray-400"></textarea>
                  </div>
 
                  <!-- SECTION 3: ASSESSMENT -->
-                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-purple-500">
+                 <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 mb-4 text-gray-800">
-                        <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm">A</div>
+                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">A</div>
                         <h3 class="text-lg font-bold">Assessment</h3>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -296,9 +295,9 @@ interface Visit {
                  </div>
 
                  <!-- SECTION 4: PLAN (Rx) -->
-                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 mb-4 text-gray-800">
-                        <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">P</div>
+                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">P</div>
                         <h3 class="text-lg font-bold">Plan & Rx</h3>
                     </div>
                     
@@ -330,7 +329,7 @@ interface Visit {
                  Print
                </button>
                <button *ngIf="isLiveConsultation" type="button" (click)="postponeConsult()" class="px-4 py-2 rounded text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50 font-medium transition flex-1 md:flex-none justify-center">
-                 ⏸ Postpone
+                  Postpone
                </button>
             </div>
 
@@ -348,7 +347,7 @@ interface Visit {
 
                    <!-- HERO ACTION: FINISH & NEXT -->
                    <button *ngIf="isLiveConsultation" type="button" (click)="finishAndNext()" [disabled]="!visitForm.valid || actionInFlight" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2">
-                     <span>✓ Finish & Next</span> 
+                     <span>Finish & Next</span> 
                    </button>
                    
                    <button *ngIf="editingVisitId" (click)="saveVisit()" [disabled]="!visitForm.valid" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 text-white font-bold hover:bg-blue-700 transition disabled:opacity-50 shadow-sm">
@@ -357,7 +356,7 @@ interface Visit {
                </ng-container>
 
                 <ng-template #noConsult>
-                    <div class="text-sm text-gray-400 italic">Read-only mode</div>
+                    <div class="text-sm text-gray-500 italic">Read-only mode</div>
                 </ng-template>
              </div>
          </div>
@@ -374,14 +373,14 @@ interface Visit {
       </app-vitals-form>
 
       <!-- Allergy Conflict Modal -->
-      <div *ngIf="showAllergyOverrideModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col border border-red-200">
+      <div *ngIf="showAllergyOverrideModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-lg w-full max-w-lg overflow-hidden flex flex-col border border-red-200">
             <div class="bg-red-50 border-b border-red-100 px-6 py-4 flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <span class="text-xl">⚠️</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-red-700"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
                     <h3 class="text-base font-bold text-red-800">Prescribing Allergy Alert</h3>
                 </div>
-                <button (click)="cancelAllergyOverride()" class="text-gray-400 hover:text-gray-600">✕</button>
+                <button (click)="cancelAllergyOverride()" class="text-gray-500 hover:text-gray-600" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg></button>
             </div>
             <div class="p-6 space-y-4">
                 <p class="text-sm text-gray-700">
@@ -512,6 +511,17 @@ export class VisitComponent implements OnInit {
 
   get canEditChart(): boolean {
     return this.chartWritable && !this.activeEncounterReadOnly && (this.isConsulting || this.editingVisitId != null);
+  }
+
+  // Admins consult as scribes: the encounter is attributed to them (author_id)
+  // while clinical responsibility stays with a licensed doctor (doctor_id),
+  // preserving practitioner provenance and the license snapshot.
+  // Mirrors the queue's Start Consult flow.
+  private async resolveResponsibleDoctorId(): Promise<number | undefined> {
+    if (this.currentUser?.role !== 'admin') return undefined;
+    const doctors = await this.dataService.invoke<any[]>('getDoctors').catch(() => []);
+    if (doctors && doctors.length > 0) return doctors[0].id;
+    return undefined;
   }
 
   private setChartWritable(writable: boolean) {
@@ -650,10 +660,12 @@ export class VisitComponent implements OnInit {
         const queueEntry = queue.find(item => item.patient_id === this.patientId && item.status === 'waiting');
         if (!queueEntry) throw new Error('Patient does not have a waiting queue entry');
         this.startRequestId ||= newRequestId();
+        const doctorId = await this.resolveResponsibleDoctorId();
         const encounter = await this.dataService.invoke<any>('beginConsultation', {
           patientId: this.patientId,
           queueEntryId: queueEntry.id,
-          startRequestId: this.startRequestId
+          startRequestId: this.startRequestId,
+          ...(doctorId ? { doctorId } : {})
         });
         this.consultationStartPending = false;
         this.startRequestId = null;
@@ -876,8 +888,10 @@ export class VisitComponent implements OnInit {
     try {
       if (await this.completeConsult(false)) {
         this.nextStartRequestId ||= newRequestId();
+        const nextDoctorId = await this.resolveResponsibleDoctorId();
         const nextEncounter = await this.dataService.invoke<any>('beginNextConsultation', {
-          startRequestId: this.nextStartRequestId
+          startRequestId: this.nextStartRequestId,
+          ...(nextDoctorId ? { doctorId: nextDoctorId } : {})
         });
         this.nextStartRequestId = null;
         if (nextEncounter) {

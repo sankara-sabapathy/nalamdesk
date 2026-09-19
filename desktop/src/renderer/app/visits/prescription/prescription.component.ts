@@ -14,14 +14,23 @@ import { DataService } from '../../services/api.service';
         <h3 class="card-title text-sm mb-2">Prescription</h3>
         
         <!-- Header (Desktop Only) -->
-        <!-- Optional: Add headers for columns on desktop for clarity, skipping for now to keep simple -->
+        <!-- Column labels aligned to the row grid below so doctors can scan at a glance -->
+        <div *ngIf="items().length > 0" class="hidden md:grid grid-cols-12 gap-2 px-1 pb-1 text-[11px] font-bold uppercase tracking-wider text-gray-500" aria-hidden="true">
+          <div class="md:col-span-3">Medicine</div>
+          <div class="md:col-span-1">Form</div>
+          <div class="md:col-span-1">Dose</div>
+          <div class="md:col-span-1">Route</div>
+          <div class="md:col-span-2">Frequency</div>
+          <div class="md:col-span-2">Duration</div>
+          <div class="md:col-span-2">Instructions</div>
+        </div>
 
-        <div class="grid grid-cols-12 gap-2 mb-3 md:mb-2 items-start md:items-center bg-gray-50 md:bg-transparent p-3 md:p-0 rounded-lg md:rounded-none relative border md:border-none border-gray-100" 
-             *ngFor="let item of items(); let i = index">
+        <div class="grid grid-cols-12 gap-2 mb-3 md:mb-2 items-start md:items-center bg-gray-50 md:bg-transparent p-3 md:p-0 rounded-lg md:rounded-none relative border md:border-none border-gray-100"
+             *ngFor="let item of items(); let i = index; trackBy: trackByLine">
           
           <!-- Mobile Delete (Absolute Top Right) -->
-          <button class="md:hidden absolute top-1 right-1 btn btn-xs btn-ghost text-error" (click)="remove(i)" [disabled]="disabled">
-              ✕
+          <button class="md:hidden absolute top-1 right-1 btn btn-xs btn-ghost text-error" (click)="remove(i)" [disabled]="disabled" aria-label="Remove medicine">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
           </button>
 
           <!-- 1. Medicine (Full Width on Mobile) -->
@@ -42,7 +51,7 @@ import { DataService } from '../../services/api.service';
           <!-- 2. Form (1/3 Mobile) -->
           <div class="col-span-4 md:col-span-1">
              <span class="text-xs text-gray-500 md:hidden">Form</span>
-             <select [(ngModel)]="item.form" (ngModelChange)="emitChange()" [disabled]="disabled" class="select select-bordered select-sm w-full px-1">
+             <select [(ngModel)]="item.form" (ngModelChange)="emitChange()" [disabled]="disabled" aria-label="Dosage form" class="select select-bordered select-sm w-full px-1">
                <option value="Tab">Tab</option>
                <option value="Cap">Cap</option>
                <option value="Syr">Syr</option>
@@ -55,7 +64,7 @@ import { DataService } from '../../services/api.service';
           <!-- 3. Dosage (1/3 Mobile) -->
            <div class="col-span-4 md:col-span-1">
             <span class="text-xs text-gray-500 md:hidden">Dose</span>
-            <input type="text" placeholder="500mg" 
+            <input type="text" placeholder="500mg" aria-label="Dosage"
                    [(ngModel)]="item.dosage" (ngModelChange)="emitChange()"
                    [disabled]="disabled"
                    class="input input-bordered input-sm w-full px-1" />
@@ -64,7 +73,7 @@ import { DataService } from '../../services/api.service';
           <!-- 4. Route (1/3 Mobile) -->
           <div class="col-span-4 md:col-span-1">
              <span class="text-xs text-gray-500 md:hidden">Route</span>
-             <select [(ngModel)]="item.route" (ngModelChange)="emitChange()" [disabled]="disabled" class="select select-bordered select-sm w-full px-1">
+             <select [(ngModel)]="item.route" (ngModelChange)="emitChange()" [disabled]="disabled" aria-label="Route of administration" class="select select-bordered select-sm w-full px-1">
                <option value="Oral">Oral</option>
                <option value="IV">IV</option>
                <option value="IM">IM</option>
@@ -76,7 +85,7 @@ import { DataService } from '../../services/api.service';
           <!-- 5. Frequency (1/2 Mobile) -->
           <div class="col-span-6 md:col-span-2">
             <span class="text-xs text-gray-500 md:hidden">Frequency</span>
-            <select [(ngModel)]="item.frequency" (ngModelChange)="emitChange()" [disabled]="disabled" class="select select-bordered select-sm w-full">
+            <select [(ngModel)]="item.frequency" (ngModelChange)="emitChange()" [disabled]="disabled" aria-label="Frequency" class="select select-bordered select-sm w-full">
               <option value="1-0-1">1-0-1 (BID)</option>
               <option value="1-1-1">1-1-1 (TID)</option>
               <option value="1-0-0">1-0-0 (OD)</option>
@@ -90,7 +99,7 @@ import { DataService } from '../../services/api.service';
           <!-- 6. Duration (1/2 Mobile) -->
           <div class="col-span-6 md:col-span-2">
             <span class="text-xs text-gray-500 md:hidden">Duration</span>
-            <input type="text" placeholder="3 days" 
+            <input type="text" placeholder="3 days" aria-label="Duration"
                    [(ngModel)]="item.duration" (ngModelChange)="emitChange()"
                    [disabled]="disabled"
                    class="input input-bordered input-sm w-full" />
@@ -100,7 +109,7 @@ import { DataService } from '../../services/api.service';
           <div class="col-span-12 md:col-span-2 flex gap-1 items-end">
             <div class="w-full">
                 <span class="text-xs text-gray-500 md:hidden">Instruction</span>
-                <select [(ngModel)]="item.instruction" (ngModelChange)="emitChange()" [disabled]="disabled" class="select select-bordered select-sm w-full px-1">
+                <select [(ngModel)]="item.instruction" (ngModelChange)="emitChange()" [disabled]="disabled" aria-label="Instructions" class="select select-bordered select-sm w-full px-1">
                     <option value="After Food">After Food</option>
                     <option value="Before Food">Before Food</option>
                     <option value="With Food">With Food</option>
@@ -108,8 +117,8 @@ import { DataService } from '../../services/api.service';
                 </select>
             </div>
             
-            <button class="hidden md:flex btn btn-sm btn-square btn-ghost text-error" (click)="remove(i)" [disabled]="disabled">
-              ✕
+            <button class="hidden md:flex btn btn-sm btn-square btn-ghost text-error" (click)="remove(i)" [disabled]="disabled" aria-label="Remove medicine">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
             </button>
           </div>
         </div>
@@ -143,6 +152,13 @@ export class PrescriptionComponent {
   createMedicine = (name: string) => this.dataService
     ? this.dataService.invoke('createMedicine', { name })
     : Promise.resolve({ id: 0, name });
+
+  trackByLine(index: number): number {
+    // Identity-stable rows: patchLine() replaces the line object on every
+    // keystroke, so without this Angular recreates the row DOM (and the
+    // typeahead input inside it) and the field loses focus after one char.
+    return index;
+  }
 
   add() {
     if (this.disabled) return;

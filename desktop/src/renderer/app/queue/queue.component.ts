@@ -23,7 +23,7 @@ import { DialogService } from '../shared/services/dialog.service';
                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
              </button>
              <div>
-               <h1 class="text-3xl font-bold text-blue-900">Patient Queue</h1>
+               <h1 class="text-2xl font-bold text-gray-800">Patient Queue</h1>
                <p class="text-gray-600">Actionable clinical triage and consultations</p>
              </div>
            </div>
@@ -37,7 +37,7 @@ import { DialogService } from '../shared/services/dialog.service';
         </div>
 
         <!-- Main Card (Flex child takes remaining height) -->
-        <div class="card bg-white shadow-xl border border-gray-200 flex-1 overflow-hidden flex flex-col">
+        <div class="card bg-white shadow-sm border border-gray-200 flex-1 overflow-hidden flex flex-col">
           <div class="card-body p-0 flex-1 overflow-y-auto relative">
             <div class="overflow-x-auto">
               <table class="table table-lg">
@@ -59,8 +59,8 @@ import { DialogService } from '../shared/services/dialog.service';
                           <span class="badge badge-sm font-bold uppercase tracking-wider"
                                 [ngClass]="{
                                   'badge-error text-white animate-pulse': item.urgency === 'immediate',
-                                  'badge-warning text-white': item.urgency === 'urgent',
-                                  'badge-info text-white': item.urgency === 'priority',
+                                  'badge-warning': item.urgency === 'urgent',
+                                  'badge-info': item.urgency === 'priority',
                                   'badge-ghost text-gray-700': item.urgency === 'routine' || !item.urgency
                                 }">
                             {{ getItemUrgency(item) }}
@@ -136,8 +136,8 @@ import { DialogService } from '../shared/services/dialog.service';
                         </button>
                       </div>
                       <!-- Mobile fallback or always visible action if hover isn't reliable -->
-                      <button (click)="startConsult(item)" class="btn btn-circle btn-sm btn-primary md:hidden">
-                        ▶
+                      <button (click)="startConsult(item)" class="btn btn-circle btn-sm btn-primary md:hidden" aria-label="Start consultation">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
                       </button>
                     </td>
                   </tr>
@@ -162,7 +162,7 @@ import { DialogService } from '../shared/services/dialog.service';
       <!-- Reassess Triage Modal -->
       <div *ngIf="showTriageModal" class="modal modal-open">
         <div class="modal-box max-w-lg">
-          <h3 class="font-bold text-lg flex items-center gap-2 text-blue-900">
+          <h3 class="font-bold text-lg flex items-center gap-2 text-gray-800">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
             Triage Reassessment: {{ selectedQueueItem?.patient_name }}
           </h3>
@@ -180,13 +180,13 @@ import { DialogService } from '../shared/services/dialog.service';
               <button type="button" 
                       (click)="selectedUrgency = 'urgent'" 
                       class="btn btn-sm"
-                      [ngClass]="selectedUrgency === 'urgent' ? 'btn-warning text-white' : 'btn-outline btn-warning'">
+                      [ngClass]="selectedUrgency === 'urgent' ? 'btn-warning' : 'btn-outline btn-warning'">
                 Urgent (Orange)
               </button>
               <button type="button" 
                       (click)="selectedUrgency = 'priority'" 
                       class="btn btn-sm"
-                      [ngClass]="selectedUrgency === 'priority' ? 'btn-info text-white' : 'btn-outline btn-info'">
+                      [ngClass]="selectedUrgency === 'priority' ? 'btn-info' : 'btn-outline btn-info'">
                 Priority (Yellow)
               </button>
               <button type="button" 
@@ -212,10 +212,10 @@ import { DialogService } from '../shared/services/dialog.service';
             <div class="max-h-32 overflow-y-auto space-y-2 text-xs">
               <div *ngFor="let h of triageHistory" class="p-2 bg-gray-100 rounded flex justify-between items-start">
                 <div>
-                  <span class="font-bold uppercase text-blue-800">{{ h.new_urgency || h.urgency_label }}</span>
+                  <span class="font-bold uppercase text-blue-700">{{ h.new_urgency || h.urgency_label }}</span>
                   <span class="text-gray-600 ml-1">- {{ h.reason }}</span>
                 </div>
-                <div class="text-gray-400 text-right shrink-0 ml-2">
+                <div class="text-gray-500 text-right shrink-0 ml-2">
                   <div>{{ h.assessor_name || 'Staff' }}</div>
                   <div>{{ h.created_at | date:'shortTime' }}</div>
                 </div>

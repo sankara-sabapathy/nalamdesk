@@ -21,7 +21,7 @@ export interface CatalogPick {
              [placeholder]="placeholder"
              [disabled]="disabled"
              [attr.data-testid]="testId"
-             class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 outline-none font-medium" />
+             class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none font-medium" />
       <div *ngIf="open && !disabled" class="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded shadow-lg max-h-48 overflow-y-auto">
         <button type="button" *ngFor="let hit of hits"
                 class="block w-full text-left px-3 py-2 text-sm hover:bg-blue-50"

@@ -42,7 +42,7 @@ export const bloodPressurePairValidator: ValidatorFn = (control: AbstractControl
     imports: [CommonModule, ReactiveFormsModule],
     template: `
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div class="bg-white rounded-xl p-6 w-full max-w-xl shadow-2xl max-h-[95vh] overflow-y-auto">
+      <div class="bg-white rounded-lg p-6 w-full max-w-xl shadow-lg max-h-[95vh] overflow-y-auto">
         <div class="flex justify-between items-center mb-4 border-b pb-3">
             <div>
                 <h2 class="text-xl font-bold text-gray-800">{{ isAmending ? 'Amend Vitals Observation' : 'Record Vitals' }}</h2>
@@ -50,22 +50,22 @@ export const bloodPressurePairValidator: ValidatorFn = (control: AbstractControl
                     {{ isAmending ? 'Correcting previously recorded vital signs without erasing chart history.' : 'Enter physiological observations for this encounter.' }}
                 </p>
             </div>
-            <button type="button" (click)="cancel()" class="text-gray-400 hover:text-gray-600 rounded-full w-8 h-8 flex items-center justify-center hover:bg-gray-100">✕</button>
+            <button type="button" (click)="cancel()" class="text-gray-500 hover:text-gray-600 rounded-full w-8 h-8 flex items-center justify-center hover:bg-gray-100" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg></button>
         </div>
         
         <!-- Validation Error Banner -->
         <div *ngIf="formSubmitted && vitalsForm.errors?.['allEmpty']" class="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg flex items-center gap-2">
-            <span>⚠️</span>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
             <span>At least one vital sign measurement is required to save.</span>
         </div>
 
         <div *ngIf="vitalsForm.errors?.['bpIncomplete']" class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-2">
-            <span>⚠️</span>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
             <span>Both systolic and diastolic blood pressure must be provided together.</span>
         </div>
 
         <div *ngIf="vitalsForm.errors?.['bpInvalidRelation']" class="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-2">
-            <span>⚠️</span>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 shrink-0"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
             <span>Systolic BP must be strictly greater than Diastolic BP.</span>
         </div>
 
@@ -74,7 +74,7 @@ export const bloodPressurePairValidator: ValidatorFn = (control: AbstractControl
                 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Height (cm)</label>
-                    <input type="number" formControlName="height" placeholder="e.g. 170" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <input type="number" formControlName="height" placeholder="e.g. 170" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     <p *ngIf="vitalsForm.get('height')?.errors?.['min'] || vitalsForm.get('height')?.errors?.['max']" class="text-xs text-red-500 mt-1">20 - 300 cm</p>
                 </div>
                 <div>
@@ -82,16 +82,16 @@ export const bloodPressurePairValidator: ValidatorFn = (control: AbstractControl
                         <label class="block text-sm font-medium text-gray-700">Weight</label>
                         <div class="inline-flex rounded-md shadow-sm text-xs" role="group">
                             <button type="button" (click)="toggleWeightUnit('kg')" 
-                                    [class.bg-teal-600]="weightUnit === 'kg'" [class.text-white]="weightUnit === 'kg'"
+                                    [class.bg-blue-600]="weightUnit === 'kg'" [class.text-white]="weightUnit === 'kg'"
                                     [class.bg-gray-100]="weightUnit !== 'kg'" [class.text-gray-700]="weightUnit !== 'kg'"
                                     class="px-2 py-0.5 rounded-l border border-gray-300 font-medium transition">kg</button>
                             <button type="button" (click)="toggleWeightUnit('lbs')" 
-                                    [class.bg-teal-600]="weightUnit === 'lbs'" [class.text-white]="weightUnit === 'lbs'"
+                                    [class.bg-blue-600]="weightUnit === 'lbs'" [class.text-white]="weightUnit === 'lbs'"
                                     [class.bg-gray-100]="weightUnit !== 'lbs'" [class.text-gray-700]="weightUnit !== 'lbs'"
                                     class="px-2 py-0.5 rounded-r border-t border-b border-r border-gray-300 font-medium transition">lbs</button>
                         </div>
                     </div>
-                    <input type="number" step="0.1" formControlName="weight" [placeholder]="weightUnit === 'kg' ? 'e.g. 70' : 'e.g. 154'" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <input type="number" step="0.1" formControlName="weight" [placeholder]="weightUnit === 'kg' ? 'e.g. 70' : 'e.g. 154'" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     <p *ngIf="vitalsForm.get('weight')?.errors?.['min'] || vitalsForm.get('weight')?.errors?.['max']" class="text-xs text-red-500 mt-1">
                         {{ weightUnit === 'kg' ? '0.5 - 500 kg' : '1.1 - 1100 lbs' }}
                     </p>
@@ -106,16 +106,16 @@ export const bloodPressurePairValidator: ValidatorFn = (control: AbstractControl
                         <label class="block text-sm font-medium text-gray-700">Temperature</label>
                         <div class="inline-flex rounded-md shadow-sm text-xs" role="group">
                             <button type="button" (click)="toggleTempUnit('°F')" 
-                                    [class.bg-teal-600]="tempUnit === '°F'" [class.text-white]="tempUnit === '°F'"
+                                    [class.bg-blue-600]="tempUnit === '°F'" [class.text-white]="tempUnit === '°F'"
                                     [class.bg-gray-100]="tempUnit !== '°F'" [class.text-gray-700]="tempUnit !== '°F'"
                                     class="px-2 py-0.5 rounded-l border border-gray-300 font-medium transition">°F</button>
                             <button type="button" (click)="toggleTempUnit('°C')" 
-                                    [class.bg-teal-600]="tempUnit === '°C'" [class.text-white]="tempUnit === '°C'"
+                                    [class.bg-blue-600]="tempUnit === '°C'" [class.text-white]="tempUnit === '°C'"
                                     [class.bg-gray-100]="tempUnit !== '°C'" [class.text-gray-700]="tempUnit !== '°C'"
                                     class="px-2 py-0.5 rounded-r border-t border-b border-r border-gray-300 font-medium transition">°C</button>
                         </div>
                     </div>
-                    <input type="number" step="0.1" formControlName="temperature" [placeholder]="tempUnit === '°F' ? 'e.g. 98.6' : 'e.g. 37.0'" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <input type="number" step="0.1" formControlName="temperature" [placeholder]="tempUnit === '°F' ? 'e.g. 98.6' : 'e.g. 37.0'" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     <p *ngIf="vitalsForm.get('temperature')?.errors?.['min'] || vitalsForm.get('temperature')?.errors?.['max']" class="text-xs text-red-500 mt-1">
                         {{ tempUnit === '°F' ? '50 - 115 °F' : '10 - 46.2 °C' }}
                     </p>
@@ -123,46 +123,46 @@ export const bloodPressurePairValidator: ValidatorFn = (control: AbstractControl
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Systolic BP (mmHg)</label>
-                    <input type="number" formControlName="systolic_bp" placeholder="e.g. 120" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <input type="number" formControlName="systolic_bp" placeholder="e.g. 120" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     <p *ngIf="vitalsForm.get('systolic_bp')?.errors?.['min'] || vitalsForm.get('systolic_bp')?.errors?.['max']" class="text-xs text-red-500 mt-1">50 - 300 mmHg</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Diastolic BP (mmHg)</label>
-                    <input type="number" formControlName="diastolic_bp" placeholder="e.g. 80" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <input type="number" formControlName="diastolic_bp" placeholder="e.g. 80" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     <p *ngIf="vitalsForm.get('diastolic_bp')?.errors?.['min'] || vitalsForm.get('diastolic_bp')?.errors?.['max']" class="text-xs text-red-500 mt-1">30 - 200 mmHg</p>
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Pulse (bpm)</label>
-                    <input type="number" formControlName="pulse" placeholder="e.g. 72" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <input type="number" formControlName="pulse" placeholder="e.g. 72" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     <p *ngIf="vitalsForm.get('pulse')?.errors?.['min'] || vitalsForm.get('pulse')?.errors?.['max']" class="text-xs text-red-500 mt-1">30 - 250 bpm</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">SpO2 (%)</label>
-                    <input type="number" formControlName="spo2" placeholder="e.g. 98" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <input type="number" formControlName="spo2" placeholder="e.g. 98" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     <p *ngIf="vitalsForm.get('spo2')?.errors?.['min'] || vitalsForm.get('spo2')?.errors?.['max']" class="text-xs text-red-500 mt-1">50 - 100 %</p>
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Respiratory Rate (bpm)</label>
-                    <input type="number" formControlName="respiratory_rate" placeholder="e.g. 16" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <input type="number" formControlName="respiratory_rate" placeholder="e.g. 16" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                     <p *ngIf="vitalsForm.get('respiratory_rate')?.errors?.['min'] || vitalsForm.get('respiratory_rate')?.errors?.['max']" class="text-xs text-red-500 mt-1">8 - 60 bpm</p>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Effective Date & Time</label>
-                    <input type="datetime-local" formControlName="effective_time" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none text-xs">
+                    <input type="datetime-local" formControlName="effective_time" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xs">
                 </div>
 
                 <!-- Amendment Reason when amending -->
                 <div *ngIf="isAmending" class="col-span-2">
                     <label class="block text-sm font-medium text-gray-700 mb-1">Amendment Reason <span class="text-red-500">*</span></label>
-                    <input type="text" formControlName="amendment_reason" placeholder="e.g. Re-measured resting BP after 15 mins" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none">
+                    <input type="text" formControlName="amendment_reason" placeholder="e.g. Re-measured resting BP after 15 mins" class="w-full border p-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
             </div>
 
             <div class="flex justify-end gap-2 mt-6 border-t pt-4">
                 <button type="button" (click)="cancel()" [disabled]="submitting" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
-                <button type="submit" [disabled]="vitalsForm.invalid || submitting" class="px-5 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium disabled:opacity-50 flex items-center gap-2">
+                <button type="submit" [disabled]="vitalsForm.invalid || submitting" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50 flex items-center gap-2">
                     <span *ngIf="submitting" class="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
                     <span>{{ submitting ? 'Saving...' : (isAmending ? 'Save Amendment' : 'Save Vitals') }}</span>
                 </button>
