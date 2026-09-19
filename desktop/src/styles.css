@@ -12408,16 +12408,16 @@ html:has(.drawer-toggle:checked) {
   height: calc(100vh - 150px);
 }
 
+.h-\[calc\(100vh-15rem\)\] {
+  height: calc(100vh - 15rem);
+}
+
 .h-\[calc\(100vh-200px\)\] {
   height: calc(100vh - 200px);
 }
 
 .h-full {
   height: 100%;
-}
-
-.h-\[calc\(100vh-15rem\)\] {
-  height: calc(100vh - 15rem);
 }
 
 .max-h-32 {
@@ -12430,6 +12430,10 @@ html:has(.drawer-toggle:checked) {
 
 .max-h-60 {
   max-height: 15rem;
+}
+
+.max-h-64 {
+  max-height: 16rem;
 }
 
 .max-h-\[250px\] {
@@ -12446,10 +12450,6 @@ html:has(.drawer-toggle:checked) {
 
 .max-h-\[95vh\] {
   max-height: 95vh;
-}
-
-.max-h-64 {
-  max-height: 16rem;
 }
 
 .min-h-0 {
