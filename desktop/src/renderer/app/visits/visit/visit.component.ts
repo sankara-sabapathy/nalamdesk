@@ -8,6 +8,7 @@ import { PrescriptionComponent } from '../../visits/prescription/prescription.co
 import { CatalogTypeaheadComponent } from '../../shared/components/catalog-typeahead/catalog-typeahead.component';
 import { AuthService } from '../../services/auth.service';
 import { DataService } from '../../services/api.service';
+import { DoctorPickService } from '../../shared/services/doctor-pick.service';
 import { newRequestId } from '../../services/request-id';
 import { combineLatest } from 'rxjs';
 import { VitalsFormComponent } from '../vitals/vitals-form.component';
@@ -462,7 +463,8 @@ export class VisitComponent implements OnInit {
     private ngZone: NgZone,
     private pdfService: PdfService,
     private dataService: DataService,
-    private authService: AuthService
+    private authService: AuthService,
+    private doctorPick?: DoctorPickService
   ) {
     const nav = this.router.getCurrentNavigation();
     const state = nav?.extras?.state || {};
@@ -516,12 +518,17 @@ export class VisitComponent implements OnInit {
   // Admins consult as scribes: the encounter is attributed to them (author_id)
   // while clinical responsibility stays with a licensed doctor (doctor_id),
   // preserving practitioner provenance and the license snapshot.
-  // Mirrors the queue's Start Consult flow.
-  private async resolveResponsibleDoctorId(): Promise<number | undefined> {
+  // Returns undefined for non-admins (no doctorId needed), a doctor id when
+  // resolved, or null when the admin cancelled or none exists (abort).
+  private async resolveResponsibleDoctorId(): Promise<number | null | undefined> {
     if (this.currentUser?.role !== 'admin') return undefined;
     const doctors = await this.dataService.invoke<any[]>('getDoctors').catch(() => []);
-    if (doctors && doctors.length > 0) return doctors[0].id;
-    return undefined;
+    if (!doctors || doctors.length === 0) {
+      alert('No active doctor on file. An admin consultation needs a licensed practitioner attached.');
+      return null;
+    }
+    if (doctors.length === 1 || !this.doctorPick) return doctors[0]?.id ?? null;
+    return this.doctorPick.request(doctors);
   }
 
   private setChartWritable(writable: boolean) {
@@ -661,6 +668,12 @@ export class VisitComponent implements OnInit {
         if (!queueEntry) throw new Error('Patient does not have a waiting queue entry');
         this.startRequestId ||= newRequestId();
         const doctorId = await this.resolveResponsibleDoctorId();
+        if (this.currentUser?.role === 'admin' && doctorId == null) {
+          this.consultationStartPending = false;
+          this.isConsulting = false;
+          this.setChartWritable(false);
+          return;
+        }
         const encounter = await this.dataService.invoke<any>('beginConsultation', {
           patientId: this.patientId,
           queueEntryId: queueEntry.id,
@@ -889,6 +902,10 @@ export class VisitComponent implements OnInit {
       if (await this.completeConsult(false)) {
         this.nextStartRequestId ||= newRequestId();
         const nextDoctorId = await this.resolveResponsibleDoctorId();
+        if (this.currentUser?.role === 'admin' && nextDoctorId == null) {
+          this.router.navigate(['/queue']);
+          return;
+        }
         const nextEncounter = await this.dataService.invoke<any>('beginNextConsultation', {
           startRequestId: this.nextStartRequestId,
           ...(nextDoctorId ? { doctorId: nextDoctorId } : {})

@@ -180,7 +180,7 @@ import { newRequestId } from '../../services/request-id';
 
         <!-- RIGHT COL: Tabbed Clinical Chart -->
         <div class="col-span-12 md:col-span-8">
-<div class="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full min-h-[360px]">
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-[calc(100vh-15rem)] min-h-[360px]">
                 <div class="px-6 py-3 border-b flex flex-wrap justify-between items-center bg-gray-50/50 rounded-t-lg gap-2">
                     <!-- Tabs -->
                     <div class="flex items-center gap-2">

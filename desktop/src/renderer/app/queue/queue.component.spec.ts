@@ -278,6 +278,39 @@ describe('QueueComponent', () => {
         }));
     });
 
+    it('lets admin pick the attending doctor when several are active', async () => {
+        mockAuthService.getUser.mockReturnValue({ role: 'admin', id: 99 });
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'getDoctors') return Promise.resolve([{ id: 10, name: 'Dr. A' }, { id: 11, name: 'Dr. B' }]);
+            if (endpoint === 'beginConsultation') return Promise.resolve({ id: 101, patient_id: 11 });
+            return Promise.resolve(null);
+        });
+        const mockPick = { request: vi.fn().mockResolvedValue(11) };
+        const picked = new QueueComponent(mockRouter, mockDataService, mockDialogService, mockAuthService, mockPick as any);
+
+        await picked.startConsult({ id: 1, patient_id: 11, patient_name: 'P1' });
+
+        expect(mockPick.request).toHaveBeenCalledWith(expect.arrayContaining([
+            expect.objectContaining({ id: 10 }), expect.objectContaining({ id: 11 })
+        ]));
+        expect(mockDataService.invoke).toHaveBeenCalledWith('beginConsultation', expect.objectContaining({ doctorId: 11 }));
+    });
+
+    it('aborts silently when admin cancels the attending picker', async () => {
+        mockAuthService.getUser.mockReturnValue({ role: 'admin', id: 99 });
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'getDoctors') return Promise.resolve([{ id: 10, name: 'Dr. A' }, { id: 11, name: 'Dr. B' }]);
+            return Promise.resolve(null);
+        });
+        const mockPick = { request: vi.fn().mockResolvedValue(null) };
+        const picked = new QueueComponent(mockRouter, mockDataService, mockDialogService, mockAuthService, mockPick as any);
+
+        await picked.startConsult({ id: 1, patient_id: 11, patient_name: 'P1' });
+
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('beginConsultation', expect.anything());
+        expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
     it('computes wait time string accurately', () => {
         expect(component.getWaitTime('')).toBe('');
         expect(component.getWaitTime('invalid-date')).toBe('');

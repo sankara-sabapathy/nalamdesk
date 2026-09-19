@@ -8,6 +8,7 @@ import { AuthService } from '../services/auth.service';
 import { VitalsFormComponent } from '../visits/vitals/vitals-form.component';
 import { newRequestId } from '../services/request-id';
 import { DialogService } from '../shared/services/dialog.service';
+import { DoctorPickService } from '../shared/services/doctor-pick.service';
 
 @Component({
   selector: 'app-queue',
@@ -252,7 +253,8 @@ export class QueueComponent implements OnInit, OnDestroy {
     private router: Router,
     private dataService: DataService,
     private dialogService: DialogService,
-    private authService?: AuthService
+    private authService?: AuthService,
+    private doctorPick?: DoctorPickService
   ) { }
 
   ngOnInit() {
@@ -298,9 +300,18 @@ export class QueueComponent implements OnInit, OnDestroy {
         const currentUser = this.authService?.getUser();
         if (currentUser?.role === 'admin') {
           const doctors = await this.dataService.invoke<any[]>('getDoctors').catch(() => []);
-          if (doctors && doctors.length > 0) {
-            doctorId = doctors[0].id;
+          if (!doctors || doctors.length === 0) {
+            await this.dialogService.open({
+              title: 'No responsible doctor',
+              message: 'No active doctor on file. An admin consultation needs a licensed practitioner attached.',
+              type: 'warning'
+            });
+            return;
           }
+          // One doctor -> deterministic; several -> the admin explicitly picks the attending.
+          const picked = this.doctorPick ? await this.doctorPick.request(doctors) : doctors[0]?.id ?? null;
+          if (picked == null) return;
+          doctorId = picked;
         }
         encounter = await this.dataService.invoke<any>('beginConsultation', {
           patientId: item.patient_id,

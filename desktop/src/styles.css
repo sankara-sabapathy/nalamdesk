@@ -12416,6 +12416,10 @@ html:has(.drawer-toggle:checked) {
   height: 100%;
 }
 
+.h-\[calc\(100vh-15rem\)\] {
+  height: calc(100vh - 15rem);
+}
+
 .max-h-32 {
   max-height: 8rem;
 }
@@ -12442,6 +12446,10 @@ html:has(.drawer-toggle:checked) {
 
 .max-h-\[95vh\] {
   max-height: 95vh;
+}
+
+.max-h-64 {
+  max-height: 16rem;
 }
 
 .min-h-0 {

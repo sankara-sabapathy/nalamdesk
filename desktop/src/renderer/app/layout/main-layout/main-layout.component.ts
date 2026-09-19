@@ -4,6 +4,7 @@ import { NavigationStart, RouterOutlet, RouterModule, Router } from '@angular/ro
 import { Subscription } from 'rxjs';
 import { UniversalDialogComponent } from '../../shared/components/universal-dialog/universal-dialog.component';
 import { DialogService } from '../../shared/services/dialog.service';
+import { DoctorPickService } from '../../shared/services/doctor-pick.service';
 import { AuthService } from '../../services/auth.service';
 import { RuntimeService } from '../../services/runtime.service';
 
@@ -170,6 +171,29 @@ import { RuntimeService } from '../../services/runtime.service';
          </button>
       </div>
     </app-universal-dialog>
+
+    <!-- Attending-doctor picker for admin-initiated consultations -->
+    <div *ngIf="doctorPick?.open()" class="fixed inset-0 z-[100] flex items-center justify-center p-4"
+         role="dialog" aria-modal="true" aria-label="Select responsible doctor">
+      <div class="fixed inset-0 bg-black/50" (click)="doctorPick?.choose(null)"></div>
+      <div class="relative w-full max-w-md rounded-lg bg-white p-6 shadow-lg border border-gray-200">
+        <h3 class="text-lg font-bold text-gray-800">Select responsible doctor</h3>
+        <p class="text-sm text-gray-500 mt-1">The consultation is recorded under their license. They remain clinically responsible.</p>
+        <div class="mt-4 space-y-2 max-h-64 overflow-y-auto">
+          <button *ngFor="let d of doctorPick?.doctors() ?? []" (click)="doctorPick?.choose(d.id)"
+                  class="w-full text-left px-4 py-3 rounded-lg border border-gray-200 hover:border-blue-400 hover:bg-blue-50 transition flex items-center justify-between gap-3">
+            <span>
+              <span class="block font-semibold text-gray-800">{{ d.name }}</span>
+              <span class="block text-xs text-gray-500">{{ d.specialty || 'General' }}<span *ngIf="d.license_number"> • {{ d.license_number }}</span></span>
+            </span>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-gray-400"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" /></svg>
+          </button>
+        </div>
+        <div class="mt-4 flex justify-end">
+          <button (click)="doctorPick?.choose(null)" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded border bg-white transition-colors">Cancel</button>
+        </div>
+      </div>
+    </div>
   `,
   styles: [`
     .menu a {
@@ -200,7 +224,8 @@ export class MainLayoutComponent implements OnInit, OnDestroy {
     public dialogService: DialogService,
     private authService: AuthService,
     private ngZone: NgZone,
-    public runtime: RuntimeService
+    public runtime: RuntimeService,
+    public doctorPick?: DoctorPickService
   ) {
     this.currentUser = this.authService.getUser();
   }
