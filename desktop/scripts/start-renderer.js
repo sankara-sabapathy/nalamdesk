@@ -3,7 +3,7 @@ const { getDesktopAngularPort } = require('./development-env');
 
 const port = getDesktopAngularPort();
 const ngCommand = process.platform === 'win32' ? 'ng.cmd' : 'ng';
-const child = spawn(ngCommand, ['serve', '--open=false', '--port', String(port)], {
+const child = spawn(ngCommand, ['serve', '--open=false', '--host', '127.0.0.1', '--port', String(port)], {
     stdio: 'inherit',
     shell: process.platform === 'win32',
 });

@@ -54,10 +54,23 @@ contextBridge.exposeInMainWorld('electron', {
         deleteUser: (id: number) => ipcRenderer.invoke('db:deleteUser', id),
         // Queue
         getQueue: () => ipcRenderer.invoke('db:getQueue'),
-        addToQueue: (data: { patientId: number, priority: number }) => ipcRenderer.invoke('db:addToQueue', data),
+        addToQueue: (data: { patientId: number, priority?: number, urgency?: string, triage_notes?: string }) => ipcRenderer.invoke('db:addToQueue', data),
+        reassessQueueTriage: (data: { queueId: number; urgency: string; reason: string }) => ipcRenderer.invoke('db:reassessQueueTriage', data),
+        getQueueTriageHistory: (queueId: number) => ipcRenderer.invoke('db:getQueueTriageHistory', queueId),
         updateQueueStatus: (data: { id: number, status: string }) => ipcRenderer.invoke('db:updateQueueStatus', data),
         updateQueueStatusByPatientId: (data: { patientId: number, status: string }) => ipcRenderer.invoke('db:updateQueueStatusByPatientId', data),
         removeFromQueue: (id: number) => ipcRenderer.invoke('db:removeFromQueue', id),
+        // Clinical Safety & Longitudinal Records
+        getAllergies: (patientId: number) => ipcRenderer.invoke('db:getAllergies', patientId),
+        saveAllergy: (allergy: any) => ipcRenderer.invoke('db:saveAllergy', allergy),
+        deleteAllergy: (id: number) => ipcRenderer.invoke('db:deleteAllergy', id),
+        getConditions: (patientId: number) => ipcRenderer.invoke('db:getConditions', patientId),
+        saveCondition: (condition: any) => ipcRenderer.invoke('db:saveCondition', condition),
+        deleteCondition: (id: number) => ipcRenderer.invoke('db:deleteCondition', id),
+        getMedications: (patientId: number) => ipcRenderer.invoke('db:getMedications', patientId),
+        saveMedication: (medication: any) => ipcRenderer.invoke('db:saveMedication', medication),
+        deleteMedication: (id: number) => ipcRenderer.invoke('db:deleteMedication', id),
+        getPatientSafetyContext: (patientId: number) => ipcRenderer.invoke('db:getPatientSafetyContext', patientId),
         // Audit
         getAuditLogs: (limit: number) => ipcRenderer.invoke('db:getAuditLogs', limit),
         // Appointment Requests

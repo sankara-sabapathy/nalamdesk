@@ -27,6 +27,7 @@ describe('PatientDetailsComponent', () => {
                 if (endpoint === 'deleteVisit') return Promise.resolve(true);
                 if (endpoint === 'getQueue') return Promise.resolve([{ id: 50, patient_id: 123, status: 'waiting' }]);
                 if (endpoint === 'beginConsultation') return Promise.resolve({ id: 70, patient_id: 123 });
+                if (endpoint === 'getDoctors') return Promise.resolve([{ id: 10, name: 'Dr. Smith' }]);
                 return Promise.resolve(null);
             })
         };
@@ -184,4 +185,292 @@ describe('PatientDetailsComponent', () => {
         expect(component.isVitalPresent(0)).toBe(true);
         expect(component.isVitalPresent(80)).toBe(true);
     });
+
+    it('loads clinical safety context, allergies, conditions, and medications', async () => {
+        const mockSafetyContext = {
+            patient_id: 123,
+            allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', status: 'active' }],
+            active_allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', status: 'active' }],
+            has_active_allergies: true,
+            has_life_threatening_allergies: true,
+            conditions: [{ id: 1, condition_name: 'Hypertension', clinical_status: 'active' }],
+            active_conditions: [{ id: 1, condition_name: 'Hypertension', clinical_status: 'active' }],
+            medications: [{ id: 1, medicine_name: 'Amlodipine', status: 'active' }],
+            active_medications: [{ id: 1, medicine_name: 'Amlodipine', status: 'active' }]
+        };
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'getPatientById') return Promise.resolve({ id: 123, name: 'Test Patient' });
+            if (endpoint === 'getVisits') return Promise.resolve([]);
+            if (endpoint === 'getVitals') return Promise.resolve(null);
+            if (endpoint === 'getPatientSafetyContext') return Promise.resolve(mockSafetyContext);
+            return Promise.resolve(null);
+        });
+
+        component.ngOnInit();
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(component.safetyContext).toEqual(mockSafetyContext);
+        expect(component.allergies.length).toBe(1);
+        expect(component.conditions.length).toBe(1);
+        expect(component.medications.length).toBe(1);
+        expect(component.safetyContext.has_active_allergies).toBe(true);
+    });
+
+    it('manages allergies lifecycle (add and delete)', async () => {
+        component.patientId = 123;
+        component.openAddAllergyModal();
+        expect(component.showAllergyModal).toBe(true);
+
+        component.allergyForm.patchValue({
+            substance: 'Amoxicillin',
+            criticality: 'high',
+            severity: 'severe',
+            reaction: 'Anaphylaxis'
+        });
+
+        await component.saveAllergy();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('saveAllergy', expect.objectContaining({
+            substance: 'Amoxicillin',
+            patient_id: 123
+        }));
+        expect(component.showAllergyModal).toBe(false);
+
+        await component.deleteAllergy(10);
+        expect(mockDataService.invoke).toHaveBeenCalledWith('deleteAllergy', 10);
+    });
+
+    it('manages conditions lifecycle (add and delete)', async () => {
+        component.patientId = 123;
+        component.openAddConditionModal();
+        expect(component.showConditionModal).toBe(true);
+
+        component.conditionForm.patchValue({
+            condition_name: 'Type 2 Diabetes',
+            code: 'E11.9',
+            clinical_status: 'active'
+        });
+
+        await component.saveCondition();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('saveCondition', expect.objectContaining({
+            condition_name: 'Type 2 Diabetes',
+            patient_id: 123
+        }));
+        expect(component.showConditionModal).toBe(false);
+
+        await component.deleteCondition(20);
+        expect(mockDataService.invoke).toHaveBeenCalledWith('deleteCondition', 20);
+    });
+
+    it('manages medications lifecycle (add and delete)', async () => {
+        component.patientId = 123;
+        component.openAddMedicationModal();
+        expect(component.showMedicationModal).toBe(true);
+
+        component.medicationForm.patchValue({
+            medicine_name: 'Metformin',
+            dosage: '500mg',
+            frequency: '1-0-1'
+        });
+
+        await component.saveMedication();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('saveMedication', expect.objectContaining({
+            medicine_name: 'Metformin',
+            patient_id: 123
+        }));
+        expect(component.showMedicationModal).toBe(false);
+
+        await component.deleteMedication(30);
+        expect(mockDataService.invoke).toHaveBeenCalledWith('deleteMedication', 30);
+    });
+
+    it('provides date helper getters and field validation helper', () => {
+        expect(component.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(component.minDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+        component.patientForm.get('name')?.setValue('');
+        component.patientForm.get('name')?.markAsTouched();
+        expect(component.isFieldInvalid('name')).toBe(true);
+
+        component.patientForm.get('name')?.setValue('Valid Name');
+        expect(component.isFieldInvalid('name')).toBe(false);
+    });
+
+    it('auto-calculates age and dob bidirectionally', () => {
+        component.patientForm.get('age')?.setValue(25);
+        expect(component.patientForm.get('dob')?.value).toBeTruthy();
+
+        component.patientForm.get('dob')?.setValue('2000-01-01');
+        expect(component.patientForm.get('age')?.value).toBeGreaterThan(0);
+    });
+
+    it('manages patient edit modal and saving', async () => {
+        component.patient = {
+            id: 123,
+            name: 'John Doe',
+            mobile: '9876543210',
+            age: 35,
+            gender: 'male',
+            address: '123 Main St'
+        };
+
+        component.openEditModal();
+        expect(component.showEditModal).toBe(true);
+
+        // Invalid form should mark touched and not save
+        component.patientForm.patchValue({ name: '' });
+        await component.savePatient();
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('savePatient', expect.anything());
+
+        // Valid form saves successfully
+        component.patientForm.patchValue({
+            name: 'John Doe Updated',
+            mobile: '9876543210',
+            age: 35,
+            gender: 'male',
+            address: '123 Main St'
+        });
+        await component.savePatient();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('savePatient', expect.objectContaining({ name: 'John Doe Updated' }));
+        expect(component.showEditModal).toBe(false);
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({ type: 'success' }));
+    });
+
+    it('handles save patient failure with error dialog', async () => {
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'savePatient') return Promise.reject(new Error('Update failed'));
+            return Promise.resolve(null);
+        });
+
+        component.patientForm.patchValue({
+            name: 'John Doe',
+            mobile: '9876543210',
+            age: 35,
+            gender: 'male',
+            address: '123 Main St'
+        });
+
+        await component.savePatient();
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            title: 'Error',
+            type: 'error'
+        }));
+    });
+
+    it('handles delete patient flow', async () => {
+        component.patientId = 123;
+
+        // Cancelled delete does not invoke
+        mockDialogService.open.mockResolvedValueOnce(false);
+        await component.deletePatient();
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('deletePatient', 123);
+
+        // Confirmed delete calls deletePatient and navigates
+        mockDialogService.open.mockResolvedValueOnce(true);
+        await component.deletePatient();
+        expect(mockDataService.invoke).toHaveBeenCalledWith('deletePatient', 123);
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/patients']);
+    });
+
+    it('handles delete patient failure with error dialog', async () => {
+        component.patientId = 123;
+        mockDialogService.open.mockResolvedValueOnce(true);
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'deletePatient') return Promise.reject(new Error('Cannot delete'));
+            return Promise.resolve(null);
+        });
+
+        await component.deletePatient();
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            title: 'Error',
+            message: 'Failed to delete patient.'
+        }));
+    });
+
+    it('handles delete visit cancellation and failure', async () => {
+        component.patientId = 123;
+
+        // Cancelled does not delete
+        mockDialogService.open.mockResolvedValueOnce(false);
+        mockDataService.invoke.mockClear();
+        await component.deleteVisit(1);
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('deleteVisit', 1);
+
+        // Error during delete visit
+        mockDialogService.open.mockResolvedValueOnce(true);
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'deleteVisit') return Promise.reject(new Error('DB locked'));
+            return Promise.resolve(null);
+        });
+        await component.deleteVisit(1);
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            title: 'Error',
+            message: 'Failed to delete visit.'
+        }));
+    });
+
+    it('handles modal navigation, print, and goBack', () => {
+        component.selectedVisit = { id: 55 };
+        component.showVisitModal = true;
+        component.editVisitFromModal();
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 55]);
+
+        component.closeModal();
+        expect(component.showVisitModal).toBe(false);
+        expect(component.selectedVisit).toBeNull();
+
+        const printSpy = vi.spyOn(window, 'print').mockImplementation(() => undefined);
+        component.printVisit();
+        expect(printSpy).toHaveBeenCalled();
+
+        component.goBack();
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/patients']);
+    });
+
+    it('handles clinical modals validation and error branches', async () => {
+        component.patientId = 123;
+
+        // Allergy invalid form & error handling
+        component.openAddAllergyModal();
+        component.allergyForm.patchValue({ substance: '' });
+        await component.saveAllergy();
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('saveAllergy', expect.anything());
+
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'saveAllergy') return Promise.reject(new Error('Allergy save failed'));
+            if (endpoint === 'saveCondition') return Promise.reject(new Error('Condition save failed'));
+            if (endpoint === 'saveMedication') return Promise.reject(new Error('Medication save failed'));
+            return Promise.resolve(null);
+        });
+
+        component.allergyForm.patchValue({ substance: 'Aspirin' });
+        await component.saveAllergy();
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            message: 'Failed to save allergy record.'
+        }));
+
+        // Condition invalid form & error handling
+        component.openAddConditionModal();
+        component.conditionForm.patchValue({ condition_name: '' });
+        await component.saveCondition();
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('saveCondition', expect.anything());
+
+        component.conditionForm.patchValue({ condition_name: 'Asthma' });
+        await component.saveCondition();
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            message: 'Failed to save condition record.'
+        }));
+
+        // Medication invalid form & error handling
+        component.openAddMedicationModal();
+        component.medicationForm.patchValue({ medicine_name: '' });
+        await component.saveMedication();
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('saveMedication', expect.anything());
+
+        component.medicationForm.patchValue({ medicine_name: 'Salbutamol' });
+        await component.saveMedication();
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            message: 'Failed to save medication record.'
+        }));
+    });
 });
+

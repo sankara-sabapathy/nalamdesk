@@ -34,15 +34,27 @@ Welcome to **NalamDesk**, your secure, offline-first Clinic Management System. T
 *   **Registration:** Click **"New Patient"** to register a walk-in patient. All standard fields (Name, DOB, Mobile, etc.) are available.
 *   **Edit:** You can update patient details at any time from their profile.
 
-### 2. Queue Management
-*   **Live Queue:** The dashboard shows the current list of waiting patients.
+### 2. Queue & Triage Management
+*   **Live Queue & Triage Urgency:** The dashboard displays patients ordered by actionable clinical urgency:
+    *   🔴 **Immediate (Red):** Life-threatening conditions requiring emergency consultation.
+    *   🟠 **Urgent (Orange):** Serious illness or pain needing prompt assessment.
+    *   🔵 **Priority (Blue):** Non-urgent but requiring prioritized consultation.
+    *   ⚪ **Routine (Green):** Standard walk-in or follow-up visits.
+*   **Triage Reassessment:** Clinicians and intake staff can reassess queue urgency at any time by selecting the urgency badge and entering a mandatory clinical rationale. An immutable audit trail of all triage changes is maintained.
+*   **Abnormal Vitals Alerts:** Out-of-range vital signs (severe hypertension, fever, hypoxia <92% SpO2, tachycardia/bradycardia) are highlighted directly on the queue badge.
 *   **Status Indicators:**
     *   🟢 **Waiting:** Patient is in the lobby.
     *   🟡 **In-Consult:** Patient is currently seeing the doctor.
     *   ✅ **Completed:** Consultation finished.
-*   **Actions:** You can remove patients from the queue or move them to "In-Consult".
 
-### 3. Doctor's Workbench
+### 3. Doctor's Workbench & Clinical Safety
+*   **Practitioner Provenance & Licensing:** Every consultation is strictly bound to an active, licensed medical practitioner whose registration and council credentials appear on final prescriptions and encounters.
+*   **Longitudinal Patient Safety Profile:**
+    *   **Allergies:** Recorded with substance, criticality, and reaction details.
+    *   **Conditions (Problem List):** Active and chronic conditions tracked with onset date and ICD-10 coding.
+    *   **Medication Reconciliation:** Patient medications automatically sync upon consultation completion, avoiding duplicate active entries.
+*   **Real-Time Prescribing Safety Checks:**
+    *   When adding or saving medicines conflicting with a patient's active allergies, the system flags the conflict and blocks submission unless the doctor provides an explicit clinical override rationale.
 *   **Timeline:** View a patient's entire medical history (previous visits, prescriptions) in a chronological timeline.
 *   **Prescription Pad:**
     *   **Diagnosis:** Typeahead against the clinic condition catalog. Use **Add new** if the term is missing — the visit is never blocked.

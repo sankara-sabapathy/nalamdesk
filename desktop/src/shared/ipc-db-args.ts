@@ -28,8 +28,24 @@ export function resolveDbMethodArgs(method: string, args: unknown[], actingUserI
     switch (method) {
         case 'addToQueue': {
             const payload = payloadObject(args[0]);
+            if (payload['urgency'] != null || payload['triage_notes'] != null || payload['notes'] != null) {
+                // Pass the object through so addToQueue derives a matching
+                // numeric priority from an urgency-only request.
+                return [payload['patientId'], { priority: payload['priority'], urgency: payload['urgency'], triage_notes: payload['triage_notes'] ?? payload['notes'] }, actingUserId];
+            }
             return [payload['patientId'], payload['priority'], actingUserId];
         }
+        case 'reassessQueueTriage': {
+            const payload = payloadObject(args[0]);
+            return [payload['queueId'] ?? args[0], payload['urgency'] ?? args[1], payload['reason'] ?? args[2], actingUserId];
+        }
+        case 'saveAllergy':
+        case 'saveCondition':
+        case 'saveMedication':
+        case 'deleteAllergy':
+        case 'deleteCondition':
+        case 'deleteMedication':
+            return [args[0], actingUserId];
         case 'updateQueueStatus': {
             const payload = payloadObject(args[0]);
             return [payload['id'], payload['status'], actingUserId];

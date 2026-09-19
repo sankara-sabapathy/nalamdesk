@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DatabaseService } from './DatabaseService';
+import { MIGRATIONS } from '../schema/migrations';
+
+const LATEST_SCHEMA_VERSION = Math.max(...MIGRATIONS.map((m: any) => m.version));
 
 const { DatabaseSync } = require('node:sqlite');
 
@@ -273,7 +276,8 @@ describe('encounter integrity transactions', () => {
             .toThrow('not in consultation');
         expect(() => service.postponeConsultation({ encounterId: encounter.id }, 10)).toThrow('not in consultation');
         expect(service.beginNextConsultation({ startRequestId: 'implicit-handoff-doctor' }, 11)).toBeNull();
-        expect(service.beginNextConsultation({ startRequestId: 'implicit-handoff-admin' }, 99)).toBeNull();
+        expect(() => service.beginNextConsultation({ startRequestId: 'implicit-handoff-admin' }, 99))
+            .toThrow('Clinical authoring requires an active licensed practitioner');
 
         const stored = db.prepare('SELECT diagnosis, status FROM visits WHERE id = ?').get(encounter.id);
         expect(stored).toMatchObject({ diagnosis: 'Saved draft', status: 'in-progress' });
@@ -316,6 +320,28 @@ describe('encounter integrity transactions', () => {
         expect(db.prepare('SELECT doctor_id, diagnosis, status FROM visits WHERE id = ?').get(doctor10Encounter.id))
             .toMatchObject({ doctor_id: 10, diagnosis: 'Doctor 10 draft', status: 'in-progress' });
     });
+
+    it('skips own postponed patient when beginning next instead of failing', () => {
+        const postponedQueue = queue(1, 2);
+        const postponed = service.beginConsultation({
+            patientId: 1, queueEntryId: postponedQueue, startRequestId: 'own-postponed'
+        }, 10);
+        service.postponeConsultation({ encounterId: postponed.id, visit: { diagnosis: 'Deferred' } }, 10);
+
+        const otherQueue = queue(2, 1);
+        const other = service.beginConsultation({
+            patientId: 2, queueEntryId: otherQueue, startRequestId: 'own-other'
+        }, 10);
+        service.completeConsultation({ encounterId: other.id, visit: { diagnosis: 'Done' } }, 10);
+
+        const cleanQueue = queue(3, 1);
+        const next = service.beginNextConsultation({ startRequestId: 'own-next' }, 10);
+
+        expect(next.patient_id).toBe(3);
+        expect(next.queue_entry_id).toBe(cleanQueue);
+        expect(db.prepare('SELECT status FROM patient_queue WHERE id = ?').get(postponedQueue).status).toBe('waiting');
+        expect(db.prepare('SELECT status FROM visits WHERE id = ?').get(postponed.id).status).toBe('in-progress');
+    });
 });
 
 describe('migration v7 compatibility', () => {
@@ -344,7 +370,7 @@ describe('migration v7 compatibility', () => {
             expect(migrated.status).toBe('finished');
             expect(migrated.started_at).toBeTruthy();
             expect(migrated.completed_at).toBeTruthy();
-            expect(db.pragma('user_version', { simple: true })).toBe(10);
+            expect(db.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION);
         } finally {
             db.close();
         }
@@ -377,7 +403,7 @@ describe('migration v7 compatibility', () => {
 
             await expect(service.migrate()).resolves.toBeUndefined();
             expect(db.prepare('SELECT count(*) count FROM encounter_requests').get().count).toBe(0);
-            expect(db.pragma('user_version', { simple: true })).toBe(10);
+            expect(db.pragma('user_version', { simple: true })).toBe(LATEST_SCHEMA_VERSION);
         } finally {
             db.close();
         }

@@ -178,6 +178,25 @@ describe('UniversalDialogComponent', () => {
 
 import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { UniversalDialogComponent } from './universal-dialog.component';
+
+describe('UniversalDialog severity tint', () => {
+    it('tints the icon by dialog type', () => {
+        const dialog = new UniversalDialogComponent();
+        dialog.type = 'error';
+        expect(dialog.iconBgClass).toBe('bg-red-50');
+        expect(dialog.iconTextClass).toBe('text-red-600');
+        dialog.type = 'warning';
+        expect(dialog.iconBgClass).toBe('bg-amber-50');
+        expect(dialog.iconTextClass).toBe('text-amber-600');
+        dialog.type = 'success';
+        expect(dialog.iconBgClass).toBe('bg-green-50');
+        expect(dialog.iconTextClass).toBe('text-green-700');
+        dialog.type = 'info';
+        expect(dialog.iconBgClass).toBe('bg-blue-50');
+        expect(dialog.iconTextClass).toBe('text-blue-600');
+    });
+});
 
 @Component({
     standalone: true,

@@ -30,11 +30,11 @@ import { CommonModule } from '@angular/common';
         </button>
 
         <!-- Header / Icon -->
-        <div class="mb-5 flex flex-col items-center sm:items-start">
-           <div *ngIf="icon" class="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 sm:mx-0 sm:h-10 sm:w-10 mb-4 sm:mb-0">
+        <div class="mb-5 flex flex-col items-center sm:flex-row sm:items-start">
+           <div *ngIf="icon" class="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full sm:mx-0 sm:h-10 sm:w-10 mb-4 sm:mb-0" [ngClass]="iconBgClass">
              <!-- Icon Projection or generic icon -->
              <ng-content select="[icon]"></ng-content>
-             <svg *ngIf="!hasIconContent" class="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+             <svg *ngIf="!hasIconContent" class="h-6 w-6" [ngClass]="iconTextClass" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
              </svg>
            </div>
@@ -78,6 +78,7 @@ export class UniversalDialogComponent implements OnChanges, OnDestroy {
   @Input() message: string = '';
   @Input() isOpen: boolean = false;
   @Input() icon: boolean = true;
+  @Input() type: 'info' | 'success' | 'warning' | 'error' | 'confirm' = 'info';
   @Input() showDefaultActions = true;
 
   @Output() isOpenChange = new EventEmitter<boolean>();
@@ -98,6 +99,24 @@ export class UniversalDialogComponent implements OnChanges, OnDestroy {
 
   get hasActionsContent(): boolean {
     return !!this.actionsContent;
+  }
+
+  get iconBgClass(): string {
+    switch (this.type) {
+      case 'error': return 'bg-red-50';
+      case 'warning': return 'bg-amber-50';
+      case 'success': return 'bg-green-50';
+      default: return 'bg-blue-50';
+    }
+  }
+
+  get iconTextClass(): string {
+    switch (this.type) {
+      case 'error': return 'text-red-600';
+      case 'warning': return 'text-amber-600';
+      case 'success': return 'text-green-700';
+      default: return 'text-blue-600';
+    }
   }
 
   ngOnChanges(changes: SimpleChanges): void {

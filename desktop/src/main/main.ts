@@ -690,6 +690,70 @@ handleDb('db:getVitalsHistory', (_, patientId, visitId) => {
     return databaseService.getVitalsHistory(patientId, visitId);
 });
 
+// Allergies
+handleDb('db:getAllergies', (_, patientId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getAllergies(patientId);
+});
+handleDb('db:saveAllergy', (_, allergy) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.saveAllergy(allergy, user.id);
+});
+handleDb('db:deleteAllergy', (_, id) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.deleteAllergy(id, user.id);
+});
+
+// Conditions
+handleDb('db:getConditions', (_, patientId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getConditions(patientId);
+});
+handleDb('db:saveCondition', (_, condition) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.saveCondition(condition, user.id);
+});
+handleDb('db:deleteCondition', (_, id) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.deleteCondition(id, user.id);
+});
+
+// Medications
+handleDb('db:getMedications', (_, patientId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getMedications(patientId);
+});
+handleDb('db:saveMedication', (_, medication) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.saveMedication(medication, user.id);
+});
+handleDb('db:deleteMedication', (_, id) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return databaseService.deleteMedication(id, user.id);
+});
+
+// Safety Context
+handleDb('db:getPatientSafetyContext', (_, patientId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getPatientSafetyContext(patientId);
+});
+
 // Users
 handleDb('db:getUsers', () => {
     const user = sessionService.getUser();
@@ -779,6 +843,16 @@ handleDb('db:removeFromQueue', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
     return invokeDbMethod(databaseService, 'removeFromQueue', [id], user.id);
+});
+handleDb('db:reassessQueueTriage', (_, data) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return invokeDbMethod(databaseService, 'reassessQueueTriage', [data], user.id);
+});
+handleDb('db:getQueueTriageHistory', (_, queueId) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getQueueTriageHistory(queueId);
 });
 
 // Audit IPC Handlers

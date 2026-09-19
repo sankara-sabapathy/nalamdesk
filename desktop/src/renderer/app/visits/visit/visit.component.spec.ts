@@ -793,10 +793,190 @@ describe('VisitComponent', () => {
         component.isConsulting = true;
         component.openVitalsModal();
         expect(component.showVitalsModal).toBe(true);
-
         const newVitals = { systolic_bp: 120, diastolic_bp: 80, pulse: 72 };
         component.onVitalsSaved(newVitals);
         expect(component.patientVitals).toEqual(newVitals);
         expect(component.showVitalsModal).toBe(false);
     });
+
+    it('loads patient safety context in loadData', async () => {
+        const mockSafetyContext = {
+            patient_id: 1,
+            active_allergies: [{ id: 1, substance: 'Amoxicillin', criticality: 'high' }],
+            has_active_allergies: true,
+            active_conditions: [{ id: 1, condition_name: 'Asthma' }],
+            active_medications: [{ id: 1, medicine_name: 'Salbutamol' }]
+        };
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'getVisits' || method === 'getPatients') return Promise.resolve([]);
+            if (method === 'getPatientSafetyContext') return Promise.resolve(mockSafetyContext);
+            return Promise.resolve(null);
+        });
+
+        component.patientId = 1;
+        await component.loadData();
+
+        expect(component.patientSafetyContext).toEqual(mockSafetyContext);
+    });
+
+    it('detects allergy conflict and blocks completion until override reason is acknowledged', async () => {
+        component.patientId = 1;
+        component.encounterId = 7;
+        component.isConsulting = true;
+        component.chartWritable = true;
+        component.patientSafetyContext = {
+            patient_id: 1,
+            active_allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', reaction: 'Anaphylaxis' }],
+            has_active_allergies: true
+        };
+
+        component.currentPrescription = [{ medicine: 'Amoxicillin / Clavulanate (Penicillin class)' }];
+        component.visitForm.value.prescription = component.currentPrescription;
+        component.visitForm.value.diagnosis = 'Infection';
+
+        const conflicts = component.checkForAllergyConflicts();
+        expect(conflicts).toHaveLength(1);
+        expect(conflicts[0].substance).toBe('Penicillin');
+
+        // Attempting to complete consultation should trigger allergy override modal and block
+        const completed = await component.completeConsult();
+        expect(completed).toBe(false);
+        expect(component.showAllergyOverrideModal).toBe(true);
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('completeConsultation', expect.anything());
+
+        // Doctor acknowledges and enters clinical override rationale
+        component.overrideReasonInput = 'Patient tolerated cephalosporins and graded dose previously';
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'completeConsultation') return Promise.resolve({ id: 7, status: 'finished' });
+            return Promise.resolve(null);
+        });
+
+        component.confirmAllergyOverride();
+
+        expect(component.showAllergyOverrideModal).toBe(false);
+        expect(component.visitForm.value.allergy_override_reason).toBe('Patient tolerated cephalosporins and graded dose previously');
+        expect(mockDataService.invoke).toHaveBeenCalledWith('completeConsultation', expect.objectContaining({
+            encounterId: 7,
+            visit: expect.objectContaining({
+                allergy_override_reason: 'Patient tolerated cephalosporins and graded dose previously'
+            })
+        }));
+    });
+
+    it('resumes Finish & Next after the allergy override is confirmed', async () => {
+        component.patientId = 1;
+        component.encounterId = 7;
+        component.isConsulting = true;
+        component.chartWritable = true;
+        component.patientSafetyContext = {
+            patient_id: 1,
+            active_allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', reaction: 'Anaphylaxis' }],
+            has_active_allergies: true
+        };
+        component.currentPrescription = [{ medicine: 'Amoxicillin (Penicillin class)' }];
+        component.visitForm.value.prescription = component.currentPrescription;
+        component.visitForm.value.diagnosis = 'Infection';
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'completeConsultation') return Promise.resolve({ id: 7, status: 'finished' });
+            if (method === 'beginNextConsultation') return Promise.resolve({ id: 8, patient_id: 2 });
+            return Promise.resolve(null);
+        });
+        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+        await component.finishAndNext();
+        expect(component.showAllergyOverrideModal).toBe(true);
+
+        component.overrideReasonInput = 'Desensitized previously';
+        component.confirmAllergyOverride();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('beginNextConsultation', expect.anything());
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 2], expect.objectContaining({
+            state: expect.objectContaining({ encounterId: 8 })
+        }));
+    });
+
+    it('navigates back to the queue when Finish & Exit resumes after override', async () => {
+        component.patientId = 1;
+        component.encounterId = 7;
+        component.isConsulting = true;
+        component.chartWritable = true;
+        component.patientSafetyContext = {
+            patient_id: 1,
+            active_allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', reaction: 'Anaphylaxis' }],
+            has_active_allergies: true
+        };
+        component.currentPrescription = [{ medicine: 'Amoxicillin (Penicillin class)' }];
+        component.visitForm.value.prescription = component.currentPrescription;
+        component.visitForm.value.diagnosis = 'Infection';
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'completeConsultation') return Promise.resolve({ id: 7, status: 'finished' });
+            return Promise.resolve(null);
+        });
+
+        await component.endConsult();
+        expect(component.showAllergyOverrideModal).toBe(true);
+
+        component.overrideReasonInput = 'Desensitized previously';
+        component.confirmAllergyOverride();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/queue']);
+    });
+
+    it('reports blocked queue instead of empty when next finds nothing actionable', async () => {        component.patientId = 1;
+        component.encounterId = 7;
+        component.isConsulting = true;
+        component.chartWritable = true;
+        component.patientSafetyContext = null;
+        component.currentPrescription = [];
+        component.visitForm.value.prescription = [];
+        component.visitForm.value.diagnosis = 'Review';
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'completeConsultation') return Promise.resolve({ id: 7, status: 'finished' });
+            if (method === 'beginNextConsultation') return Promise.resolve(null);
+            if (method === 'getQueue') return Promise.resolve([{ id: 9, patient_id: 3, status: 'waiting', active_encounter_id: 5 }]);
+            return Promise.resolve(null);
+        });
+        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+        await component.finishAndNext();
+
+        expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('still in queue'));
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/queue']);
+    });
+
+    it('clears a recorded override rationale when the prescription changes afterwards', async () => {
+        component.patientId = 1;
+        component.encounterId = 7;
+        component.isConsulting = true;
+        component.chartWritable = true;
+        component.patientSafetyContext = {
+            patient_id: 1,
+            active_allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', reaction: 'Anaphylaxis' }],
+            has_active_allergies: true
+        };
+        component.currentPrescription = [{ medicine: 'Amoxicillin (Penicillin class)' }];
+        component.visitForm.value.prescription = component.currentPrescription;
+        component.visitForm.value.diagnosis = 'Infection';
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'completeConsultation') return Promise.resolve({ id: 7, status: 'finished' });
+            return Promise.resolve(null);
+        });
+
+        await component.completeConsult();
+        expect(component.showAllergyOverrideModal).toBe(true);
+        component.overrideReasonInput = 'Desensitized previously';
+        component.confirmAllergyOverride();
+        expect(component.visitForm.value.allergy_override_reason).toBe('Desensitized previously');
+
+        // Unchanged lines keep the rationale.
+        component.updatePrescription([{ medicine: 'Amoxicillin (Penicillin class)' }]);
+        expect(component.visitForm.value.allergy_override_reason).toBe('Desensitized previously');
+
+        // Changed lines invalidate it so the next save re-checks.
+        component.updatePrescription([{ medicine: 'Azithromycin' }]);
+        expect(component.visitForm.value.allergy_override_reason).toBe('');
+    });
 });
+

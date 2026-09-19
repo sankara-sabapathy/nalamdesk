@@ -8,6 +8,7 @@ import { PrescriptionComponent } from '../../visits/prescription/prescription.co
 import { CatalogTypeaheadComponent } from '../../shared/components/catalog-typeahead/catalog-typeahead.component';
 import { AuthService } from '../../services/auth.service';
 import { DataService } from '../../services/api.service';
+import { DoctorPickService } from '../../shared/services/doctor-pick.service';
 import { newRequestId } from '../../services/request-id';
 import { combineLatest } from 'rxjs';
 import { VitalsFormComponent } from '../vitals/vitals-form.component';
@@ -40,10 +41,10 @@ interface Visit {
     <div class="flex h-full bg-gray-50 font-sans overflow-hidden relative">
       
       <!-- Mobile Backdrop -->
-      <div *ngIf="showMobileHistory" (click)="showMobileHistory = false" class="fixed inset-0 bg-black/50 z-40 md:hidden glass"></div>
+      <div *ngIf="showMobileHistory" (click)="showMobileHistory = false" class="fixed inset-0 bg-black/50 z-40 md:hidden"></div>
 
       <!-- Left Panel: History & Context (Responsive Drawer) -->
-      <div class="fixed inset-y-0 left-0 z-50 w-80 bg-white border-r border-gray-200 flex flex-col h-full shadow-2xl transition-transform duration-300 md:relative md:translate-x-0 md:shadow-none"
+      <div class="fixed inset-y-0 left-0 z-50 w-80 bg-white border-r border-gray-200 flex flex-col h-full shadow-lg transition-transform duration-300 md:relative md:translate-x-0 md:shadow-none"
            [class.translate-x-0]="showMobileHistory"
            [class.-translate-x-full]="!showMobileHistory">
         
@@ -59,8 +60,8 @@ interface Visit {
             </div>
           </div>
           <!-- Close Drawer Button (Mobile Only) -->
-           <button (click)="showMobileHistory = false" class="md:hidden text-gray-500 p-1">
-             ✕
+           <button (click)="showMobileHistory = false" class="md:hidden text-gray-500 p-1" aria-label="Close history">
+             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
            </button>
         </div>
 
@@ -82,20 +83,20 @@ interface Visit {
                  <div *ngFor="let med of history[0].prescription | slice:0:3">
                     • {{ med.medicine }}
                  </div>
-                 <div *ngIf="(history[0].prescription?.length || 0) > 3" class="text-gray-400 italic">+ more</div>
+                 <div *ngIf="(history[0].prescription?.length || 0) > 3" class="text-gray-500 italic">+ more</div>
               </div>
 
               <!-- COPY ACTION -->
               <button *ngIf="canEditChart" (click)="copyLastVisit()" class="w-full py-1.5 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded hover:bg-blue-100 hover:text-blue-900 transition flex items-center justify-center gap-2 shadow-sm">
-                <span>📋</span> Copy to Current
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.472 48.472 0 0 1 1.927-.184" /></svg><span>Copy to Current</span>
               </button>
            </div>
            <ng-template #noHistory>
-              <div class="text-center py-8 text-gray-400 text-sm italic">No previous visits.</div>
+              <div class="text-center py-8 text-gray-500 text-sm italic">No previous visits.</div>
            </ng-template>
 
            <!-- Divider -->
-           <div *ngIf="history.length > 1" class="text-xs font-bold text-gray-400 uppercase tracking-wider mt-4 mb-2 px-1">Older History</div>
+           <div *ngIf="history.length > 1" class="text-xs font-bold text-gray-500 uppercase tracking-wider mt-4 mb-2 px-1">Older History</div>
 
            <!-- Older items -->
            <div *ngFor="let visit of history | slice:1" (click)="editVisit(visit)"
@@ -126,9 +127,9 @@ interface Visit {
                    </svg>
                </button>
 
-               <h1 class="text-lg md:text-xl font-bold text-gray-800 truncate">
-                 {{ isViewMode ? 'View Visit' : (editingVisitId ? 'Editing Past Visit' : (isLiveConsultation ? 'Current Consultation' : 'Visit')) }}
-               </h1>
+                <h1 class="text-lg md:text-xl font-bold text-gray-800 truncate">
+                  {{ headerTitle }}
+                </h1>
            </div>
 
            <div class="flex flex-wrap gap-2 items-center justify-end">
@@ -151,8 +152,77 @@ interface Visit {
            <div class="w-full px-4 md:px-8 py-8">
               <form [formGroup]="visitForm" class="space-y-6">
                  
+                 <!-- PATIENT CLINICAL SAFETY CONTEXT BANNER -->
+                 <div class="rounded-lg border p-4 shadow-sm"
+                      [ngClass]="patientSafetyContext?.has_active_allergies ? 'bg-red-50/70 border-red-200' : 'bg-white border-gray-200'">
+                     <div class="flex flex-wrap items-center justify-between gap-2">
+                         <div class="flex items-center gap-2">
+                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
+                             <span class="font-bold text-xs text-gray-700 uppercase tracking-wider">Patient Safety Context</span>
+                         </div>
+                         <div class="flex items-center gap-2">
+                             <span *ngIf="patientSafetyContext?.has_active_allergies" 
+                                   class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white flex items-center gap-1 shadow-sm">
+                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                                 <span>{{ patientSafetyContext.active_allergies.length }} Active {{ patientSafetyContext.active_allergies.length === 1 ? 'Allergy' : 'Allergies' }}</span>
+                                 <span *ngIf="patientSafetyContext.has_life_threatening_allergies" class="ml-1 uppercase text-[10px] bg-red-900 text-red-100 px-1 rounded">High Risk</span>
+                             </span>
+                             <span *ngIf="patientSafetyContext && !patientSafetyContext.has_active_allergies" 
+                                   class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 flex items-center gap-1">
+                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg><span>No Known Allergies</span>
+                             </span>
+                         </div>
+                     </div>
+
+                     <!-- Active Safety Details: flat groups on the banner surface, dividers not boxes -->
+                     <div class="mt-3 pt-3 border-t border-gray-200 grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-0 md:divide-x md:divide-gray-200 text-xs">
+                         <!-- Active Allergies List -->
+                         <div class="md:pr-4">
+                             <div class="font-bold text-gray-700 uppercase tracking-wider text-[10px] mb-1.5">Known Allergies</div>
+                             <div *ngIf="patientSafetyContext?.active_allergies?.length; else noActiveAllergies" class="flex flex-wrap gap-1">
+                                 <span *ngFor="let a of patientSafetyContext.active_allergies"
+                                       class="px-2 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-800 border border-red-200"
+                                       [title]="(a.reaction ? 'Reaction: ' + a.reaction : '') + (a.criticality ? ' (' + a.criticality + ' criticality)' : '')">
+                                     {{ a.substance }}
+                                 </span>
+                             </div>
+                             <ng-template #noActiveAllergies>
+                                 <div class="text-gray-500 italic">None recorded</div>
+                             </ng-template>
+                         </div>
+
+                         <!-- Active Problem List -->
+                         <div class="md:px-4">
+                             <div class="font-bold text-gray-700 uppercase tracking-wider text-[10px] mb-1.5">Active Problems</div>
+                             <div *ngIf="patientSafetyContext?.active_conditions?.length; else noActiveConditions" class="flex flex-wrap gap-1">
+                                 <span *ngFor="let c of patientSafetyContext.active_conditions"
+                                       class="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200">
+                                     {{ c.condition_name }}
+                                 </span>
+                             </div>
+                             <ng-template #noActiveConditions>
+                                 <div class="text-gray-500 italic">None recorded</div>
+                             </ng-template>
+                         </div>
+
+                         <!-- Current Medications -->
+                         <div class="md:pl-4">
+                             <div class="font-bold text-gray-700 uppercase tracking-wider text-[10px] mb-1.5">Current Medications</div>
+                             <div *ngIf="patientSafetyContext?.active_medications?.length; else noActiveMeds" class="flex flex-wrap gap-1">
+                                 <span *ngFor="let m of patientSafetyContext.active_medications"
+                                       class="px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-900 border border-blue-200">
+                                     {{ m.medicine_name }} <span *ngIf="m.dosage" class="text-[10px] text-blue-700">({{ m.dosage }})</span>
+                                 </span>
+                             </div>
+                             <ng-template #noActiveMeds>
+                                 <div class="text-gray-500 italic">None recorded</div>
+                             </ng-template>
+                         </div>
+                     </div>
+                 </div>
+
                  <!-- SECTION 1: SUBJECTIVE -->
-                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 mb-4 text-gray-800">
                         <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">S</div>
                         <h3 class="text-lg font-bold">Subjective</h3>
@@ -162,10 +232,10 @@ interface Visit {
                  </div>
 
                  <!-- SECTION 2: OBJECTIVE -->
-                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
                         <div class="flex items-center gap-3 text-gray-800">
-                            <div class="w-8 h-8 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center font-bold text-sm">O</div>
+                            <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">O</div>
                             <h3 class="text-lg font-bold">Objective</h3>
                         </div>
                         <!-- Vitals Pill & Actions -->
@@ -173,31 +243,30 @@ interface Visit {
                             <div *ngIf="hasVitalsToDisplay(patientVitals)" 
                                  (click)="openVitalsModal()"
                                  title="Click to view or amend vitals"
-                                 class="bg-teal-50 text-teal-800 text-xs px-3 py-1.5 rounded-full font-medium border border-teal-100 flex flex-wrap items-center gap-2.5 cursor-pointer hover:bg-teal-100 transition">
+                                 class="bg-blue-50 text-blue-800 text-xs px-3 py-1.5 rounded-full font-medium border border-blue-200 flex flex-wrap items-center gap-2.5 cursor-pointer hover:bg-blue-100 transition">
                                 <span *ngIf="hasBp(patientVitals)">BP: <b>{{ patientVitals.systolic_bp }}/{{ patientVitals.diastolic_bp }}</b></span>
                                 <span *ngIf="isVitalPresent(patientVitals.pulse)">Pulse: <b>{{ patientVitals.pulse }}</b></span>
                                 <span *ngIf="isVitalPresent(patientVitals.temperature)">Temp: <b>{{ patientVitals.temperature }}</b></span>
                                 <span *ngIf="isVitalPresent(patientVitals.spo2)">SpO2: <b>{{ patientVitals.spo2 }}%</b></span>
-                                <span *ngIf="patientVitals.status === 'amended'" class="text-[10px] bg-teal-200 text-teal-900 px-1.5 py-0.5 rounded font-bold">Amended</span>
-                                <span *ngIf="canEditChart" class="text-teal-600 font-bold ml-1 text-xs">✎</span>
+                                <span *ngIf="patientVitals.status === 'amended'" class="text-[10px] bg-blue-200 text-blue-900 px-1.5 py-0.5 rounded font-bold">Amended</span>
                             </div>
 
                             <button *ngIf="!hasVitalsToDisplay(patientVitals) && canEditChart" 
                                     type="button" 
                                     (click)="openVitalsModal()"
-                                    class="text-xs text-teal-700 hover:text-teal-900 border border-teal-200 hover:border-teal-400 bg-teal-50 px-2.5 py-1 rounded-full flex items-center gap-1 font-medium transition">
+                                    class="text-xs text-blue-700 hover:text-blue-900 border border-blue-200 hover:border-blue-400 bg-blue-50 px-2.5 py-1 rounded-full flex items-center gap-1 font-medium transition">
                                 <span>+ Record Vitals</span>
                             </button>
                         </div>
                     </div>
                     <textarea formControlName="examination_notes" rows="3" placeholder="Physical exam findings, labs, observations..." 
-                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 outline-none transition text-gray-700 placeholder-gray-400"></textarea>
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-gray-700 placeholder-gray-400"></textarea>
                  </div>
 
                  <!-- SECTION 3: ASSESSMENT -->
-                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-l-purple-500">
+                 <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 mb-4 text-gray-800">
-                        <div class="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center font-bold text-sm">A</div>
+                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">A</div>
                         <h3 class="text-lg font-bold">Assessment</h3>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -227,9 +296,9 @@ interface Visit {
                  </div>
 
                  <!-- SECTION 4: PLAN (Rx) -->
-                 <div class="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-gray-200">
+                 <div class="bg-white p-4 md:p-6 rounded-lg shadow-sm border border-gray-200">
                     <div class="flex items-center gap-3 mb-4 text-gray-800">
-                        <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">P</div>
+                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm">P</div>
                         <h3 class="text-lg font-bold">Plan & Rx</h3>
                     </div>
                     
@@ -261,7 +330,7 @@ interface Visit {
                  Print
                </button>
                <button *ngIf="isLiveConsultation" type="button" (click)="postponeConsult()" class="px-4 py-2 rounded text-blue-600 border border-transparent hover:border-blue-200 hover:bg-blue-50 font-medium transition flex-1 md:flex-none justify-center">
-                 ⏸ Postpone
+                  Postpone
                </button>
             </div>
 
@@ -279,7 +348,7 @@ interface Visit {
 
                    <!-- HERO ACTION: FINISH & NEXT -->
                    <button *ngIf="isLiveConsultation" type="button" (click)="finishAndNext()" [disabled]="!visitForm.valid || actionInFlight" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2">
-                     <span>✓ Finish & Next</span> 
+                     <span>Finish & Next</span> 
                    </button>
                    
                    <button *ngIf="editingVisitId" (click)="saveVisit()" [disabled]="!visitForm.valid" class="w-full md:w-auto px-6 py-2 rounded bg-blue-600 text-white font-bold hover:bg-blue-700 transition disabled:opacity-50 shadow-sm">
@@ -288,7 +357,7 @@ interface Visit {
                </ng-container>
 
                 <ng-template #noConsult>
-                    <div class="text-sm text-gray-400 italic">Read-only mode</div>
+                    <div class="text-sm text-gray-500 italic">Read-only mode</div>
                 </ng-template>
              </div>
          </div>
@@ -303,6 +372,53 @@ interface Visit {
           (closeDialog)="closeVitalsModal()"
           (vitalsSaved)="onVitalsSaved($event)">
       </app-vitals-form>
+
+      <!-- Allergy Conflict Modal -->
+      <div *ngIf="showAllergyOverrideModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-lg w-full max-w-lg overflow-hidden flex flex-col border border-red-200">
+            <div class="bg-red-50 border-b border-red-100 px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-red-700"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" /></svg>
+                    <h3 class="text-base font-bold text-red-800">Prescribing Allergy Alert</h3>
+                </div>
+                <button (click)="cancelAllergyOverride()" class="text-gray-500 hover:text-gray-600" aria-label="Close"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <p class="text-sm text-gray-700">
+                    One or more prescribed medications conflict with the patient's recorded allergies:
+                </p>
+                <div class="space-y-2">
+                    <div *ngFor="let conflict of activeAllergyConflicts" class="p-3 bg-red-50/70 border border-red-200 rounded-lg text-xs space-y-1">
+                        <div class="font-bold text-red-900 flex justify-between">
+                            <span>Prescribed: {{ conflict.medicine }}</span>
+                            <span class="uppercase px-1.5 py-0.5 rounded bg-red-200 text-red-800 text-[10px]">{{ conflict.criticality }} risk</span>
+                        </div>
+                        <div class="text-red-700">Patient Allergy: <b>{{ conflict.substance }}</b></div>
+                        <div *ngIf="conflict.reaction" class="text-red-600 italic">Reaction: {{ conflict.reaction }}</div>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 uppercase mb-1">
+                        Clinical Override Rationale <span class="text-red-500">*</span>
+                    </label>
+                    <textarea [(ngModel)]="overrideReasonInput" rows="3" 
+                              placeholder="e.g. Desensitization complete, patient tolerated previously, or emergency benefit outweighs risk..."
+                              class="w-full border p-2.5 rounded text-sm outline-none focus:ring-2 focus:ring-red-500 border-gray-300"></textarea>
+                    <p class="text-[11px] text-gray-500 mt-1">An override reason is required by clinical safety policy to prescribe this medication.</p>
+                </div>
+            </div>
+            <div class="bg-gray-50 border-t px-6 py-3 flex justify-between items-center">
+                <button (click)="cancelAllergyOverride()" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded border bg-white">
+                    Cancel & Modify Rx
+                </button>
+                <button (click)="confirmAllergyOverride()" 
+                        [disabled]="!overrideReasonInput.trim()"
+                        class="px-5 py-2 text-sm bg-red-600 text-white font-bold rounded hover:bg-red-700 disabled:opacity-50 shadow-sm transition">
+                    Acknowledge & Override
+                </button>
+            </div>
+        </div>
+      </div>
     </div>
   `,
   styles: []
@@ -327,6 +443,21 @@ export class VisitComponent implements OnInit {
   showMobileHistory = false;
   showVitalsModal = false;
 
+  // Clinical Safety Context & Allergy Conflict Modal
+  patientSafetyContext: any = null;
+  showAllergyOverrideModal = false;
+  activeAllergyConflicts: Array<{ medicine: string; substance: string; criticality: string; reaction?: string }> = [];
+  overrideReasonInput = '';
+  pendingActionAfterOverride: (() => Promise<boolean>) | null = null;
+  // Outer workflow (navigation / next-patient advance) deferred while the
+  // override modal is open. completeConsult resolves false immediately on
+  // conflict, so the caller stashes its post-completion step here and the
+  // confirm handler replays it after the deferred completion succeeds.
+  private pendingFlowAfterOverride: (() => void) | null = null;
+  // JSON snapshot of the prescription lines a recorded override rationale was
+  // given for; used to detect stale rationales after later edits.
+  private overriddenPrescriptionJson: string | null = null;
+
   currentPrescription: any[] = [];
   private conditionPresetGeneration = 0;
   viewMode = false;
@@ -340,7 +471,8 @@ export class VisitComponent implements OnInit {
     private ngZone: NgZone,
     private pdfService: PdfService,
     private dataService: DataService,
-    private authService: AuthService
+    private authService: AuthService,
+    private doctorPick?: DoctorPickService
   ) {
     const nav = this.router.getCurrentNavigation();
     const state = nav?.extras?.state || {};
@@ -358,7 +490,8 @@ export class VisitComponent implements OnInit {
       diagnosis: [''],
       diagnosis_type: [''],
       prescription: [[]],
-      amount_paid: [0]
+      amount_paid: [0],
+      allergy_override_reason: ['']
     });
   }
 
@@ -379,8 +512,31 @@ export class VisitComponent implements OnInit {
     return this.chartWritable && this.isConsulting && this.encounterId != null && !this.activeEncounterReadOnly;
   }
 
+  get headerTitle(): string {
+    if (this.isViewMode) return 'View Visit';
+    if (this.editingVisitId) return 'Editing Past Visit';
+    if (this.isLiveConsultation) return 'Current Consultation';
+    return 'Visit';
+  }
+
   get canEditChart(): boolean {
     return this.chartWritable && !this.activeEncounterReadOnly && (this.isConsulting || this.editingVisitId != null);
+  }
+
+  // Admins consult as scribes: the encounter is attributed to them (author_id)
+  // while clinical responsibility stays with a licensed doctor (doctor_id),
+  // preserving practitioner provenance and the license snapshot.
+  // Returns undefined for non-admins (no doctorId needed), a doctor id when
+  // resolved, or null when the admin cancelled or none exists (abort).
+  private async resolveResponsibleDoctorId(): Promise<number | null | undefined> {
+    if (this.currentUser?.role !== 'admin') return undefined;
+    const doctors = await this.dataService.invoke<any[]>('getDoctors').catch(() => []);
+    if (!doctors || doctors.length === 0) {
+      alert('No active doctor on file. An admin consultation needs a licensed practitioner attached.');
+      return null;
+    }
+    if (doctors.length === 1 || !this.doctorPick) return doctors[0]?.id ?? null;
+    return this.doctorPick.request(doctors);
   }
 
   private setChartWritable(writable: boolean) {
@@ -450,11 +606,12 @@ export class VisitComponent implements OnInit {
           }
           throw error;
         });
-      const [visits, allPatients, vitals, activeEncounter] = await Promise.all([
+      const [visits, allPatients, vitals, activeEncounter, safetyContext] = await Promise.all([
         this.dataService.invoke<any[]>('getVisits', this.patientId),
         this.dataService.invoke<any[]>('getPatients', ''),
         this.dataService.invoke<any>('getVitals', this.patientId),
-        activeEncounterRequest
+        activeEncounterRequest,
+        this.dataService.invoke<any>('getPatientSafetyContext', this.patientId).catch(() => null)
       ]);
       const p = allPatients.find((patient: any) => patient.id === this.patientId);
       let resumedEncounter: any = null;
@@ -475,6 +632,7 @@ export class VisitComponent implements OnInit {
         this.patient = p;
         this.history = visits.filter((visit: any) => visit.status !== 'in-progress');
         this.patientVitals = vitals;
+        this.patientSafetyContext = safetyContext;
 
         if (resumedEncounter) {
           this.consultationStartPending = false;
@@ -517,10 +675,18 @@ export class VisitComponent implements OnInit {
         const queueEntry = queue.find(item => item.patient_id === this.patientId && item.status === 'waiting');
         if (!queueEntry) throw new Error('Patient does not have a waiting queue entry');
         this.startRequestId ||= newRequestId();
+        const doctorId = await this.resolveResponsibleDoctorId();
+        if (this.currentUser?.role === 'admin' && doctorId == null) {
+          this.consultationStartPending = false;
+          this.isConsulting = false;
+          this.setChartWritable(false);
+          return;
+        }
         const encounter = await this.dataService.invoke<any>('beginConsultation', {
           patientId: this.patientId,
           queueEntryId: queueEntry.id,
-          startRequestId: this.startRequestId
+          startRequestId: this.startRequestId,
+          ...(doctorId ? { doctorId } : {})
         });
         this.consultationStartPending = false;
         this.startRequestId = null;
@@ -564,6 +730,21 @@ export class VisitComponent implements OnInit {
   updatePrescription(items: any[]) {
     if (!this.canEditChart) return;
     this.visitForm.patchValue({ prescription: items });
+    this.invalidateStaleOverride(items);
+  }
+
+  // A recorded override rationale belongs to the exact prescription lines it
+  // was given for. If the lines change afterwards, the rationale is stale and
+  // must not silently cover the new conflict: clear it so the next save
+  // re-runs the allergy check and the modal when still conflicting.
+  private invalidateStaleOverride(nextItems: any[]): void {
+    const reason = this.visitForm.value?.allergy_override_reason;
+    if (typeof reason === 'string' && reason.trim() && this.overriddenPrescriptionJson != null
+        && JSON.stringify(nextItems || []) !== this.overriddenPrescriptionJson) {
+      this.visitForm.patchValue({ allergy_override_reason: '' });
+      if (this.visitForm.value) this.visitForm.value.allergy_override_reason = '';
+      this.overriddenPrescriptionJson = null;
+    }
   }
 
   searchConditions = (query: string) => this.dataService.invoke('searchConditions', query);
@@ -588,11 +769,90 @@ export class VisitComponent implements OnInit {
         const lines = presets.map((line) => ({ ...line }));
         this.currentPrescription = lines;
         this.visitForm.patchValue({ prescription: lines });
+        this.invalidateStaleOverride(lines);
       }
     } catch (e) {
       if (generation !== this.conditionPresetGeneration) return;
       console.warn('Could not apply condition presets', e);
     }
+  }
+
+  checkForAllergyConflicts(): Array<{ medicine: string; substance: string; criticality: string; reaction?: string }> {
+    if (!this.patientSafetyContext?.active_allergies?.length) return [];
+    let rxItems: any[] = [];
+    if (Array.isArray(this.currentPrescription) && this.currentPrescription.length > 0) {
+      rxItems = this.currentPrescription;
+    } else {
+      rxItems = this.visitForm.value?.prescription || this.visitForm.get?.('prescription')?.value || [];
+    }
+    if (!Array.isArray(rxItems) || rxItems.length === 0) return [];
+
+    const conflicts: Array<{ medicine: string; substance: string; criticality: string; reaction?: string }> = [];
+    for (const item of rxItems) {
+      const medName = String(item.medicine || '').toLowerCase().trim();
+      if (!medName) continue;
+      for (const allergy of this.patientSafetyContext.active_allergies) {
+        const substance = String(allergy.substance || '').toLowerCase().trim();
+        if (substance && (medName.includes(substance) || substance.includes(medName))) {
+          conflicts.push({
+            medicine: item.medicine,
+            substance: allergy.substance,
+            criticality: allergy.criticality || 'low',
+            reaction: allergy.reaction
+          });
+        }
+      }
+    }
+    return conflicts;
+  }
+
+  private verifyAllergySafety(continuation: () => Promise<boolean>): Promise<boolean> {
+    const conflicts = this.checkForAllergyConflicts();
+    const rawReason = this.visitForm.value?.allergy_override_reason || this.visitForm.get?.('allergy_override_reason')?.value || '';
+    const existingReason = typeof rawReason === 'string' ? rawReason.trim() : '';
+    if (conflicts.length > 0 && !existingReason) {
+      this.activeAllergyConflicts = conflicts;
+      this.pendingActionAfterOverride = continuation;
+      this.overrideReasonInput = '';
+      this.showAllergyOverrideModal = true;
+      return Promise.resolve(false);
+    }
+    return continuation();
+  }
+
+  confirmAllergyOverride() {
+    if (!this.overrideReasonInput?.trim()) return;
+    const reason = this.overrideReasonInput.trim();
+    this.visitForm.patchValue({ allergy_override_reason: reason });
+    if (this.visitForm.value) {
+      this.visitForm.value.allergy_override_reason = reason;
+    }
+    this.overriddenPrescriptionJson = JSON.stringify(this.visitForm.value?.prescription || []);
+    this.showAllergyOverrideModal = false;
+    const run = this.pendingActionAfterOverride;
+    this.pendingActionAfterOverride = null;
+    const resume = this.pendingFlowAfterOverride;
+    this.pendingFlowAfterOverride = null;
+    if (run) {
+      // Start the deferred completion on this tick (callers historically
+      // observe its side effects synchronously); replay the outer workflow
+      // once it settles.
+      let started: Promise<boolean>;
+      try {
+        started = Promise.resolve(run());
+      } catch {
+        started = Promise.resolve(false);
+      }
+      started.then((ok) => { if (ok && resume) resume(); }).catch(() => undefined);
+    } else if (resume) {
+      resume();
+    }
+  }
+
+  cancelAllergyOverride() {
+    this.showAllergyOverrideModal = false;
+    this.pendingActionAfterOverride = null;
+    this.pendingFlowAfterOverride = null;
   }
 
   async saveVisit(): Promise<boolean> {
@@ -601,6 +861,10 @@ export class VisitComponent implements OnInit {
       return false;
     }
 
+    return this.verifyAllergySafety(() => this.executeSaveVisit());
+  }
+
+  private async executeSaveVisit(): Promise<boolean> {
     const visitData = this.currentVisitData();
 
     try {
@@ -616,8 +880,6 @@ export class VisitComponent implements OnInit {
       this.ngZone.run(() => {
         if (this.editingVisitId) {
           this.resetForm();
-          // Only reset if regular edit, keeping consult open? 
-          // Actually for classic flow, saving progress shouldn't clear form until Done.
         }
         // Reload history
         this.dataService.invoke<any[]>('getVisits', this.patientId)
@@ -669,6 +931,10 @@ export class VisitComponent implements OnInit {
     // Just end, go to queue (Old behavior)
     if (await this.completeConsult()) {
       this.router.navigate(['/queue']);
+    } else if (this.showAllergyOverrideModal) {
+      this.pendingFlowAfterOverride = () => {
+        this.router.navigate(['/queue']);
+      };
     }
   }
 
@@ -677,34 +943,65 @@ export class VisitComponent implements OnInit {
     this.actionInFlight = true;
     try {
       if (await this.completeConsult(false)) {
-        this.nextStartRequestId ||= newRequestId();
-        const nextEncounter = await this.dataService.invoke<any>('beginNextConsultation', {
-          startRequestId: this.nextStartRequestId
-        });
-        this.nextStartRequestId = null;
-        if (nextEncounter) {
-          this.ngZone.run(() => {
-            this.patientId = nextEncounter.patient_id;
-            this.encounterId = nextEncounter.id;
-            this.editingVisitId = null;
-            this.visitForm.reset({ amount_paid: 0, prescription: [] });
-            this.currentPrescription = [];
-            this.isConsulting = true;
-            this.router.navigate(['/visit', nextEncounter.patient_id], {
-              state: { isConsulting: true, encounterId: nextEncounter.id }
-            });
-          });
-        } else {
-          this.isConsulting = false;
-          alert('Queue is empty! Great job.');
-          this.router.navigate(['/queue']);
-        }
+        await this.advanceToNext();
+      } else if (this.showAllergyOverrideModal) {
+        // Completion deferred until the override is confirmed; replay the
+        // advance step then (completeConsult resolves true on the retry).
+        this.pendingFlowAfterOverride = () => {
+          void this.advanceToNext();
+        };
       }
     } catch (e) {
       console.error('Failed to start the next consultation', e);
       alert('The current consultation is finished, but the next patient could not be opened. Retry to resume safely.');
     } finally {
       this.actionInFlight = false;
+    }
+  }
+
+  private async advanceToNext(): Promise<void> {
+    this.nextStartRequestId ||= newRequestId();
+    const nextDoctorId = await this.resolveResponsibleDoctorId();
+    if (this.currentUser?.role === 'admin' && nextDoctorId == null) {
+      this.router.navigate(['/queue']);
+      return;
+    }
+    try {
+      const nextEncounter = await this.dataService.invoke<any>('beginNextConsultation', {
+        startRequestId: this.nextStartRequestId,
+        ...(nextDoctorId ? { doctorId: nextDoctorId } : {})
+      });
+      this.nextStartRequestId = null;
+      if (nextEncounter) {
+        this.ngZone.run(() => {
+          this.patientId = nextEncounter.patient_id;
+          this.encounterId = nextEncounter.id;
+          this.editingVisitId = null;
+          this.visitForm.reset({ amount_paid: 0, prescription: [] });
+          this.currentPrescription = [];
+          this.isConsulting = true;
+          this.router.navigate(['/visit', nextEncounter.patient_id], {
+            state: { isConsulting: true, encounterId: nextEncounter.id }
+          });
+        });
+      } else {
+        this.isConsulting = false;
+        // Null means no actionable row: distinguish a truly empty queue from
+        // entries blocked behind active (e.g. postponed) consultations.
+        const remaining = await this.dataService.invoke<any[]>('getQueue').catch(() => []);
+        const waitingCount = (remaining || []).filter((q: any) => q.status === 'waiting').length;
+        if (waitingCount > 0) {
+          alert(`${waitingCount} patient(s) still in queue, but each has an active consultation pending. Resume them from the queue.`);
+        } else if ((remaining || []).length > 0) {
+          alert('Consultations are still in progress elsewhere. The queue has nothing waiting to auto-start.');
+        } else {
+          alert('Queue is empty! Great job.');
+        }
+        this.router.navigate(['/queue']);
+      }
+    } catch (e) {
+      console.error('Failed to start the next consultation', e);
+      alert('The current consultation is finished, but the next patient could not be opened. Retry to resume safely.');
     }
   }
 
@@ -717,6 +1014,10 @@ export class VisitComponent implements OnInit {
 
     if (!this.encounterId || (manageActionLock && this.actionInFlight)) return false;
 
+    return this.verifyAllergySafety(() => this.executeCompleteConsult(manageActionLock));
+  }
+
+  private async executeCompleteConsult(manageActionLock: boolean): Promise<boolean> {
     try {
       if (manageActionLock) this.actionInFlight = true;
       await this.dataService.invoke('completeConsultation', {
@@ -744,6 +1045,7 @@ export class VisitComponent implements OnInit {
       prescription: last.prescription
     });
     this.currentPrescription = last.prescription || [];
+    this.invalidateStaleOverride(this.currentPrescription);
   }
 
   async postponeConsult() {
@@ -778,10 +1080,11 @@ export class VisitComponent implements OnInit {
   }
 
   private async loadFinishedVisitView() {
-    const [visits, allPatients, vitals] = await Promise.all([
+    const [visits, allPatients, vitals, safetyContext] = await Promise.all([
       this.dataService.invoke<any[]>('getVisits', this.patientId),
       this.dataService.invoke<any[]>('getPatients', ''),
-      this.dataService.invoke<any>('getVitals', this.patientId)
+      this.dataService.invoke<any>('getVitals', this.patientId),
+      this.dataService.invoke<any>('getPatientSafetyContext', this.patientId).catch(() => null)
     ]);
     const patient = allPatients.find((item: any) => item.id === this.patientId);
     const finished = (visits || []).filter((visit: any) => visit.status !== 'in-progress');
@@ -793,6 +1096,7 @@ export class VisitComponent implements OnInit {
       this.patient = patient;
       this.history = finished;
       this.patientVitals = vitals;
+      this.patientSafetyContext = safetyContext;
       this.activeEncounterReadOnly = false;
       this.encounterId = null;
       this.isConsulting = false;
@@ -830,7 +1134,8 @@ export class VisitComponent implements OnInit {
       diagnosis: visit.diagnosis || '',
       diagnosis_type: visit.diagnosis_type || '',
       prescription: visit.prescription || [],
-      amount_paid: visit.amount_paid || 0
+      amount_paid: visit.amount_paid || 0,
+      allergy_override_reason: visit.allergy_override_reason || ''
     });
     this.currentPrescription = visit.prescription || [];
   }
@@ -842,7 +1147,8 @@ export class VisitComponent implements OnInit {
       diagnosis: encounter.diagnosis || '',
       diagnosis_type: encounter.diagnosis_type || '',
       prescription: encounter.prescription || [],
-      amount_paid: encounter.amount_paid || 0
+      amount_paid: encounter.amount_paid || 0,
+      allergy_override_reason: encounter.allergy_override_reason || ''
     });
     this.currentPrescription = encounter.prescription || [];
   }
@@ -889,10 +1195,10 @@ export class VisitComponent implements OnInit {
     const parts: string[] = [];
     if (this.hasBp(v)) parts.push(`BP: ${v.systolic_bp}/${v.diastolic_bp} mmHg`);
     if (this.isVitalPresent(v.pulse)) parts.push(`Pulse: ${v.pulse} bpm`);
-    if (this.isVitalPresent(v.temperature)) parts.push(`Temp: ${v.temperature} °F`);
+    if (this.isVitalPresent(v.temperature)) parts.push(`Temp: ${v.temperature} ${v.units?.temperature || '°F'}`);
     if (this.isVitalPresent(v.spo2)) parts.push(`SpO2: ${v.spo2}%`);
     if (this.isVitalPresent(v.respiratory_rate)) parts.push(`RR: ${v.respiratory_rate} bpm`);
-    if (this.isVitalPresent(v.weight)) parts.push(`Weight: ${v.weight} kg`);
+    if (this.isVitalPresent(v.weight)) parts.push(`Weight: ${v.weight} ${v.units?.weight || 'kg'}`);
     if (this.isVitalPresent(v.height)) parts.push(`Height: ${v.height} cm`);
     if (this.isVitalPresent(v.bmi)) parts.push(`BMI: ${v.bmi}`);
     return parts.join('\n');
