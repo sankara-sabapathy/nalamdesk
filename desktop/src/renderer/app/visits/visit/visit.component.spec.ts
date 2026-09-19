@@ -924,8 +924,7 @@ describe('VisitComponent', () => {
         expect(mockRouter.navigate).toHaveBeenCalledWith(['/queue']);
     });
 
-    it('reports blocked queue instead of empty when next finds nothing actionable', async () => {
-        component.patientId = 1;
+    it('reports blocked queue instead of empty when next finds nothing actionable', async () => {        component.patientId = 1;
         component.encounterId = 7;
         component.isConsulting = true;
         component.chartWritable = true;
@@ -945,6 +944,39 @@ describe('VisitComponent', () => {
 
         expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('still in queue'));
         expect(mockRouter.navigate).toHaveBeenCalledWith(['/queue']);
+    });
+
+    it('clears a recorded override rationale when the prescription changes afterwards', async () => {
+        component.patientId = 1;
+        component.encounterId = 7;
+        component.isConsulting = true;
+        component.chartWritable = true;
+        component.patientSafetyContext = {
+            patient_id: 1,
+            active_allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', reaction: 'Anaphylaxis' }],
+            has_active_allergies: true
+        };
+        component.currentPrescription = [{ medicine: 'Amoxicillin (Penicillin class)' }];
+        component.visitForm.value.prescription = component.currentPrescription;
+        component.visitForm.value.diagnosis = 'Infection';
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'completeConsultation') return Promise.resolve({ id: 7, status: 'finished' });
+            return Promise.resolve(null);
+        });
+
+        await component.completeConsult();
+        expect(component.showAllergyOverrideModal).toBe(true);
+        component.overrideReasonInput = 'Desensitized previously';
+        component.confirmAllergyOverride();
+        expect(component.visitForm.value.allergy_override_reason).toBe('Desensitized previously');
+
+        // Unchanged lines keep the rationale.
+        component.updatePrescription([{ medicine: 'Amoxicillin (Penicillin class)' }]);
+        expect(component.visitForm.value.allergy_override_reason).toBe('Desensitized previously');
+
+        // Changed lines invalidate it so the next save re-checks.
+        component.updatePrescription([{ medicine: 'Azithromycin' }]);
+        expect(component.visitForm.value.allergy_override_reason).toBe('');
     });
 });
 

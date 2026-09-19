@@ -676,5 +676,56 @@ export const MIGRATIONS = [
                 } catch (e) { }
             });
         }
+    },
+    {
+        version: 12,
+        up: (db: any) => {
+            console.log('Running Migration v12 (urgency backfill correction & clinical mutation permissions)...');
+
+            // 1. Correct legacy emergency mapping. Pre-v11 rows never received an
+            // explicit triage stamp (triaged_at IS NULL); those with the old
+            // Emergency priority (2) were defaulted to the lower 'priority'
+            // tier by v11. A legacy Emergency means "needs prompt assessment",
+            // which is the 'urgent' tier in the 4-tier system.
+            try {
+                db.exec(`
+                    UPDATE patient_queue SET urgency = 'urgent'
+                    WHERE urgency = 'priority' AND priority = 2 AND triaged_at IS NULL;
+                `);
+            } catch (e) { }
+
+            // 2. Safety net for any row that never received an urgency value.
+            try {
+                db.exec(`
+                    UPDATE patient_queue SET urgency = CASE
+                        WHEN priority >= 4 THEN 'immediate'
+                        WHEN priority = 3 THEN 'urgent'
+                        WHEN priority = 2 THEN 'urgent'
+                        ELSE 'routine'
+                    END WHERE urgency IS NULL;
+                `);
+            } catch (e) { }
+
+            // 3. Safety-record mutation is a doctor/admin action (see PRODUCT
+            // RBAC). Reads, triage, and the safety context stay available to
+            // all clinical roles; only the six mutation methods are revoked
+            // from nurse and receptionist.
+            const clinicalMutations = [
+                'saveAllergy', 'deleteAllergy',
+                'saveCondition', 'deleteCondition',
+                'saveMedication', 'deleteMedication'
+            ];
+            ['nurse', 'receptionist'].forEach(roleName => {
+                try {
+                    const role = db.prepare('SELECT permissions FROM roles WHERE name = ?').get(roleName);
+                    if (role?.permissions) {
+                        const permissions = new Set<string>(JSON.parse(role.permissions));
+                        clinicalMutations.forEach(p => permissions.delete(p));
+                        db.prepare('UPDATE roles SET permissions = ? WHERE name = ?')
+                            .run(JSON.stringify([...permissions]), roleName);
+                    }
+                } catch (e) { }
+            });
+        }
     }
 ];

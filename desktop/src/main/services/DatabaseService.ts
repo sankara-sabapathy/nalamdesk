@@ -925,7 +925,7 @@ export class DatabaseService {
             const medName = String(med.medicine || med.name || '').trim();
             if (!medName) continue;
             const existing = this.db.prepare(
-                "SELECT id FROM patient_medications WHERE patient_id = ? AND LOWER(medicine_name) = LOWER(?) AND status = 'active'"
+                "SELECT id, dosage, frequency FROM patient_medications WHERE patient_id = ? AND LOWER(medicine_name) = LOWER(?) AND status = 'active'"
             ).get(patientId, medName);
             if (!existing) {
                 this.db.prepare(`
@@ -933,6 +933,12 @@ export class DatabaseService {
                         patient_id, medicine_name, dosage, frequency, status, start_date, recorded_at, recorder_id
                     ) VALUES (?, ?, ?, ?, 'active', CURRENT_DATE, CURRENT_TIMESTAMP, ?)
                 `).run(patientId, medName, med.dosage || '', med.frequency || '', actingUserId);
+            } else if ((existing.dosage || '') !== (med.dosage || '') || (existing.frequency || '') !== (med.frequency || '')) {
+                // Same medicine, changed regimen: refresh the active row so the
+                // safety context shows the current dose, not a stale one.
+                this.db.prepare(`
+                    UPDATE patient_medications SET dosage = ?, frequency = ? WHERE id = ?
+                `).run(med.dosage || '', med.frequency || '', existing.id);
             }
         }
     }
@@ -1247,12 +1253,21 @@ export class DatabaseService {
         `).all() as any[];
 
         return rows.map(q => {
-            const vitals = this.db.prepare(`
+            // Prefer the observation linked to this exact queue episode; fall
+            // back to today's measurement only when none exists. Invalidated
+            // (entered-in-error) observations never drive queue alerts.
+            const linked = this.db.prepare(`
                 SELECT systolic_bp, diastolic_bp, pulse, temperature, respiratory_rate, spo2, bmi, status, units_json
                 FROM vitals
-                WHERE queue_entry_id = ? OR (patient_id = ? AND date(effective_time) = date('now'))
+                WHERE queue_entry_id = ? AND status != 'entered-in-error'
                 ORDER BY id DESC LIMIT 1
-            `).get(q.id, q.patient_id) as any;
+            `).get(q.id) as any;
+            const vitals = linked ?? this.db.prepare(`
+                SELECT systolic_bp, diastolic_bp, pulse, temperature, respiratory_rate, spo2, bmi, status, units_json
+                FROM vitals
+                WHERE patient_id = ? AND date(effective_time) = date('now') AND status != 'entered-in-error'
+                ORDER BY id DESC LIMIT 1
+            `).get(q.patient_id) as any;
 
             const evaluated = evaluateVitalsAbnormalities(vitals ? {
                 ...vitals,
@@ -1267,8 +1282,15 @@ export class DatabaseService {
         });
     }
 
-    urgencyToPriority(urgency: string): number {
-        switch (urgency?.toLowerCase()) {
+    private normalizeUrgency(value: unknown): string {
+        const normalized = String(value ?? 'routine').toLowerCase();
+        if (!['immediate', 'urgent', 'priority', 'routine'].includes(normalized)) {
+            throw new Error(`Unknown urgency tier: ${String(value)}`);
+        }
+        return normalized;
+    }
+
+    urgencyToPriority(urgency: string): number {        switch (urgency?.toLowerCase()) {
             case 'immediate': return 4;
             case 'urgent': return 3;
             case 'priority': return 2;
@@ -1307,6 +1329,7 @@ export class DatabaseService {
             urgency = urgencyInput || this.priorityToUrgency(priority);
             triageNotes = triageNotesInput || '';
         }
+        urgency = this.normalizeUrgency(urgency);
 
         const assessorId = actingUserId ? Number(actingUserId) : null;
         const result = this.db.prepare('INSERT INTO patient_queue (patient_id, priority) VALUES (?, ?)').run(patientId, priority);
@@ -1341,7 +1364,7 @@ export class DatabaseService {
         if (!queue) throw new Error('Queue entry not found');
         if (queue.status === 'completed') throw new Error('Cannot reassess triage for completed queue entry');
 
-        const normalizedUrgency = newUrgency.toLowerCase();
+        const normalizedUrgency = this.normalizeUrgency(newUrgency);
         const newPriority = this.urgencyToPriority(normalizedUrgency);
         const assessorId = actingUserId ? Number(actingUserId) : 1;
 
@@ -1554,7 +1577,8 @@ export class DatabaseService {
         const activeConditions = conditions.filter((c: any) => c.clinical_status === 'active' || c.status === 'active');
         const medications = this.getMedications(pId);
         const activeMedications = medications.filter((m: any) => m.status === 'active');
-        const hasLifeThreatening = activeAllergies.some((a: any) => a.severity === 'life-threatening' || a.severity === 'severe');
+        const hasLifeThreatening = activeAllergies.some((a: any) =>
+            a.severity === 'life-threatening' || a.severity === 'severe' || a.criticality === 'high');
 
         return {
             patient_id: pId,

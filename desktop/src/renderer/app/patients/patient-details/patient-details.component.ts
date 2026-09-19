@@ -122,14 +122,14 @@ import { newRequestId } from '../../services/request-id';
                         <div class="text-xs text-gray-500 uppercase font-bold">Temp</div>
                         <div class="text-lg font-mono font-bold text-gray-800">
                             {{ isVitalPresent(vitals.temperature) ? vitals.temperature : '--' }}
-                            <span *ngIf="isVitalPresent(vitals.temperature)" class="text-xs font-normal">°F</span>
+                            <span *ngIf="isVitalPresent(vitals.temperature)" class="text-xs font-normal">{{ vitals.units?.temperature || '°F' }}</span>
                         </div>
                     </div>
                      <div class="p-3 bg-gray-50 rounded border border-gray-100">
                         <div class="text-xs text-gray-500 uppercase font-bold">Weight</div>
                         <div class="text-lg font-mono font-bold text-gray-800">
                             {{ isVitalPresent(vitals.weight) ? vitals.weight : '--' }}
-                            <span *ngIf="isVitalPresent(vitals.weight)" class="text-xs font-normal">kg</span>
+                            <span *ngIf="isVitalPresent(vitals.weight)" class="text-xs font-normal">{{ vitals.units?.weight || 'kg' }}</span>
                         </div>
                     </div>
                 </div>
@@ -248,7 +248,7 @@ import { newRequestId } from '../../services/request-id';
                     <app-shared-table [rowData]="allergies" [columnDefs]="allergyColumnDefs" [pagination]="true" [pageSize]="10">
                         <div toolbar-left class="flex items-center gap-2">
                             <span class="text-xs text-gray-500">{{ allergies.length }} recorded</span>
-                            <button (click)="openAddAllergyModal()" class="text-xs bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-bold px-2.5 py-1.5 rounded flex items-center gap-1 transition">
+                            <button *ngIf="canMutateSafety" (click)="openAddAllergyModal()" class="text-xs bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-bold px-2.5 py-1.5 rounded flex items-center gap-1 transition">
                                 <span>+</span> Add Allergy
                             </button>
                         </div>
@@ -260,7 +260,7 @@ import { newRequestId } from '../../services/request-id';
                     <app-shared-table [rowData]="conditions" [columnDefs]="conditionColumnDefs" [pagination]="true" [pageSize]="10">
                         <div toolbar-left class="flex items-center gap-2">
                             <span class="text-xs text-gray-500">{{ conditions.length }} recorded</span>
-                            <button (click)="openAddConditionModal()" class="text-xs bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 font-bold px-2.5 py-1.5 rounded flex items-center gap-1 transition">
+                            <button *ngIf="canMutateSafety" (click)="openAddConditionModal()" class="text-xs bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 font-bold px-2.5 py-1.5 rounded flex items-center gap-1 transition">
                                 <span>+</span> Add Problem
                             </button>
                         </div>
@@ -272,7 +272,7 @@ import { newRequestId } from '../../services/request-id';
                     <app-shared-table [rowData]="medications" [columnDefs]="medicationColumnDefs" [pagination]="true" [pageSize]="10">
                         <div toolbar-left class="flex items-center gap-2">
                             <span class="text-xs text-gray-500">{{ medications.length }} recorded</span>
-                            <button (click)="openAddMedicationModal()" class="text-xs bg-green-50 text-green-800 border border-green-200 hover:bg-green-100 font-bold px-2.5 py-1.5 rounded flex items-center gap-1 transition">
+                            <button *ngIf="canMutateSafety" (click)="openAddMedicationModal()" class="text-xs bg-green-50 text-green-800 border border-green-200 hover:bg-green-100 font-bold px-2.5 py-1.5 rounded flex items-center gap-1 transition">
                                 <span>+</span> Add Medication
                             </button>
                         </div>
@@ -505,9 +505,9 @@ import { newRequestId } from '../../services/request-id';
                     <div class="flex flex-wrap gap-4 text-sm text-blue-900 font-sans">
                         <span *ngIf="hasBp(selectedVisit.vitals)">BP: <b>{{ selectedVisit.vitals.systolic_bp }}/{{ selectedVisit.vitals.diastolic_bp }} mmHg</b></span>
                         <span *ngIf="isVitalPresent(selectedVisit.vitals.pulse)">Pulse: <b>{{ selectedVisit.vitals.pulse }} bpm</b></span>
-                        <span *ngIf="isVitalPresent(selectedVisit.vitals.temperature)">Temp: <b>{{ selectedVisit.vitals.temperature }} °F</b></span>
+                        <span *ngIf="isVitalPresent(selectedVisit.vitals.temperature)">Temp: <b>{{ selectedVisit.vitals.temperature }} {{ selectedVisit.vitals.units?.temperature || '°F' }}</b></span>
                         <span *ngIf="isVitalPresent(selectedVisit.vitals.spo2)">SpO2: <b>{{ selectedVisit.vitals.spo2 }}%</b></span>
-                        <span *ngIf="isVitalPresent(selectedVisit.vitals.weight)">Weight: <b>{{ selectedVisit.vitals.weight }} kg</b></span>
+                        <span *ngIf="isVitalPresent(selectedVisit.vitals.weight)">Weight: <b>{{ selectedVisit.vitals.weight }} {{ selectedVisit.vitals.units?.weight || 'kg' }}</b></span>
                     </div>
                 </div>
 
@@ -729,6 +729,21 @@ export class PatientDetailsComponent implements OnInit {
     medicationForm!: FormGroup;
 
     // Standard AG Grid tables (shared-table, cf. Settings Users/Audit tabs)
+    // Safety-record mutation (allergies, problems, medications, visit history)
+    // is a doctor/admin action; other roles get read-only grids.
+    get canMutateSafety(): boolean {
+        return this.currentUser?.role === 'doctor' || this.currentUser?.role === 'admin';
+    }
+
+    private denySafetyMutation(): boolean {
+        if (this.canMutateSafety) return false;
+        void this.dialogService.open({
+            title: 'Not permitted',
+            message: 'Only doctors and admins can modify clinical safety records.',
+            type: 'warning'
+        });
+        return true;
+    }
     private fmtDate(value: any): string {
         return value ? new DatePipe('en-US').transform(value, 'mediumDate') || '-' : '-';
     }
@@ -776,7 +791,7 @@ export class PatientDetailsComponent implements OnInit {
             onCellClicked: (params: any) => {
                 const action = (params.event?.target as HTMLElement)?.closest?.('[data-action]')?.getAttribute('data-action');
                 if (action === 'view') this.viewVisit(params.data);
-                else if (action === 'delete') this.deleteVisit(params.data.id);
+                else if (action === 'delete' && !this.denySafetyMutation()) this.deleteVisit(params.data.id);
             }
         }
     ];
@@ -821,7 +836,7 @@ export class PatientDetailsComponent implements OnInit {
             headerName: 'Actions', flex: 0.6, minWidth: 100, sortable: false, filter: false,
             cellClass: 'flex items-center justify-end',
             cellRenderer: () => this.deleteActionHtml(),
-            onCellClicked: (params: any) => this.deleteAllergy(params.data.id)
+            onCellClicked: (params: any) => { if (!this.denySafetyMutation()) this.deleteAllergy(params.data.id); }
         }
     ];
 
@@ -852,7 +867,7 @@ export class PatientDetailsComponent implements OnInit {
             headerName: 'Actions', flex: 0.6, minWidth: 100, sortable: false, filter: false,
             cellClass: 'flex items-center justify-end',
             cellRenderer: () => this.deleteActionHtml(),
-            onCellClicked: (params: any) => this.deleteCondition(params.data.id)
+            onCellClicked: (params: any) => { if (!this.denySafetyMutation()) this.deleteCondition(params.data.id); }
         }
     ];
 
@@ -889,7 +904,7 @@ export class PatientDetailsComponent implements OnInit {
             headerName: 'Actions', flex: 0.6, minWidth: 100, sortable: false, filter: false,
             cellClass: 'flex items-center justify-end',
             cellRenderer: () => this.deleteActionHtml(),
-            onCellClicked: (params: any) => this.deleteMedication(params.data.id)
+            onCellClicked: (params: any) => { if (!this.denySafetyMutation()) this.deleteMedication(params.data.id); }
         }
     ];
 

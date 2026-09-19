@@ -29,7 +29,9 @@ export function resolveDbMethodArgs(method: string, args: unknown[], actingUserI
         case 'addToQueue': {
             const payload = payloadObject(args[0]);
             if (payload['urgency'] != null || payload['triage_notes'] != null || payload['notes'] != null) {
-                return [payload['patientId'], payload['priority'], actingUserId, payload['urgency'], payload['triage_notes'] ?? payload['notes']];
+                // Pass the object through so addToQueue derives a matching
+                // numeric priority from an urgency-only request.
+                return [payload['patientId'], { priority: payload['priority'], urgency: payload['urgency'], triage_notes: payload['triage_notes'] ?? payload['notes'] }, actingUserId];
             }
             return [payload['patientId'], payload['priority'], actingUserId];
         }

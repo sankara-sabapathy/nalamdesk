@@ -184,4 +184,19 @@ describe('VitalsFormComponent', () => {
             })
         }));
     });
+
+    it('keeps an amended Celsius observation valid by reapplying unit ranges', () => {
+        const amended = new VitalsFormComponent(fb, mockDataService, mockNgZone);
+        (amended as any).existingVitals = {
+            id: 5,
+            temperature: 37,
+            weight: 70,
+            units: { temperature: '°C', weight: 'kg' }
+        };
+        amended.ngOnInit();
+
+        expect(amended.tempUnit).toBe('°C');
+        expect(amended.vitalsForm.get('temperature')?.value).toBe(37);
+        expect(amended.vitalsForm.get('temperature')?.valid).toBe(true);
+    });
 });

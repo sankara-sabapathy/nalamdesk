@@ -454,6 +454,9 @@ export class VisitComponent implements OnInit {
   // conflict, so the caller stashes its post-completion step here and the
   // confirm handler replays it after the deferred completion succeeds.
   private pendingFlowAfterOverride: (() => void) | null = null;
+  // JSON snapshot of the prescription lines a recorded override rationale was
+  // given for; used to detect stale rationales after later edits.
+  private overriddenPrescriptionJson: string | null = null;
 
   currentPrescription: any[] = [];
   private conditionPresetGeneration = 0;
@@ -727,6 +730,21 @@ export class VisitComponent implements OnInit {
   updatePrescription(items: any[]) {
     if (!this.canEditChart) return;
     this.visitForm.patchValue({ prescription: items });
+    this.invalidateStaleOverride(items);
+  }
+
+  // A recorded override rationale belongs to the exact prescription lines it
+  // was given for. If the lines change afterwards, the rationale is stale and
+  // must not silently cover the new conflict: clear it so the next save
+  // re-runs the allergy check and the modal when still conflicting.
+  private invalidateStaleOverride(nextItems: any[]): void {
+    const reason = this.visitForm.value?.allergy_override_reason;
+    if (typeof reason === 'string' && reason.trim() && this.overriddenPrescriptionJson != null
+        && JSON.stringify(nextItems || []) !== this.overriddenPrescriptionJson) {
+      this.visitForm.patchValue({ allergy_override_reason: '' });
+      if (this.visitForm.value) this.visitForm.value.allergy_override_reason = '';
+      this.overriddenPrescriptionJson = null;
+    }
   }
 
   searchConditions = (query: string) => this.dataService.invoke('searchConditions', query);
@@ -751,6 +769,7 @@ export class VisitComponent implements OnInit {
         const lines = presets.map((line) => ({ ...line }));
         this.currentPrescription = lines;
         this.visitForm.patchValue({ prescription: lines });
+        this.invalidateStaleOverride(lines);
       }
     } catch (e) {
       if (generation !== this.conditionPresetGeneration) return;
@@ -808,6 +827,7 @@ export class VisitComponent implements OnInit {
     if (this.visitForm.value) {
       this.visitForm.value.allergy_override_reason = reason;
     }
+    this.overriddenPrescriptionJson = JSON.stringify(this.visitForm.value?.prescription || []);
     this.showAllergyOverrideModal = false;
     const run = this.pendingActionAfterOverride;
     this.pendingActionAfterOverride = null;
@@ -1025,6 +1045,7 @@ export class VisitComponent implements OnInit {
       prescription: last.prescription
     });
     this.currentPrescription = last.prescription || [];
+    this.invalidateStaleOverride(this.currentPrescription);
   }
 
   async postponeConsult() {
@@ -1174,10 +1195,10 @@ export class VisitComponent implements OnInit {
     const parts: string[] = [];
     if (this.hasBp(v)) parts.push(`BP: ${v.systolic_bp}/${v.diastolic_bp} mmHg`);
     if (this.isVitalPresent(v.pulse)) parts.push(`Pulse: ${v.pulse} bpm`);
-    if (this.isVitalPresent(v.temperature)) parts.push(`Temp: ${v.temperature} °F`);
+    if (this.isVitalPresent(v.temperature)) parts.push(`Temp: ${v.temperature} ${v.units?.temperature || '°F'}`);
     if (this.isVitalPresent(v.spo2)) parts.push(`SpO2: ${v.spo2}%`);
     if (this.isVitalPresent(v.respiratory_rate)) parts.push(`RR: ${v.respiratory_rate} bpm`);
-    if (this.isVitalPresent(v.weight)) parts.push(`Weight: ${v.weight} kg`);
+    if (this.isVitalPresent(v.weight)) parts.push(`Weight: ${v.weight} ${v.units?.weight || 'kg'}`);
     if (this.isVitalPresent(v.height)) parts.push(`Height: ${v.height} cm`);
     if (this.isVitalPresent(v.bmi)) parts.push(`BMI: ${v.bmi}`);
     return parts.join('\n');

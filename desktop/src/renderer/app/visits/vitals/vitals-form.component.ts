@@ -287,6 +287,23 @@ export class VitalsFormComponent implements OnInit {
             this.weightUnit = String(v.units.weight).includes('lb') ? 'lbs' : 'kg';
         }
 
+        // Reapply range validators for the loaded units: the form is built
+        // with °F/kg ranges, which would reject a normal 37 °C or 154 lb value.
+        const tempRange = this.tempUnit === '°C'
+            ? VITALS_PHYSIOLOGICAL_RANGES['temperature_c']
+            : VITALS_PHYSIOLOGICAL_RANGES['temperature_f'];
+        this.vitalsForm.get('temperature')?.setValidators([
+            Validators.min(tempRange.min),
+            Validators.max(tempRange.max)
+        ]);
+        const weightRange = this.weightUnit === 'lbs'
+            ? VITALS_PHYSIOLOGICAL_RANGES['weight_lbs']
+            : VITALS_PHYSIOLOGICAL_RANGES['weight'];
+        this.vitalsForm.get('weight')?.setValidators([
+            Validators.min(weightRange.min),
+            Validators.max(weightRange.max)
+        ]);
+
         this.vitalsForm.patchValue({
             height: v.height ?? null,
             weight: v.weight ?? null,

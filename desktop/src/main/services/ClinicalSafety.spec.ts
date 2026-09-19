@@ -486,4 +486,108 @@ describe('Clinical Safety, Practitioner Provenance & Actionable Triage', () => {
             expect(medResults.length).toBeGreaterThan(0);
         });
     });
+
+    describe('Track D: review follow-ups', () => {
+        it('prefers queue-linked vitals over newer same-day readings for alerts', () => {
+            const added = service.addToQueue(1, { urgency: 'routine', priority: 1 }, 20);
+            const queueId = Number(added.lastInsertRowid);
+
+            service.saveVitals({
+                patient_id: 1,
+                queue_entry_id: queueId,
+                systolic_bp: 120,
+                diastolic_bp: 80,
+                pulse: 72,
+                temperature: 98.6
+            }, 20);
+            // Unrelated same-day measurement (no queue link, higher id) must not win.
+            db.prepare(`INSERT INTO vitals (patient_id, queue_entry_id, systolic_bp, diastolic_bp, pulse, temperature, status, effective_time)
+                VALUES (1, NULL, 190, 120, 130, 104, 'final', datetime('now'))`).run();
+
+            const queue = service.getQueue();
+            expect(queue[0].has_abnormal_vitals).toBe(false);
+            expect(queue[0].vitals_alerts).toHaveLength(0);
+        });
+
+        it('excludes entered-in-error vitals from queue alerts', () => {
+            const added = service.addToQueue(1, { urgency: 'routine', priority: 1 }, 20);
+            const queueId = Number(added.lastInsertRowid);
+
+            db.prepare(`INSERT INTO vitals (patient_id, queue_entry_id, systolic_bp, diastolic_bp, status)
+                VALUES (1, ?, 200, 130, 'entered-in-error')`).run(queueId);
+
+            const queue = service.getQueue();
+            expect(queue[0].has_abnormal_vitals).toBe(false);
+            expect(queue[0].vitals_alerts).toHaveLength(0);
+        });
+
+        it('flags high criticality as life-threatening even with moderate severity', () => {
+            service.saveAllergy({
+                patient_id: 1,
+                substance: 'Peanuts',
+                criticality: 'high',
+                severity: 'moderate',
+                status: 'active'
+            }, 10);
+
+            const safety = service.getPatientSafetyContext(1);
+            expect(safety.has_life_threatening_allergies).toBe(true);
+        });
+
+        it('refreshes the active regimen when a later prescription changes the dose', () => {
+            const q1 = service.addToQueue(1, 1, 20);
+            const enc1 = service.beginConsultation(
+                { patientId: 1, queueEntryId: Number(q1.lastInsertRowid), startRequestId: 'rx-1' }, 10);
+            service.completeConsultation({
+                encounterId: enc1.id,
+                visit: { diagnosis: 'DM', prescription: [{ medicine: 'Metformin', dosage: '500mg', frequency: '1-0-1' }] }
+            }, 10);
+
+            const q2 = service.addToQueue(1, 1, 20);
+            const enc2 = service.beginConsultation(
+                { patientId: 1, queueEntryId: Number(q2.lastInsertRowid), startRequestId: 'rx-2' }, 10);
+            service.completeConsultation({
+                encounterId: enc2.id,
+                visit: { diagnosis: 'DM review', prescription: [{ medicine: 'Metformin', dosage: '1000mg', frequency: '1-0-1' }] }
+            }, 10);
+
+            const meds = service.getMedications(1).filter((m: any) => m.status === 'active');
+            expect(meds).toHaveLength(1);
+            expect(meds[0].dosage).toBe('1000mg');
+        });
+
+        it('rejects unknown urgency tiers at check-in and reassessment', () => {
+            expect(() => service.addToQueue(1, { urgency: 'critical' } as any, 20))
+                .toThrow('Unknown urgency tier');
+            const added = service.addToQueue(1, { urgency: 'routine', priority: 1 }, 20);
+            const queueId = Number(added.lastInsertRowid);
+            expect(() => service.reassessQueueTriage(queueId, 'emergent', 'Typo tier', 10))
+                .toThrow('Unknown urgency tier');
+        });
+
+        it('migration v12 repairs legacy emergency mapping and trims clinical mutation grants', async () => {
+            const { MIGRATIONS } = await import('../schema/migrations');
+            const v12 = MIGRATIONS.find((m: any) => m.version === 12);
+            expect(v12).toBeTruthy();
+
+            db.prepare(`INSERT INTO patient_queue (patient_id, priority, urgency, triaged_at)
+                VALUES (1, 2, 'priority', NULL)`).run();
+            db.prepare(`INSERT OR REPLACE INTO roles (name, permissions) VALUES ('nurse', ?)`)
+                .run(JSON.stringify(['getAllergies', 'saveAllergy', 'deleteAllergy', 'getQueue']));
+            db.prepare(`INSERT OR REPLACE INTO roles (name, permissions) VALUES ('doctor', ?)`)
+                .run(JSON.stringify(['getAllergies', 'saveAllergy', 'deleteAllergy']));
+
+            v12.up(db);
+
+            const row = db.prepare(`SELECT urgency FROM patient_queue WHERE triaged_at IS NULL`).get() as any;
+            expect(row.urgency).toBe('urgent');
+            const nurse = JSON.parse((db.prepare(`SELECT permissions FROM roles WHERE name = 'nurse'`).get() as any).permissions);
+            expect(nurse).not.toContain('saveAllergy');
+            expect(nurse).not.toContain('deleteAllergy');
+            expect(nurse).toContain('getAllergies');
+            expect(nurse).toContain('getQueue');
+            const doctor = JSON.parse((db.prepare(`SELECT permissions FROM roles WHERE name = 'doctor'`).get() as any).permissions);
+            expect(doctor).toContain('saveAllergy');
+        });
+    });
 });

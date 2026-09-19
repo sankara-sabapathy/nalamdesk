@@ -699,11 +699,13 @@ handleDb('db:getAllergies', (_, patientId) => {
 handleDb('db:saveAllergy', (_, allergy) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.saveAllergy(allergy, user.id);
 });
 handleDb('db:deleteAllergy', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.deleteAllergy(id, user.id);
 });
 
@@ -716,11 +718,13 @@ handleDb('db:getConditions', (_, patientId) => {
 handleDb('db:saveCondition', (_, condition) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.saveCondition(condition, user.id);
 });
 handleDb('db:deleteCondition', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.deleteCondition(id, user.id);
 });
 
@@ -733,11 +737,13 @@ handleDb('db:getMedications', (_, patientId) => {
 handleDb('db:saveMedication', (_, medication) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.saveMedication(medication, user.id);
 });
 handleDb('db:deleteMedication', (_, id) => {
     const user = sessionService.getUser();
     if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'admin'].includes(user.role)) throw new Error('Forbidden');
     return databaseService.deleteMedication(id, user.id);
 });
 
