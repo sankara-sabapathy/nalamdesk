@@ -1,0 +1,210 @@
+{
+  "components": [
+    {
+      "css": ".ds-btn-primary { background: #1868db; color: #ffffff; padding: 12px 24px; border: none; border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: filter 0.15s ease, transform 0.15s ease; } .ds-btn-primary:hover { filter: brightness(0.92); } .ds-btn-primary:focus-visible { outline: 2px solid #0ea5e9; outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }",
+      "description": "Single purposeful action per card or dialog.",
+      "html": "<button class=\"ds-btn-primary\">Save Changes</button>",
+      "kind": "button",
+      "name": "Primary Button",
+      "refersTo": "button-primary"
+    },
+    {
+      "css": ".ds-btn-outline { background: #ffffff; color: #0f172a; padding: 8px 16px; border: 1px solid #e2e8f0; border-radius: 6px; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; } .ds-btn-outline:hover { background: #f8fafc; } .ds-btn-outline:focus-visible { outline: 2px solid #1868db; outline-offset: 2px; }",
+      "description": "Secondary checks and pickers.",
+      "html": "<button class=\"ds-btn-outline\">Check for updates</button>",
+      "kind": "button",
+      "name": "Outline Button",
+      "refersTo": "button-outline"
+    },
+    {
+      "css": ".ds-input { background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-family: 'Inter', sans-serif; font-size: 14px; width: 100%; box-shadow: 0 1px 2px rgba(15,23,42,0.04); } .ds-input:focus { border-color: #1868db; outline: none; box-shadow: 0 0 0 3px rgba(24,104,219,0.15); } .ds-input::placeholder { color: #94a3b8; }",
+      "description": "Clinic name, search, credentials.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search...\" />",
+      "kind": "input",
+      "name": "Text Input",
+      "refersTo": "input"
+    },
+    {
+      "css": ".ds-nav { width: 256px; background: #ffffff; border-right: 1px solid #e2e8f0; padding: 16px; font-family: 'Inter', sans-serif; } .ds-nav-item { display: flex; width: 100%; text-align: left; padding: 8px 12px; border-radius: 6px; border-left: 4px solid transparent; color: #475569; font-size: 14px; font-weight: 500; background: transparent; } .ds-nav-item:hover { background: #f8fafc; } .ds-nav-item-active { background: #eff6ff; color: #1d4ed8; border-left-color: #1868db; }",
+      "description": "Admin Center drawer row.",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-nav-item ds-nav-item-active\">General</button><button class=\"ds-nav-item\">Users</button></nav>",
+      "kind": "nav",
+      "name": "Sidebar Nav Item",
+      "refersTo": "button-ghost"
+    },
+    {
+      "css": ".ds-card { background: #ffffff; color: #0f172a; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; box-shadow: 0 1px 2px rgba(15,23,42,0.05); font-family: 'Inter', sans-serif; } .ds-card h3 { font-family: 'Plus Jakarta Sans', sans-serif; font-size: 18px; font-weight: 600; margin: 0 0 8px 0; } .ds-card p { font-size: 14px; color: #475569; margin: 0; }",
+      "description": "Flat white settings and backup panels.",
+      "html": "<div class=\"ds-card\"><h3>Local Backups</h3><p>Automated daily backups. Retention: 30 days.</p></div>",
+      "kind": "card",
+      "name": "Settings Card",
+      "refersTo": "card"
+    },
+    {
+      "css": ".ds-badge-active { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; font-family: 'Inter', sans-serif; } .ds-badge-idle { background: #ffffff; color: #475569; border: 1px solid transparent; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-family: 'Inter', sans-serif; }",
+      "description": "Role filters and status.",
+      "html": "<span class=\"ds-badge-active\">Doctor</span> <span class=\"ds-badge-idle\">Nurse</span>",
+      "kind": "chip",
+      "name": "Filter Chip",
+      "refersTo": "button-ghost"
+    }
+  ],
+  "extensions": {
+    "breakpoints": [
+      {
+        "name": "md",
+        "value": "768px"
+      }
+    ],
+    "colorMeta": {
+      "accent": {
+        "canonical": "#0ea5e9",
+        "displayName": "Sky Signal",
+        "role": "tertiary"
+      },
+      "base-100": {
+        "canonical": "#ffffff",
+        "displayName": "Paper White",
+        "role": "neutral"
+      },
+      "base-200": {
+        "canonical": "#f8fafc",
+        "displayName": "Clinic Wash",
+        "role": "neutral"
+      },
+      "base-300": {
+        "canonical": "#f1f5f9",
+        "displayName": "Quiet Line Wash",
+        "role": "neutral"
+      },
+      "base-content": {
+        "canonical": "#0f172a",
+        "displayName": "Chart Ink",
+        "role": "neutral"
+      },
+      "error": {
+        "canonical": "#ef4444",
+        "displayName": "Alert Red",
+        "role": "neutral"
+      },
+      "info": {
+        "canonical": "#0ea5e9",
+        "displayName": "Sky Signal",
+        "role": "tertiary"
+      },
+      "neutral": {
+        "canonical": "#1e293b",
+        "displayName": "Ink Slate",
+        "role": "neutral"
+      },
+      "primary": {
+        "canonical": "#1868db",
+        "displayName": "Trust Blue",
+        "role": "primary"
+      },
+      "primary-content": {
+        "canonical": "#ffffff",
+        "displayName": "Trust Blue Content",
+        "role": "neutral"
+      },
+      "secondary": {
+        "canonical": "#475569",
+        "displayName": "Slate Support",
+        "role": "secondary"
+      },
+      "success": {
+        "canonical": "#22c55e",
+        "displayName": "Clinical Success",
+        "role": "neutral"
+      },
+      "warning": {
+        "canonical": "#eab308",
+        "displayName": "Caution Amber",
+        "role": "neutral"
+      }
+    },
+    "motion": [
+      {
+        "name": "fade-in-up",
+        "purpose": "Dashboard root entrance only.",
+        "value": "fade-in-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both"
+      }
+    ],
+    "shadows": [
+      {
+        "name": "card-rest",
+        "purpose": "Default card with border.",
+        "value": "0 1px 2px rgba(15,23,42,0.05)"
+      },
+      {
+        "name": "overlay-lift",
+        "purpose": "Modals and dropdown menus.",
+        "value": "0 10px 25px rgba(15,23,42,0.15)"
+      }
+    ],
+    "typographyMeta": {
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default app text and tables."
+      },
+      "display": {
+        "displayName": "Display",
+        "purpose": "App shell titles."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section titles."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Field labels and eyebrows."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles."
+      }
+    }
+  },
+  "generatedAt": "2026-09-19T00:00:00.000Z",
+  "narrative": {
+    "dos": [
+      "Do keep primary blue rare \u2014 one primary per card or dialog.",
+      "Do use slate text (#0f172a / gray-600) on white; keep washes #f8fafc / #f1f5f9 for ground and dividers.",
+      "Do keep cards rounded-lg with border-gray-200 + shadow-sm; modals rounded-lg + shadow-lg on bg-black/50 scrim.",
+      "Do set headings in Plus Jakarta Sans, body and tables in Inter 14px."
+    ],
+    "donts": [
+      "Don't reuse triage red/orange/green or error red for decoration \u2014 they mean clinical status.",
+      "Don't introduce gradients, hero shadows, or new accent hues outside the enterprise theme.",
+      "Don't set body copy in Jakarta or headings in Inter.",
+      "Don't drop card borders to rely on shadow alone \u2014 flat with border is the system."
+    ],
+    "keyCharacteristics": [
+      "Flat white cards on slate-50 app ground with thin gray borders",
+      "Trust-blue reserved for primary action and active selection",
+      "Inter for data, Plus Jakarta Sans for headings only",
+      "Dense but breathable Operate density (14px base, 16\u201332px section padding)"
+    ],
+    "northStar": "Clinical Clarity",
+    "overview": "NalamDesk is a quiet, precise operator console for long clinical shifts. Surfaces stay white on soft slate, hierarchy is carried by weight and position rather than decoration, and enterprise trust-blue appears only where action is required. The anti-reference is marketing SaaS: no gradients, no hero theatrics, no playful dark mode.",
+    "rules": [
+      {
+        "body": "Primary blue is used on \u226410% of any screen \u2014 one save, one add, one active nav item. Its rarity is the point.",
+        "name": "The Rare Blue Rule",
+        "section": "colors"
+      },
+      {
+        "body": "Headings are always Jakarta; everything else is Inter. Never set body copy in Jakarta for emphasis.",
+        "name": "The Two-Voice Rule",
+        "section": "typography"
+      },
+      {
+        "body": "Surfaces are flat at rest with a 1px gray border. Shadows appear only as response to state (hover, modal, menu).",
+        "name": "The Flat-By-Default Rule",
+        "section": "elevation"
+      }
+    ]
+  },
+  "schemaVersion": 2,
+  "title": "Design System: NalamDesk Desktop"
+}
