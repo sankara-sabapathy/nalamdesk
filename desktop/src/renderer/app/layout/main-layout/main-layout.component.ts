@@ -155,6 +155,7 @@ import { RuntimeService } from '../../services/runtime.service';
       [title]="dialogService.options().title"
       [message]="dialogService.options().message"
       [icon]="dialogService.options().icon ?? true"
+      [type]="dialogService.options().type ?? 'info'"
       (confirmDialog)="dialogService.confirm()"
       (cancelDialog)="dialogService.close()"
       (isOpenChange)="!$event ? dialogService.close() : null">

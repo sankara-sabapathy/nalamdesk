@@ -908,7 +908,17 @@ export class VisitComponent implements OnInit {
           });
         } else {
           this.isConsulting = false;
-          alert('Queue is empty! Great job.');
+          // Null means no actionable row: distinguish a truly empty queue from
+          // entries blocked behind active (e.g. postponed) consultations.
+          const remaining = await this.dataService.invoke<any[]>('getQueue').catch(() => []);
+          const waitingCount = (remaining || []).filter((q: any) => q.status === 'waiting').length;
+          if (waitingCount > 0) {
+            alert(`${waitingCount} patient(s) still in queue, but each has an active consultation pending. Resume them from the queue.`);
+          } else if ((remaining || []).length > 0) {
+            alert('Consultations are still in progress elsewhere. The queue has nothing waiting to auto-start.');
+          } else {
+            alert('Queue is empty! Great job.');
+          }
           this.router.navigate(['/queue']);
         }
       }

@@ -792,18 +792,15 @@ export class DatabaseService {
             const queue = this.db.prepare(`
                 SELECT q.*
                 FROM patient_queue q
-                LEFT JOIN visits active
-                  ON active.patient_id = q.patient_id
-                 AND active.status = 'in-progress'
                 WHERE q.status = 'waiting'
-                  AND (active.id IS NULL OR active.doctor_id = ?)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM visits v2
+                    WHERE v2.patient_id = q.patient_id AND v2.status = 'in-progress'
+                  )
                 ORDER BY q.priority DESC, q.check_in_time ASC, q.id ASC
                 LIMIT 1
-            `).get(practitioner.id);
+            `).get();
             if (!queue) return null;
-
-            const active = this.db.prepare("SELECT * FROM visits WHERE patient_id = ? AND status = 'in-progress'").get(queue.patient_id);
-            if (active) throw new Error('Patient already has an active consultation');
 
             const claimed = this.db.prepare(`
                 UPDATE patient_queue

@@ -317,6 +317,28 @@ describe('encounter integrity transactions', () => {
         expect(db.prepare('SELECT doctor_id, diagnosis, status FROM visits WHERE id = ?').get(doctor10Encounter.id))
             .toMatchObject({ doctor_id: 10, diagnosis: 'Doctor 10 draft', status: 'in-progress' });
     });
+
+    it('skips own postponed patient when beginning next instead of failing', () => {
+        const postponedQueue = queue(1, 2);
+        const postponed = service.beginConsultation({
+            patientId: 1, queueEntryId: postponedQueue, startRequestId: 'own-postponed'
+        }, 10);
+        service.postponeConsultation({ encounterId: postponed.id, visit: { diagnosis: 'Deferred' } }, 10);
+
+        const otherQueue = queue(2, 1);
+        const other = service.beginConsultation({
+            patientId: 2, queueEntryId: otherQueue, startRequestId: 'own-other'
+        }, 10);
+        service.completeConsultation({ encounterId: other.id, visit: { diagnosis: 'Done' } }, 10);
+
+        const cleanQueue = queue(3, 1);
+        const next = service.beginNextConsultation({ startRequestId: 'own-next' }, 10);
+
+        expect(next.patient_id).toBe(3);
+        expect(next.queue_entry_id).toBe(cleanQueue);
+        expect(db.prepare('SELECT status FROM patient_queue WHERE id = ?').get(postponedQueue).status).toBe('waiting');
+        expect(db.prepare('SELECT status FROM visits WHERE id = ?').get(postponed.id).status).toBe('in-progress');
+    });
 });
 
 describe('migration v7 compatibility', () => {

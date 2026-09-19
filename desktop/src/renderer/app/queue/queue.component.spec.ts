@@ -135,6 +135,20 @@ describe('QueueComponent', () => {
         expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
 
+    it('explains resume denial without IPC framing when another practitioner owns the encounter', async () => {
+        mockDataService.invoke.mockRejectedValue(new Error("Error invoking remote method 'db:resumeConsultation': Error: Only the responsible practitioner can access this encounter"));
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await component.startConsult({ id: 1, patient_id: 11, active_encounter_id: 77 });
+
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'warning',
+            title: 'Consultation in progress',
+            message: expect.not.stringContaining('db:resumeConsultation')
+        }));
+        expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+
     it('surfaces remove-from-queue failures in the in-app dialog instead of alert', async () => {
         vi.spyOn(window, 'confirm').mockReturnValue(true);
         mockDataService.invoke.mockRejectedValue(new Error('Cannot remove a queue entry with an active encounter'));

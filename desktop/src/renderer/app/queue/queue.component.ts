@@ -316,12 +316,17 @@ export class QueueComponent implements OnInit, OnDestroy {
       });
     } catch (e) {
       console.error('Could not start consultation', e);
+      const raw = e instanceof Error ? e.message : '';
+      // Another practitioner's in-progress encounter: denial by design
+      // (clinical responsibility), so explain instead of dumping IPC framing.
+      const denied = /responsible practitioner|forbidden|unauthorized/i.test(raw);
+      const cause = raw ? String(raw.split('Error: ').pop()).trim() : '';
       await this.dialogService.open({
-        title: 'Error',
-        message: e instanceof Error && e.message
-          ? `Failed to start consultation: ${e.message}`
-          : 'Failed to start consultation',
-        type: 'error'
+        title: denied ? 'Consultation in progress' : 'Error',
+        message: denied
+          ? 'This consultation was started by another practitioner. Only they, or the staff member who started it, can resume it.'
+          : cause ? `Failed to start consultation: ${cause}` : 'Failed to start consultation',
+        type: denied ? 'warning' : 'error'
       });
     }
   }
