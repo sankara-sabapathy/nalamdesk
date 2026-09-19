@@ -742,5 +742,14 @@ export const MIGRATIONS = [
                 try { db.exec(`ALTER TABLE settings ADD COLUMN ${col}`); } catch (e) { }
             });
         }
+    },
+    {
+        version: 14,
+        up: (db: any) => {
+            console.log('Running Migration v14 (patient ABHA link)...');
+            ['abha_address TEXT', 'abha_name TEXT'].forEach(col => {
+                try { db.exec(`ALTER TABLE patients ADD COLUMN ${col}`); } catch (e) { }
+            });
+        }
     }
 ];

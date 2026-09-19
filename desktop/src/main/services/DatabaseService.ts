@@ -402,6 +402,22 @@ export class DatabaseService {
         return this.db.prepare('SELECT * FROM patients WHERE id = ?').get(id);
     }
 
+    // Links (or unlinks with nulls) a verified ABHA address to a patient.
+    // Address shape is validated here so every writer shares one rule.
+    linkAbhaAddress(patientId: number, link: { abhaAddress?: string | null; abhaName?: string | null }, actingUserId?: number) {
+        const id = Number(patientId);
+        if (!Number.isInteger(id) || id <= 0) throw new Error('Valid patient id is required.');
+        const address = link?.abhaAddress == null ? null : String(link.abhaAddress).trim();
+        if (address !== null && !/^[\w.-]+@[A-Za-z]{2,}$/.test(address)) {
+            throw new Error('Health ID looks invalid. Use the format name@abdm.');
+        }
+        const name = link?.abhaName == null ? null : String(link.abhaName).trim() || null;
+        this.db.prepare('UPDATE patients SET abha_address = ?, abha_name = ? WHERE id = ?').run(address, name, id);
+        this.logAudit('ABHA_LINK', 'patients', id, actingUserId,
+            address ? `Linked health ID ${address}` : 'Removed health ID link');
+        return this.getPatientById(id);
+    }
+
     savePatient(patientData: any) {
         // Ensure all fields exist for named parameters
         const defaults = {

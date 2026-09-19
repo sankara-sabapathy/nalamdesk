@@ -8,13 +8,14 @@ import { AuthService } from '../../services/auth.service';
 import { DialogService } from '../../shared/services/dialog.service';
 import { DatePickerComponent } from '../../shared/components/date-picker/date-picker.component';
 import { SharedTableComponent } from '../../shared/components/table/table.component';
+import { AbhaModalComponent } from '../abha-modal.component';
 import { ColDef } from 'ag-grid-community';
 import { newRequestId } from '../../services/request-id';
 
 @Component({
     selector: 'app-patient-details',
     standalone: true,
-    imports: [CommonModule, FormsModule, ReactiveFormsModule, DatePickerComponent, SharedTableComponent],
+    imports: [CommonModule, FormsModule, ReactiveFormsModule, DatePickerComponent, SharedTableComponent, AbhaModalComponent],
     styles: [`
         @media print {
             /* Hide everything by default */
@@ -91,6 +92,12 @@ import { newRequestId } from '../../services/request-id';
                 <div class="space-y-3 pt-4 border-t border-gray-100">
                     <div class="flex items-center gap-3 text-sm text-gray-600">
                         {{ patient?.mobile }}
+                    </div>
+                    <div class="flex items-center justify-between gap-3 text-sm" *ngIf="currentUser?.role !== 'nurse'">
+                        <span class="text-gray-600 truncate">{{ patient?.abha_address || 'No health ID linked' }}</span>
+                        <button class="text-blue-600 hover:underline font-medium text-xs shrink-0" (click)="showAbhaModal = true">
+                            {{ patient?.abha_address ? 'Manage' : 'Link Health ID' }}
+                        </button>
                     </div>
                     <div class="flex items-center gap-3 text-sm text-gray-600">
                         {{ patient?.address || 'No address' }}
@@ -693,6 +700,13 @@ import { newRequestId } from '../../services/request-id';
               </form>
           </div>
       </div>
+
+      <!-- Health ID (ABHA) modal: strictly voluntary, opened only from the profile card -->
+      <app-abha-modal *ngIf="showAbhaModal"
+          [patientId]="patientId" [patientName]="patient?.name"
+          (close)="showAbhaModal = false"
+          (linked)="onAbhaLinked($event)">
+      </app-abha-modal>
     </div>
   `
 })
@@ -713,6 +727,13 @@ export class PatientDetailsComponent implements OnInit {
     // Modal State
     showVisitModal = false;
     selectedVisit: any = null;
+    showAbhaModal = false;
+
+    onAbhaLinked(link: { abhaAddress: string; abhaName: string }): void {
+        if (this.patient) {
+            this.patient = { ...this.patient, abha_address: link.abhaAddress, abha_name: link.abhaName };
+        }
+    }
 
     // Edit Patient Modal
     showEditModal = false;

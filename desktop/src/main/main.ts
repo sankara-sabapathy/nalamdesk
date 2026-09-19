@@ -16,6 +16,7 @@ import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
 import { ElectronSafeStorageDeviceKeyStore, isDeviceCryptoFailure } from './services/DeviceKeyStore';
 import { AbdmSessionService } from './services/AbdmSessionService';
+import { AbdmAbhaService } from './services/AbdmAbhaService';
 import { DatabaseService } from './services/DatabaseService';
 import { GoogleDriveService } from './services/GoogleDriveService';
 import { CloudSyncService } from './services/CloudSyncService';
@@ -141,6 +142,10 @@ const abdmSessionService = new AbdmSessionService({
     saveSettingsPatch: (patch) => databaseService.saveSettings(patch),
     saveSecretProtected: (value) => databaseService.saveAbdmSecretProtected(value),
     keyStore: new ElectronSafeStorageDeviceKeyStore()
+});
+const abdmAbhaService = new AbdmAbhaService({
+    getSessionToken: () => abdmSessionService.getSessionToken(),
+    gatewayBaseUrl: () => abdmSessionService.gatewayBaseUrl()
 });
 const credentialRotationService = new CredentialRotationService();
 const provisioningService = new ProvisioningService(securityService, databaseService);
@@ -872,6 +877,42 @@ handleDb('db:abdmTestConnectivity', async () => {
     if (!user) throw new Error('Unauthorized');
     if (user.role !== 'admin') throw new Error('Forbidden');
     return abdmSessionService.testConnectivity();
+});
+
+// ABDM health-ID IPC handlers. Front-desk roles only (doctor, receptionist,
+// admin): verifying and linking a health ID is part of intake, same posture
+// as saving a patient.
+function requireAbdmDeskRole(user: any) {
+    if (!user) throw new Error('Unauthorized');
+    if (!['doctor', 'receptionist', 'admin'].includes(user.role)) throw new Error('Forbidden');
+    return user;
+}
+handleDb('db:abdmAbhaRequestOtp', (_, payload) => {
+    const user = requireAbdmDeskRole(sessionService.getUser());
+    return abdmAbhaService.requestEnrollmentOtp(payload || {});
+});
+handleDb('db:abdmAbhaConfirmOtp', (_, payload) => {
+    const user = requireAbdmDeskRole(sessionService.getUser());
+    const args = payload || {};
+    return abdmAbhaService.confirmEnrollmentOtp(args.txnId, args.otp);
+});
+handleDb('db:abdmAbhaLookup', (_, payload) => {
+    const user = requireAbdmDeskRole(sessionService.getUser());
+    const args = payload || {};
+    return abdmAbhaService.lookupAddress(args.abhaAddress);
+});
+handleDb('db:abdmAbhaCard', (_, payload) => {
+    const user = requireAbdmDeskRole(sessionService.getUser());
+    const args = payload || {};
+    return abdmAbhaService.getCard(args.abhaAddress);
+});
+handleDb('db:abdmLinkAbha', (_, payload) => {
+    const user = requireAbdmDeskRole(sessionService.getUser());
+    const args = payload || {};
+    return databaseService.linkAbhaAddress(args.patientId, {
+        abhaAddress: args.abhaAddress ?? null,
+        abhaName: args.abhaName ?? null
+    }, user.id);
 });
 
 // Queue IPC Handlers
