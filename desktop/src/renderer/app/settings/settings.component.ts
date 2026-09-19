@@ -52,11 +52,14 @@ export class SettingsComponent implements OnInit {
   isElectron = !!(window as any).electron;
 
   // ABDM gateway (separate tab; secret handled via its own IPC, never in settings)
-  abdmConfig = { gateway_env: 'sandbox', client_id: '', has_secret: false, mock: true };
+  abdmConfig: { gateway_env: string; client_id: string; has_secret: boolean; mock: boolean; hip_id: string; counter_id: string } =
+    { gateway_env: 'sandbox', client_id: '', has_secret: false, mock: true, hip_id: '', counter_id: '' };
   abdmSecret = '';
   abdmTest: { ok: boolean; mode: string; detail: string; latencyMs?: number } | null = null;
   abdmBusy = false;
   abdmSaved = false;
+  qrDataUrl: string | null = null;
+  abdmSimResult: string | null = null;
 
   // Cloud
   cloudEnabled = false;
@@ -381,8 +384,11 @@ export class SettingsComponent implements OnInit {
             gateway_env: config.gateway_env || 'sandbox',
             client_id: config.client_id || '',
             has_secret: !!config.has_secret,
-            mock: config.mock !== false
+            mock: config.mock !== false,
+            hip_id: config.hip_id || '',
+            counter_id: config.counter_id || ''
           };
+          void this.generateQr();
         }
       });
     } catch (e) { console.error(e); }
@@ -394,7 +400,9 @@ export class SettingsComponent implements OnInit {
     try {
       await this.dataService.invoke('abdmSaveConfig', {
         gateway_env: this.abdmConfig.gateway_env,
-        client_id: this.abdmConfig.client_id
+        client_id: this.abdmConfig.client_id,
+        hip_id: this.abdmConfig.hip_id || '',
+        counter_id: this.abdmConfig.counter_id || ''
       });
       this.ngZone.run(() => {
         this.abdmSaved = true;
@@ -429,6 +437,38 @@ export class SettingsComponent implements OnInit {
     } catch (e) {
       const detail = e instanceof Error ? e.message : 'Connectivity test failed.';
       this.ngZone.run(() => { this.abdmTest = { ok: false, mode: 'error', detail }; });
+    } finally { this.abdmBusy = false; }
+  }
+
+  // Counter QR encodes the facility identity patients scan. Shape is
+  // documented in DEVELOPER_GUIDE alongside the tunnel setup.
+  async generateQr(): Promise<void> {
+    const hip = (this.abdmConfig.hip_id || '').trim();
+    const counter = (this.abdmConfig.counter_id || '').trim();
+    if (!hip || !counter) {
+      this.qrDataUrl = null;
+      return;
+    }
+    try {
+      const { default: QRCode } = await import('qrcode');
+      const payload = JSON.stringify({ app: 'NalamDesk Scan & Share', v: 1, hipId: hip, counterId: counter });
+      const url = await QRCode.toDataURL(payload, { width: 220, margin: 1 });
+      this.ngZone.run(() => { this.qrDataUrl = url; });
+    } catch (e) { console.error(e); }
+  }
+
+  async simulateShare() {
+    if (this.abdmBusy) return;
+    this.abdmBusy = true;
+    try {
+      const token: any = await this.dataService.invoke('abdmSimulateShare');
+      this.ngZone.run(() => {
+        this.abdmSimResult = `Demo scan queued as Token #${token?.token_no ?? '?'}. Check the Queue page.`;
+      });
+    } catch (e) {
+      this.ngZone.run(() => {
+        this.abdmSimResult = e instanceof Error ? e.message : 'Demo scan failed.';
+      });
     } finally { this.abdmBusy = false; }
   }
 

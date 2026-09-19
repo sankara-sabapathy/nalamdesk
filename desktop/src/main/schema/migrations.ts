@@ -751,5 +751,35 @@ export const MIGRATIONS = [
                 try { db.exec(`ALTER TABLE patients ADD COLUMN ${col}`); } catch (e) { }
             });
         }
+    },
+    {
+        version: 15,
+        up: (db: any) => {
+            console.log('Running Migration v15 (ABDM share tokens & facility identity)...');
+            db.exec(`
+                CREATE TABLE IF NOT EXISTS abdm_share_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    token_no INTEGER NOT NULL,
+                    token_date TEXT NOT NULL DEFAULT (date('now', 'localtime')),
+                    patient_name TEXT NOT NULL,
+                    age INTEGER,
+                    gender TEXT,
+                    mobile TEXT,
+                    abha_address TEXT,
+                    abha_name TEXT,
+                    raw_payload TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    expires_at DATETIME
+                );
+            `);
+            db.exec(`
+                CREATE INDEX IF NOT EXISTS idx_abdm_share_tokens_status
+                ON abdm_share_tokens(status, token_date);
+            `);
+            ['abdm_hip_id TEXT', 'abdm_counter_id TEXT'].forEach(col => {
+                try { db.exec(`ALTER TABLE settings ADD COLUMN ${col}`); } catch (e) { }
+            });
+        }
     }
 ];

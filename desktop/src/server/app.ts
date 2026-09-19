@@ -134,6 +134,20 @@ export class ApiServer {
             capturedReject?.(new Error('No authorization code received'));
         });
 
+        // ABDM Scan & Share profile callback (gateway-initiated, unauthenticated
+        // by design: the gateway cannot hold clinic credentials). The payload
+        // is strictly validated and stored as a numbered queue token; nothing
+        // executes from it. Documented tunnel setup is required for sandbox
+        // callbacks to reach this port (see DEVELOPER_GUIDE).
+        this.fastify.post('/abdm/v0.5/patients/profile/share', async (request: any, reply: any) => {
+            try {
+                const token = this.dbService.receiveAbhaShare(request.body);
+                return reply.code(202).send({ status: 'queued', tokenNo: (token as any)?.token_no });
+            } catch (e: any) {
+                return reply.code(400).send({ error: e instanceof Error ? e.message : 'Invalid share payload.' });
+            }
+        });
+
         // Protected Routes
         this.fastify.register(async (instance) => {
             instance.addHook('preValidation', this.authenticate.bind(this));

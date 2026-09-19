@@ -333,7 +333,8 @@ export class DatabaseService {
             'clinic_name', 'doctor_name', 'logo_path', 'license_key',
             'drive_tokens', 'cloud_clinic_id', 'cloud_api_key', 'cloud_enabled',
             'drive_client_id', 'drive_client_secret', 'local_backup_path',
-            'abdm_gateway_env', 'abdm_client_id', 'abdm_mock'
+            'abdm_gateway_env', 'abdm_client_id', 'abdm_mock',
+            'abdm_hip_id', 'abdm_counter_id'
         ];
 
         // Filter incoming settings to only allowed columns
@@ -361,8 +362,7 @@ export class DatabaseService {
         }
     }
 
-    // Dedicated writer for the keychain-protected ABDM client secret. Kept out
-    // of the generic settings whitelist (and reads) by design: the plaintext
+    // Dedicated writer for the keychain-protected ABDM client secret. Kept out    // of the generic settings whitelist (and reads) by design: the plaintext
     // secret never crosses the generic settings path in either direction.
     saveAbdmSecretProtected(protectedValue: string) {
         const existing = this.getSettings();
@@ -416,6 +416,71 @@ export class DatabaseService {
         this.logAudit('ABHA_LINK', 'patients', id, actingUserId,
             address ? `Linked health ID ${address}` : 'Removed health ID link');
         return this.getPatientById(id);
+    }
+
+    findPatientByAbhaAddress(address: string) {
+        const value = String(address || '').trim();
+        if (!value) return null;
+        return this.db.prepare(
+            'SELECT * FROM patients WHERE abha_address IS NOT NULL AND LOWER(abha_address) = LOWER(?) LIMIT 1'
+        ).get(value);
+    }
+
+    // Scan & Share intake: stores a gateway profile-share callback as a
+    // numbered queue token. Numbers restart daily; tokens expire after
+    // 15 minutes so a stale scan never blocks the dock.
+    receiveAbhaShare(payload: any, actingUserId?: number) {
+        const name = String(payload?.name || payload?.patientName || '').trim();
+        if (!name) throw new Error('Shared profile must include a patient name.');
+        const record = this.db.transaction(() => {
+            const today = (this.db.prepare(`SELECT date('now', 'localtime') AS today`).get() as any).today;
+            const maxNo = (this.db.prepare(
+                'SELECT COALESCE(MAX(token_no), 0) AS maxNo FROM abdm_share_tokens WHERE token_date = ?'
+            ).get(today) as any).maxNo;
+            const result = this.db.prepare(`
+                INSERT INTO abdm_share_tokens (
+                    token_no, token_date, patient_name, age, gender, mobile,
+                    abha_address, abha_name, raw_payload, status, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', datetime('now', '+15 minutes'))
+            `).run(
+                Number(maxNo) + 1,
+                today,
+                name,
+                payload?.age != null ? Number(payload.age) : null,
+                payload?.gender ? String(payload.gender) : null,
+                payload?.mobile ? String(payload.mobile) : null,
+                payload?.abhaAddress ? String(payload.abhaAddress) : null,
+                payload?.abhaName ? String(payload.abhaName) : null,
+                JSON.stringify(payload || {})
+            );
+            const row = this.db.prepare('SELECT * FROM abdm_share_tokens WHERE id = ?')
+                .get(Number(result.lastInsertRowid));
+            this.logAudit('INSERT', 'abdm_share_tokens', Number(result.lastInsertRowid),
+                actingUserId, `Scan & Share token #${Number(maxNo) + 1} for ${name}`);
+            return row;
+        });
+        return record.immediate();
+    }
+
+    getPendingShareTokens() {
+        this.db.prepare(`UPDATE abdm_share_tokens SET status = 'expired'
+            WHERE status = 'pending' AND expires_at <= CURRENT_TIMESTAMP`).run();
+        return this.db.prepare(`SELECT * FROM abdm_share_tokens
+            WHERE status = 'pending' ORDER BY id ASC`).all();
+    }
+
+    acceptShareToken(id: number, actingUserId?: number) {
+        const accept = this.db.transaction(() => {
+            const token = this.db.prepare('SELECT * FROM abdm_share_tokens WHERE id = ?').get(Number(id)) as any;
+            if (!token || token.status !== 'pending') {
+                throw new Error('Token was already handled or has expired.');
+            }
+            this.db.prepare(`UPDATE abdm_share_tokens SET status = 'accepted' WHERE id = ?`).run(token.id);
+            this.logAudit('UPDATE', 'abdm_share_tokens', token.id, actingUserId,
+                `Accepted Scan & Share token #${token.token_no} for ${token.patient_name}`);
+            return this.db.prepare('SELECT * FROM abdm_share_tokens WHERE id = ?').get(token.id);
+        });
+        return accept.immediate();
     }
 
     savePatient(patientData: any) {

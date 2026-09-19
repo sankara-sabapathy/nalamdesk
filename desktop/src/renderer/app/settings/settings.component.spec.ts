@@ -316,4 +316,25 @@ describe('SettingsComponent Validation', () => {
         expect(mockData.invoke).toHaveBeenCalledWith('abdmTestConnectivity');
         expect(component.abdmTest).toMatchObject({ ok: true, mode: 'mock' });
     });
+
+    it('generates a scannable counter QR once facility identity exists', async () => {
+        component.abdmConfig.hip_id = '';
+        component.abdmConfig.counter_id = '';
+        await component.generateQr();
+        expect(component.qrDataUrl).toBeNull();
+
+        component.abdmConfig.hip_id = 'HIP-1';
+        component.abdmConfig.counter_id = 'Counter-1';
+        await component.generateQr();
+        expect(component.qrDataUrl?.startsWith('data:image/png')).toBe(true);
+    });
+
+    it('reports demo scan queueing for the receptionist to pick up', async () => {
+        mockData.invoke.mockResolvedValue({ id: 2, token_no: 7 });
+
+        await component.simulateShare();
+
+        expect(mockData.invoke).toHaveBeenCalledWith('abdmSimulateShare');
+        expect(component.abdmSimResult).toContain('Token #7');
+    });
 });

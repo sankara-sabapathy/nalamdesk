@@ -843,7 +843,9 @@ handleDb('db:abdmGetConfig', () => {
             ? databaseService.getSettings()?.abdm_client_id || ''
             : '',
         has_secret: abdmSessionService.hasStoredSecret(),
-        mock: abdmSessionService.isMockMode()
+        mock: abdmSessionService.isMockMode(),
+        hip_id: databaseService.getSettings()?.abdm_hip_id || '',
+        counter_id: databaseService.getSettings()?.abdm_counter_id || ''
     };
 });
 handleDb('db:abdmSaveConfig', (_, config) => {
@@ -857,6 +859,12 @@ handleDb('db:abdmSaveConfig', (_, config) => {
     }
     if (config && typeof config['client_id'] === 'string') {
         patch['abdm_client_id'] = (config['client_id'] as string).trim();
+    }
+    if (config && typeof config['hip_id'] === 'string') {
+        patch['abdm_hip_id'] = (config['hip_id'] as string).trim();
+    }
+    if (config && typeof config['counter_id'] === 'string') {
+        patch['abdm_counter_id'] = (config['counter_id'] as string).trim();
     }
     if (config && config['mock'] !== undefined) {
         patch['abdm_mock'] = config['mock'] ? 1 : 0;
@@ -912,6 +920,38 @@ handleDb('db:abdmLinkAbha', (_, payload) => {
     return databaseService.linkAbhaAddress(args.patientId, {
         abhaAddress: args.abhaAddress ?? null,
         abhaName: args.abhaName ?? null
+    }, user.id);
+});
+handleDb('db:abdmGetShareTokens', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return databaseService.getPendingShareTokens();
+});
+handleDb('db:abdmAcceptShareToken', (_, payload) => {
+    const user = requireAbdmDeskRole(sessionService.getUser());
+    const args = payload || {};
+    return databaseService.acceptShareToken(args.tokenId ?? args.id, user.id);
+});
+handleDb('db:findPatientByAbha', (_, payload) => {
+    const user = requireAbdmDeskRole(sessionService.getUser());
+    const args = payload || {};
+    return databaseService.findPatientByAbhaAddress(args.abhaAddress);
+});
+handleDb('db:abdmSimulateShare', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    if (!abdmSessionService.isMockMode()) {
+        throw new Error('Demo scans are only available while the mock gateway is active.');
+    }
+    const demo = Math.floor(1000 + Math.random() * 9000);
+    return databaseService.receiveAbhaShare({
+        name: 'Demo Patient',
+        age: 34,
+        gender: 'Female',
+        mobile: '9876500000',
+        abhaAddress: `demo.patient${demo}@sbx`,
+        abhaName: 'Demo Patient'
     }, user.id);
 });
 
