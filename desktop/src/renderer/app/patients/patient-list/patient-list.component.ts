@@ -221,7 +221,6 @@ import { ColDef } from 'ag-grid-community';
                     </div>
                         </div>
                     </div>
-                    </div>
                 </form>
             </div>
             

@@ -727,5 +727,20 @@ export const MIGRATIONS = [
                 } catch (e) { }
             });
         }
+    },
+    {
+        version: 13,
+        up: (db: any) => {
+            console.log('Running Migration v13 (ABDM gateway settings)...');
+            const abdmCols = [
+                'abdm_gateway_env TEXT',
+                'abdm_client_id TEXT',
+                'abdm_client_secret_protected TEXT',
+                'abdm_mock INTEGER DEFAULT 1'
+            ];
+            abdmCols.forEach(col => {
+                try { db.exec(`ALTER TABLE settings ADD COLUMN ${col}`); } catch (e) { }
+            });
+        }
     }
 ];

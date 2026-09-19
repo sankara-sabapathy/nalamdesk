@@ -332,7 +332,8 @@ export class DatabaseService {
         const ALLOWED_COLUMNS = [
             'clinic_name', 'doctor_name', 'logo_path', 'license_key',
             'drive_tokens', 'cloud_clinic_id', 'cloud_api_key', 'cloud_enabled',
-            'drive_client_id', 'drive_client_secret', 'local_backup_path'
+            'drive_client_id', 'drive_client_secret', 'local_backup_path',
+            'abdm_gateway_env', 'abdm_client_id', 'abdm_mock'
         ];
 
         // Filter incoming settings to only allowed columns
@@ -360,8 +361,19 @@ export class DatabaseService {
         }
     }
 
-    getDashboardStats() {
-        const totalPatients = this.db.prepare('SELECT count(*) as count FROM patients').get().count;
+    // Dedicated writer for the keychain-protected ABDM client secret. Kept out
+    // of the generic settings whitelist (and reads) by design: the plaintext
+    // secret never crosses the generic settings path in either direction.
+    saveAbdmSecretProtected(protectedValue: string) {
+        const existing = this.getSettings();
+        if (existing) {
+            this.db.prepare('UPDATE settings SET abdm_client_secret_protected = ?').run(protectedValue);
+        } else {
+            this.db.prepare('INSERT INTO settings(abdm_client_secret_protected) VALUES(?)').run(protectedValue);
+        }
+    }
+
+    getDashboardStats() {        const totalPatients = this.db.prepare('SELECT count(*) as count FROM patients').get().count;
         // Today's visits: date >= start of day
         const today = new Date().toISOString().split('T')[0];
         const todayVisits = this.db.prepare("SELECT count(*) as count FROM visits WHERE date(date) = ? AND status = 'finished'").get(today).count;

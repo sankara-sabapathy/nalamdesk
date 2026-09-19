@@ -15,6 +15,7 @@ import { requireExistingRestoreAuthorization } from './services/RestoreAuthoriza
 import { CrashService } from './services/CrashService';
 import { SecurityService } from './services/SecurityService';
 import { ElectronSafeStorageDeviceKeyStore, isDeviceCryptoFailure } from './services/DeviceKeyStore';
+import { AbdmSessionService } from './services/AbdmSessionService';
 import { DatabaseService } from './services/DatabaseService';
 import { GoogleDriveService } from './services/GoogleDriveService';
 import { CloudSyncService } from './services/CloudSyncService';
@@ -135,6 +136,12 @@ autoUpdater.logger = log;
 // Services
 const securityService = new SecurityService(new ElectronSafeStorageDeviceKeyStore());
 const databaseService = new DatabaseService();
+const abdmSessionService = new AbdmSessionService({
+    getSettings: () => databaseService.getSettings(),
+    saveSettingsPatch: (patch) => databaseService.saveSettings(patch),
+    saveSecretProtected: (value) => databaseService.saveAbdmSecretProtected(value),
+    keyStore: new ElectronSafeStorageDeviceKeyStore()
+});
 const credentialRotationService = new CredentialRotationService();
 const provisioningService = new ProvisioningService(securityService, databaseService);
 const googleDriveService = new GoogleDriveService();
@@ -816,6 +823,55 @@ handleDb('db:saveSettings', async (_, settings) => {
     }
 
     return result;
+});
+
+// ABDM gateway IPC handlers. Reads are open to any authenticated user (same
+// posture as settings reads); writes and connectivity checks are admin-only.
+// The plaintext secret never leaves the main process: readers only learn
+// whether one is stored.
+handleDb('db:abdmGetConfig', () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    return {
+        gateway_env: abdmSessionService.gatewayEnv(),
+        client_id: abdmSessionService.hasClientId()
+            ? databaseService.getSettings()?.abdm_client_id || ''
+            : '',
+        has_secret: abdmSessionService.hasStoredSecret(),
+        mock: abdmSessionService.isMockMode()
+    };
+});
+handleDb('db:abdmSaveConfig', (_, config) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    const patch: Record<string, unknown> = {};
+    if (config && typeof config['gateway_env'] === 'string'
+        && ['sandbox', 'staging'].includes(config['gateway_env'] as string)) {
+        patch['abdm_gateway_env'] = config['gateway_env'];
+    }
+    if (config && typeof config['client_id'] === 'string') {
+        patch['abdm_client_id'] = (config['client_id'] as string).trim();
+    }
+    if (config && config['mock'] !== undefined) {
+        patch['abdm_mock'] = config['mock'] ? 1 : 0;
+    }
+    const result = databaseService.saveSettings(patch);
+    abdmSessionService.invalidate();
+    return result;
+});
+handleDb('db:abdmSetSecret', (_, payload) => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    const secret = payload && typeof payload.secret === 'string' ? payload.secret : '';
+    return abdmSessionService.saveClientSecret(secret);
+});
+handleDb('db:abdmTestConnectivity', async () => {
+    const user = sessionService.getUser();
+    if (!user) throw new Error('Unauthorized');
+    if (user.role !== 'admin') throw new Error('Forbidden');
+    return abdmSessionService.testConnectivity();
 });
 
 // Queue IPC Handlers

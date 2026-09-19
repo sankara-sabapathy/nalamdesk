@@ -51,6 +51,13 @@ export class SettingsComponent implements OnInit {
   settingsSaved = false;
   isElectron = !!(window as any).electron;
 
+  // ABDM gateway (separate tab; secret handled via its own IPC, never in settings)
+  abdmConfig = { gateway_env: 'sandbox', client_id: '', has_secret: false, mock: true };
+  abdmSecret = '';
+  abdmTest: { ok: boolean; mode: string; detail: string; latencyMs?: number } | null = null;
+  abdmBusy = false;
+  abdmSaved = false;
+
   // Cloud
   cloudEnabled = false;
   cloudClinicId: string | null = null;
@@ -264,6 +271,9 @@ export class SettingsComponent implements OnInit {
     if (tab === 'audit') {
       this.loadAuditLogs();
     }
+    if (tab === 'abdm') {
+      this.loadAbdmConfig();
+    }
   }
 
   private dataService = inject(DataService);
@@ -360,6 +370,66 @@ export class SettingsComponent implements OnInit {
       await this.dataService.invoke('saveSettings', this.settings);
       this.ngZone.run(() => { this.settingsSaved = true; setTimeout(() => this.settingsSaved = false, 3000); });
     } catch (e) { console.error(e); }
+  }
+
+  async loadAbdmConfig() {
+    try {
+      const config = await this.dataService.invoke<any>('abdmGetConfig');
+      this.ngZone.run(() => {
+        if (config) {
+          this.abdmConfig = {
+            gateway_env: config.gateway_env || 'sandbox',
+            client_id: config.client_id || '',
+            has_secret: !!config.has_secret,
+            mock: config.mock !== false
+          };
+        }
+      });
+    } catch (e) { console.error(e); }
+  }
+
+  async saveAbdmConfig() {
+    if (this.abdmBusy) return;
+    this.abdmBusy = true;
+    try {
+      await this.dataService.invoke('abdmSaveConfig', {
+        gateway_env: this.abdmConfig.gateway_env,
+        client_id: this.abdmConfig.client_id
+      });
+      this.ngZone.run(() => {
+        this.abdmSaved = true;
+        setTimeout(() => this.abdmSaved = false, 3000);
+      });
+      await this.loadAbdmConfig();
+    } catch (e) { console.error(e); }
+    finally { this.abdmBusy = false; }
+  }
+
+  async saveAbdmSecret() {
+    if (this.abdmBusy || !this.abdmSecret) return;
+    this.abdmBusy = true;
+    try {
+      await this.dataService.invoke('abdmSetSecret', { secret: this.abdmSecret });
+      this.ngZone.run(() => {
+        this.abdmSecret = '';
+        this.abdmSaved = true;
+        setTimeout(() => this.abdmSaved = false, 3000);
+      });
+      await this.loadAbdmConfig();
+    } catch (e) { console.error(e); }
+    finally { this.abdmBusy = false; }
+  }
+
+  async testAbdm() {
+    if (this.abdmBusy) return;
+    this.abdmBusy = true;
+    try {
+      const result = await this.dataService.invoke<any>('abdmTestConnectivity');
+      this.ngZone.run(() => { this.abdmTest = result; });
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : 'Connectivity test failed.';
+      this.ngZone.run(() => { this.abdmTest = { ok: false, mode: 'error', detail }; });
+    } finally { this.abdmBusy = false; }
   }
 
   async loadUsers() {
