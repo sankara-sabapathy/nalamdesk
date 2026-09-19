@@ -24,23 +24,23 @@ import { newRequestId } from '../../services/request-id';
                 display: none !important;
             }
 
-            /* Show ONLY the modal content */
-            .fixed.inset-0 {
+            /* Show ONLY the receipt modal content */
+            .print-scope-receipt {
                 position: static !important;
                 background: white !important;
                 display: block !important;
             }
-            .fixed.inset-0 > div {
+            .print-scope-receipt > div {
                 box-shadow: none !important;
                 max-width: 100% !important;
                 max-height: none !important;
                 border-radius: 0 !important;
             }
-            
+
             /* Hide modal close button & actions */
-            .fixed.inset-0 button, 
-            .fixed.inset-0 .border-t { 
-                display: none !important; 
+            .print-scope-receipt button,
+            .print-scope-receipt .border-t {
+                display: none !important;
             }
 
             /* Ensure body is visible and formatted */
@@ -460,7 +460,7 @@ import { newRequestId } from '../../services/request-id';
       </div>
 
       <!-- Visit Detail Modal (Receipt View) -->
-      <div *ngIf="showVisitModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" (click)="closeModal()">
+      <div *ngIf="showVisitModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 print-scope-receipt" (click)="closeModal()">
         <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]" (click)="$event.stopPropagation()">
             <!-- Modal Header -->
             <div class="bg-gray-50 border-b px-6 py-4 flex justify-between items-center">

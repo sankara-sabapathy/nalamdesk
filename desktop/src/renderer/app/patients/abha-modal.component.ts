@@ -14,11 +14,30 @@ type AbhaStep = 'lookup' | 'enroll' | 'otp' | 'card';
     selector: 'app-abha-modal',
     standalone: true,
     imports: [CommonModule, FormsModule],
+    styles: [`
+        @media print {
+            /* Print only the health ID card, never the dialog chrome. */
+            .print-scope-abha {
+                position: static !important;
+                background: white !important;
+                display: block !important;
+                padding: 0 !important;
+            }
+            .print-scope-abha > div {
+                box-shadow: none !important;
+                max-width: 100% !important;
+                border: none !important;
+            }
+            .print-scope-abha .no-print {
+                display: none !important;
+            }
+        }
+    `],
     template: `
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Link health ID">
-      <div class="fixed inset-0 bg-black/50" (click)="close.emit()"></div>
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4 print-scope-abha" role="dialog" aria-modal="true" aria-label="Link health ID">
+      <div class="fixed inset-0 bg-black/50 no-print" (click)="close.emit()"></div>
       <div class="relative bg-white rounded-lg w-full max-w-md shadow-lg border border-gray-200 overflow-hidden">
-        <div class="px-6 py-4 border-b bg-gray-50 flex justify-between items-center">
+        <div class="px-6 py-4 border-b bg-gray-50 flex justify-between items-center no-print">
           <div>
             <h3 class="text-lg font-bold text-gray-800">Health ID (ABHA)</h3>
             <p class="text-xs text-gray-500">Optional. Skipping changes nothing about this visit.</p>
@@ -29,7 +48,7 @@ type AbhaStep = 'lookup' | 'enroll' | 'otp' | 'card';
         </div>
 
         <div class="p-6 space-y-4">
-          <div *ngIf="mockHint" class="p-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-xs">
+          <div *ngIf="mockHint" class="p-3 rounded-lg border border-blue-200 bg-blue-50 text-blue-800 text-xs no-print">
             {{ mockHint }}
           </div>
 
@@ -103,14 +122,14 @@ type AbhaStep = 'lookup' | 'enroll' | 'otp' | 'card';
               <img *ngIf="card.imageBase64" [src]="'data:' + (card.mimeType || 'image/png') + ';base64,' + card.imageBase64"
                    alt="Health ID card" class="mx-auto mt-4 max-h-48 rounded border border-gray-200">
             </div>
-            <div class="mt-4 flex gap-2">
-              <button *ngIf="!linked" (click)="link(card.name)" [disabled]="busy" class="btn btn-primary btn-sm flex-1">Link to Patient</button>
+            <div class="mt-4 flex gap-2 no-print">
+              <button *ngIf="!linkedDone" (click)="link(card.name)" [disabled]="busy" class="btn btn-primary btn-sm flex-1">Link to Patient</button>
               <button (click)="printCard()" class="btn btn-outline btn-sm flex-1">Print Card</button>
               <button (click)="close.emit()" class="btn btn-ghost btn-sm">Done</button>
             </div>
           </div>
 
-          <p *ngIf="error" class="p-2 bg-red-100 text-red-700 rounded text-sm">{{ error }}</p>
+          <p *ngIf="error" class="p-2 bg-red-100 text-red-700 rounded text-sm no-print">{{ error }}</p>
         </div>
       </div>
     </div>
@@ -133,6 +152,7 @@ export class AbhaModalComponent {
     identifier = '';
     txnId = '';
     otp = '';
+    linkedDone = false;
     card: { abhaAddress: string; name: string; gender?: string; dateOfBirth?: string; imageBase64?: string; mimeType?: string } | null = null;
 
     constructor(private dataService: DataService) { }
@@ -232,6 +252,7 @@ export class AbhaModalComponent {
                 abhaName: name || ''
             });
             this.linked.emit({ abhaAddress, abhaName: name || '' });
+            this.linkedDone = true;
             this.close.emit();
         } catch (e) {
             this.error = e instanceof Error ? e.message : 'Could not link the health ID.';

@@ -70,8 +70,28 @@ describe('AbhaModalComponent', () => {
         expect(component.card).toMatchObject({ abhaAddress: 'new.id@sbx', name: 'Asha' });
     });
 
-    it('closes untouched without any backend calls', async () => {
-        const closed: any[] = [];
+    it('links the generated ID from the card step', async () => {
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'abdmLinkAbha') return Promise.resolve({ id: 7 });
+            return Promise.resolve(null);
+        });
+        const linked: any[] = [];
+        component.linked.subscribe((v) => linked.push(v));
+        component.step = 'card';
+        component.card = { abhaAddress: 'new.id@sbx', name: 'Asha' };
+
+        await component.link('Asha');
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('abdmLinkAbha', {
+            patientId: 7,
+            abhaAddress: 'new.id@sbx',
+            abhaName: 'Asha'
+        });
+        expect(linked).toEqual([{ abhaAddress: 'new.id@sbx', abhaName: 'Asha' }]);
+        expect(component.linkedDone).toBe(true);
+    });
+
+    it('closes untouched without any backend calls', async () => {        const closed: any[] = [];
         component.close.subscribe(() => closed.push(true));
         component.close.emit();
         expect(closed).toHaveLength(1);
