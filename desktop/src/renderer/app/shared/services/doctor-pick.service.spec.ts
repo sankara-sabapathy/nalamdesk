@@ -38,4 +38,20 @@ describe('DoctorPickService', () => {
         await expect(pending).resolves.toBeNull();
         expect(service.open()).toBe(false);
     });
+
+    it('resolves every concurrent request instead of hanging the earlier ones', async () => {
+        const service = new DoctorPickService();
+        const first = service.request([
+            { id: 10, name: 'Dr. Smith' },
+            { id: 11, name: 'Dr. Jones' }
+        ]);
+        const second = service.request([
+            { id: 10, name: 'Dr. Smith' },
+            { id: 11, name: 'Dr. Jones' }
+        ]);
+        service.choose(10);
+        await expect(first).resolves.toBe(10);
+        await expect(second).resolves.toBe(10);
+        expect(service.open()).toBe(false);
+    });
 });

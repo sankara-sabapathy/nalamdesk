@@ -311,6 +311,22 @@ describe('QueueComponent', () => {
         expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
 
+    it('warns when admin starts a consultation with no active doctor on file', async () => {
+        mockAuthService.getUser.mockReturnValue({ role: 'admin', id: 99 });
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'getDoctors') return Promise.resolve([]);
+            return Promise.resolve(null);
+        });
+
+        await component.startConsult({ id: 1, patient_id: 11, patient_name: 'P1' });
+
+        expect(mockDialogService.open).toHaveBeenCalledWith(expect.objectContaining({
+            title: 'No responsible doctor',
+            type: 'warning'
+        }));
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('beginConsultation', expect.anything());
+    });
+
     it('computes wait time string accurately', () => {
         expect(component.getWaitTime('')).toBe('');
         expect(component.getWaitTime('invalid-date')).toBe('');

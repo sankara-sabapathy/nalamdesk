@@ -15,7 +15,11 @@ export class DoctorPickService {
     readonly open = signal(false);
     readonly doctors = signal<any[]>([]);
 
-    private resolveRef: ((id: number | null) => void) | null = null;
+    // Every concurrent request is tracked: two consult starts racing the same
+    // modal must both settle. They share the chosen attending doctor, which is
+    // safe because the admin explicitly selected that practitioner and each
+    // encounter records its own provenance.
+    private pendingPicks: Array<(id: number | null) => void> = [];
 
     request(doctors: any[]): Promise<number | null> {
         const list = doctors || [];
@@ -24,15 +28,15 @@ export class DoctorPickService {
         this.doctors.set(list);
         this.open.set(true);
         return new Promise<number | null>((resolve) => {
-            this.resolveRef = resolve;
+            this.pendingPicks.push(resolve);
         });
     }
 
     choose(id: number | null): void {
         this.open.set(false);
         this.doctors.set([]);
-        const resolve = this.resolveRef;
-        this.resolveRef = null;
-        if (resolve) resolve(id);
+        const waiting = this.pendingPicks;
+        this.pendingPicks = [];
+        waiting.forEach((resolve) => resolve(id));
     }
 }

@@ -449,6 +449,11 @@ export class VisitComponent implements OnInit {
   activeAllergyConflicts: Array<{ medicine: string; substance: string; criticality: string; reaction?: string }> = [];
   overrideReasonInput = '';
   pendingActionAfterOverride: (() => Promise<boolean>) | null = null;
+  // Outer workflow (navigation / next-patient advance) deferred while the
+  // override modal is open. completeConsult resolves false immediately on
+  // conflict, so the caller stashes its post-completion step here and the
+  // confirm handler replays it after the deferred completion succeeds.
+  private pendingFlowAfterOverride: (() => void) | null = null;
 
   currentPrescription: any[] = [];
   private conditionPresetGeneration = 0;
@@ -804,16 +809,30 @@ export class VisitComponent implements OnInit {
       this.visitForm.value.allergy_override_reason = reason;
     }
     this.showAllergyOverrideModal = false;
-    if (this.pendingActionAfterOverride) {
-      const action = this.pendingActionAfterOverride;
-      this.pendingActionAfterOverride = null;
-      action();
+    const run = this.pendingActionAfterOverride;
+    this.pendingActionAfterOverride = null;
+    const resume = this.pendingFlowAfterOverride;
+    this.pendingFlowAfterOverride = null;
+    if (run) {
+      // Start the deferred completion on this tick (callers historically
+      // observe its side effects synchronously); replay the outer workflow
+      // once it settles.
+      let started: Promise<boolean>;
+      try {
+        started = Promise.resolve(run());
+      } catch {
+        started = Promise.resolve(false);
+      }
+      started.then((ok) => { if (ok && resume) resume(); }).catch(() => undefined);
+    } else if (resume) {
+      resume();
     }
   }
 
   cancelAllergyOverride() {
     this.showAllergyOverrideModal = false;
     this.pendingActionAfterOverride = null;
+    this.pendingFlowAfterOverride = null;
   }
 
   async saveVisit(): Promise<boolean> {
@@ -892,6 +911,10 @@ export class VisitComponent implements OnInit {
     // Just end, go to queue (Old behavior)
     if (await this.completeConsult()) {
       this.router.navigate(['/queue']);
+    } else if (this.showAllergyOverrideModal) {
+      this.pendingFlowAfterOverride = () => {
+        this.router.navigate(['/queue']);
+      };
     }
   }
 
@@ -900,50 +923,65 @@ export class VisitComponent implements OnInit {
     this.actionInFlight = true;
     try {
       if (await this.completeConsult(false)) {
-        this.nextStartRequestId ||= newRequestId();
-        const nextDoctorId = await this.resolveResponsibleDoctorId();
-        if (this.currentUser?.role === 'admin' && nextDoctorId == null) {
-          this.router.navigate(['/queue']);
-          return;
-        }
-        const nextEncounter = await this.dataService.invoke<any>('beginNextConsultation', {
-          startRequestId: this.nextStartRequestId,
-          ...(nextDoctorId ? { doctorId: nextDoctorId } : {})
-        });
-        this.nextStartRequestId = null;
-        if (nextEncounter) {
-          this.ngZone.run(() => {
-            this.patientId = nextEncounter.patient_id;
-            this.encounterId = nextEncounter.id;
-            this.editingVisitId = null;
-            this.visitForm.reset({ amount_paid: 0, prescription: [] });
-            this.currentPrescription = [];
-            this.isConsulting = true;
-            this.router.navigate(['/visit', nextEncounter.patient_id], {
-              state: { isConsulting: true, encounterId: nextEncounter.id }
-            });
-          });
-        } else {
-          this.isConsulting = false;
-          // Null means no actionable row: distinguish a truly empty queue from
-          // entries blocked behind active (e.g. postponed) consultations.
-          const remaining = await this.dataService.invoke<any[]>('getQueue').catch(() => []);
-          const waitingCount = (remaining || []).filter((q: any) => q.status === 'waiting').length;
-          if (waitingCount > 0) {
-            alert(`${waitingCount} patient(s) still in queue, but each has an active consultation pending. Resume them from the queue.`);
-          } else if ((remaining || []).length > 0) {
-            alert('Consultations are still in progress elsewhere. The queue has nothing waiting to auto-start.');
-          } else {
-            alert('Queue is empty! Great job.');
-          }
-          this.router.navigate(['/queue']);
-        }
+        await this.advanceToNext();
+      } else if (this.showAllergyOverrideModal) {
+        // Completion deferred until the override is confirmed; replay the
+        // advance step then (completeConsult resolves true on the retry).
+        this.pendingFlowAfterOverride = () => {
+          void this.advanceToNext();
+        };
       }
     } catch (e) {
       console.error('Failed to start the next consultation', e);
       alert('The current consultation is finished, but the next patient could not be opened. Retry to resume safely.');
     } finally {
       this.actionInFlight = false;
+    }
+  }
+
+  private async advanceToNext(): Promise<void> {
+    this.nextStartRequestId ||= newRequestId();
+    const nextDoctorId = await this.resolveResponsibleDoctorId();
+    if (this.currentUser?.role === 'admin' && nextDoctorId == null) {
+      this.router.navigate(['/queue']);
+      return;
+    }
+    try {
+      const nextEncounter = await this.dataService.invoke<any>('beginNextConsultation', {
+        startRequestId: this.nextStartRequestId,
+        ...(nextDoctorId ? { doctorId: nextDoctorId } : {})
+      });
+      this.nextStartRequestId = null;
+      if (nextEncounter) {
+        this.ngZone.run(() => {
+          this.patientId = nextEncounter.patient_id;
+          this.encounterId = nextEncounter.id;
+          this.editingVisitId = null;
+          this.visitForm.reset({ amount_paid: 0, prescription: [] });
+          this.currentPrescription = [];
+          this.isConsulting = true;
+          this.router.navigate(['/visit', nextEncounter.patient_id], {
+            state: { isConsulting: true, encounterId: nextEncounter.id }
+          });
+        });
+      } else {
+        this.isConsulting = false;
+        // Null means no actionable row: distinguish a truly empty queue from
+        // entries blocked behind active (e.g. postponed) consultations.
+        const remaining = await this.dataService.invoke<any[]>('getQueue').catch(() => []);
+        const waitingCount = (remaining || []).filter((q: any) => q.status === 'waiting').length;
+        if (waitingCount > 0) {
+          alert(`${waitingCount} patient(s) still in queue, but each has an active consultation pending. Resume them from the queue.`);
+        } else if ((remaining || []).length > 0) {
+          alert('Consultations are still in progress elsewhere. The queue has nothing waiting to auto-start.');
+        } else {
+          alert('Queue is empty! Great job.');
+        }
+        this.router.navigate(['/queue']);
+      }
+    } catch (e) {
+      console.error('Failed to start the next consultation', e);
+      alert('The current consultation is finished, but the next patient could not be opened. Retry to resume safely.');
     }
   }
 

@@ -862,5 +862,89 @@ describe('VisitComponent', () => {
             })
         }));
     });
+
+    it('resumes Finish & Next after the allergy override is confirmed', async () => {
+        component.patientId = 1;
+        component.encounterId = 7;
+        component.isConsulting = true;
+        component.chartWritable = true;
+        component.patientSafetyContext = {
+            patient_id: 1,
+            active_allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', reaction: 'Anaphylaxis' }],
+            has_active_allergies: true
+        };
+        component.currentPrescription = [{ medicine: 'Amoxicillin (Penicillin class)' }];
+        component.visitForm.value.prescription = component.currentPrescription;
+        component.visitForm.value.diagnosis = 'Infection';
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'completeConsultation') return Promise.resolve({ id: 7, status: 'finished' });
+            if (method === 'beginNextConsultation') return Promise.resolve({ id: 8, patient_id: 2 });
+            return Promise.resolve(null);
+        });
+        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+        await component.finishAndNext();
+        expect(component.showAllergyOverrideModal).toBe(true);
+
+        component.overrideReasonInput = 'Desensitized previously';
+        component.confirmAllergyOverride();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('beginNextConsultation', expect.anything());
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/visit', 2], expect.objectContaining({
+            state: expect.objectContaining({ encounterId: 8 })
+        }));
+    });
+
+    it('navigates back to the queue when Finish & Exit resumes after override', async () => {
+        component.patientId = 1;
+        component.encounterId = 7;
+        component.isConsulting = true;
+        component.chartWritable = true;
+        component.patientSafetyContext = {
+            patient_id: 1,
+            active_allergies: [{ id: 1, substance: 'Penicillin', criticality: 'high', reaction: 'Anaphylaxis' }],
+            has_active_allergies: true
+        };
+        component.currentPrescription = [{ medicine: 'Amoxicillin (Penicillin class)' }];
+        component.visitForm.value.prescription = component.currentPrescription;
+        component.visitForm.value.diagnosis = 'Infection';
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'completeConsultation') return Promise.resolve({ id: 7, status: 'finished' });
+            return Promise.resolve(null);
+        });
+
+        await component.endConsult();
+        expect(component.showAllergyOverrideModal).toBe(true);
+
+        component.overrideReasonInput = 'Desensitized previously';
+        component.confirmAllergyOverride();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/queue']);
+    });
+
+    it('reports blocked queue instead of empty when next finds nothing actionable', async () => {
+        component.patientId = 1;
+        component.encounterId = 7;
+        component.isConsulting = true;
+        component.chartWritable = true;
+        component.patientSafetyContext = null;
+        component.currentPrescription = [];
+        component.visitForm.value.prescription = [];
+        component.visitForm.value.diagnosis = 'Review';
+        mockDataService.invoke.mockImplementation((method: string) => {
+            if (method === 'completeConsultation') return Promise.resolve({ id: 7, status: 'finished' });
+            if (method === 'beginNextConsultation') return Promise.resolve(null);
+            if (method === 'getQueue') return Promise.resolve([{ id: 9, patient_id: 3, status: 'waiting', active_encounter_id: 5 }]);
+            return Promise.resolve(null);
+        });
+        const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+        await component.finishAndNext();
+
+        expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('still in queue'));
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/queue']);
+    });
 });
 
