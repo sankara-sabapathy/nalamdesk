@@ -184,3 +184,47 @@ describe('hash SPA fallback', () => {
         expect(response.headers.location).toBe('/#/patients?editId=5');
     });
 });
+
+describe('ABDM Scan & Share callback', () => {
+    let server: ApiServer;
+    let db: any;
+
+    beforeEach(() => {
+        db = {
+            beginWork: vi.fn(),
+            endWork: vi.fn(),
+            receiveAbhaShare: vi.fn().mockReturnValue({ id: 1, token_no: 3 })
+        };
+        server = new ApiServer(db, os.tmpdir());
+    });
+
+    afterEach(async () => {
+        await server.close();
+    });
+
+    it('queues a valid profile share with 202 without authentication', async () => {
+        const response = await server.inject({
+            method: 'POST',
+            url: '/abdm/v0.5/patients/profile/share',
+            payload: { name: 'Ramesh Kumar', abhaAddress: 'ramesh@sbx' }
+        });
+        expect(response.statusCode).toBe(202);
+        expect(response.json()).toMatchObject({ status: 'queued', tokenNo: 3 });
+        expect(db.receiveAbhaShare).toHaveBeenCalledWith(
+            expect.objectContaining({ name: 'Ramesh Kumar' })
+        );
+    });
+
+    it('rejects a nameless payload with 400', async () => {
+        db.receiveAbhaShare.mockImplementation(() => {
+            throw new Error('Shared profile must include a patient name.');
+        });
+        const response = await server.inject({
+            method: 'POST',
+            url: '/abdm/v0.5/patients/profile/share',
+            payload: { abhaAddress: 'nobody@sbx' }
+        });
+        expect(response.statusCode).toBe(400);
+        expect(response.json().error).toContain('patient name');
+    });
+});

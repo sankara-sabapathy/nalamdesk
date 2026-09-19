@@ -149,6 +149,85 @@ describe('QueueComponent', () => {
         expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
 
+    it('loads pending scan tokens for the dock', async () => {
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'abdmGetShareTokens') {
+                return Promise.resolve([{ id: 1, token_no: 14, patient_name: 'Ramesh', abha_address: 'ramesh@sbx' }]);
+            }
+            return Promise.resolve([]);
+        });
+
+        await component.refreshShareTokens();
+
+        expect(component.shareTokens).toHaveLength(1);
+        expect(component.shareTokens[0].token_no).toBe(14);
+    });
+
+    it('accepts a scan by queueing the linked patient and acknowledging', async () => {
+        const token = { id: 3, token_no: 15, patient_name: 'Ramesh', abha_address: 'ramesh@sbx' };
+        mockDataService.invoke.mockImplementation((endpoint: string, payload: any) => {
+            if (endpoint === 'findPatientByAbha') {
+                return Promise.resolve({ id: 9, name: 'Ramesh', mobile: '9876543210', age: 42, gender: 'Male' });
+            }
+            if (endpoint === 'addToQueue') return Promise.resolve({ changes: 1 });
+            if (endpoint === 'abdmAcceptShareToken') return Promise.resolve({ status: 'accepted' });
+            return Promise.resolve(null);
+        });
+        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+        await component.acceptShareToken(token);
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('addToQueue', { patientId: 9, priority: 1 });
+        expect(mockDataService.invoke).toHaveBeenCalledWith('abdmAcceptShareToken', { tokenId: 3 });
+        expect(component.acceptingTokenId).toBeNull();
+    });
+
+    it('creates the patient for an unlinked scan before queueing', async () => {
+        const token = { id: 4, token_no: 16, patient_name: 'Sita', age: 30, gender: 'Female', mobile: '9876500001', abha_address: 'sita@sbx' };
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'findPatientByAbha') return Promise.resolve(null);
+            if (endpoint === 'savePatient') return Promise.resolve({ lastInsertRowid: 21 });
+            if (endpoint === 'addToQueue') return Promise.resolve({ changes: 1 });
+            if (endpoint === 'abdmAcceptShareToken') return Promise.resolve({ status: 'accepted' });
+            return Promise.resolve(null);
+        });
+        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+        await component.acceptShareToken(token);
+
+        expect(mockDataService.invoke).toHaveBeenCalledWith('savePatient', expect.objectContaining({ name: 'Sita' }));
+        expect(mockDataService.invoke).toHaveBeenCalledWith('addToQueue', { patientId: 21, priority: 1 });
+        expect(mockDataService.invoke).toHaveBeenCalledWith('abdmAcceptShareToken', { tokenId: 4 });
+    });
+
+    it('opens the chart instead of queueing when scan demographics are incomplete', async () => {
+        const token = { id: 5, token_no: 17, patient_name: 'NoMobile', age: null, gender: '', mobile: '' };
+        mockDataService.invoke.mockImplementation((endpoint: string) => {
+            if (endpoint === 'findPatientByAbha') return Promise.resolve(null);
+            if (endpoint === 'savePatient') return Promise.resolve({ lastInsertRowid: 22 });
+            return Promise.resolve(null);
+        });
+        vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+        await component.acceptShareToken(token);
+
+        expect(mockRouter.navigate).toHaveBeenCalledWith(['/patients', 22]);
+        expect(mockDataService.invoke).not.toHaveBeenCalledWith('abdmAcceptShareToken', expect.anything());
+    });
+
+    it('ignores Space while typing but accepts the oldest token when idle', async () => {
+        component.shareTokens = [{ id: 6, token_no: 18, patient_name: 'Ramesh' }];
+        const acceptSpy = vi.spyOn(component, 'acceptShareToken').mockResolvedValue(undefined);
+        const inInput = { key: ' ', target: { tagName: 'INPUT' }, preventDefault: vi.fn() } as any;
+        expect(component.acceptFirstTokenIfIdle(inInput)).toBe(false);
+        expect(acceptSpy).not.toHaveBeenCalled();
+
+        const idle = { key: ' ', target: { tagName: 'DIV' }, preventDefault: vi.fn() } as any;
+        expect(component.acceptFirstTokenIfIdle(idle)).toBe(true);
+        expect(idle.preventDefault).toHaveBeenCalled();
+        expect(acceptSpy).toHaveBeenCalledWith(component.shareTokens[0]);
+    });
+
     it('surfaces remove-from-queue failures in the in-app dialog instead of alert', async () => {
         vi.spyOn(window, 'confirm').mockReturnValue(true);
         mockDataService.invoke.mockRejectedValue(new Error('Cannot remove a queue entry with an active encounter'));
@@ -311,8 +390,7 @@ describe('QueueComponent', () => {
         expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
 
-    it('warns when admin starts a consultation with no active doctor on file', async () => {
-        mockAuthService.getUser.mockReturnValue({ role: 'admin', id: 99 });
+    it('warns when admin starts a consultation with no active doctor on file', async () => {        mockAuthService.getUser.mockReturnValue({ role: 'admin', id: 99 });
         mockDataService.invoke.mockImplementation((endpoint: string) => {
             if (endpoint === 'getDoctors') return Promise.resolve([]);
             return Promise.resolve(null);

@@ -589,5 +589,38 @@ describe('Clinical Safety, Practitioner Provenance & Actionable Triage', () => {
             const doctor = JSON.parse((db.prepare(`SELECT permissions FROM roles WHERE name = 'doctor'`).get() as any).permissions);
             expect(doctor).toContain('saveAllergy');
         });
+
+        it('numbers Scan & Share tokens daily and expires them', () => {
+            const first: any = service.receiveAbhaShare({ name: 'Ramesh', abhaAddress: 'ramesh@sbx' }, 20);
+            const second: any = service.receiveAbhaShare({ name: 'Sita', abhaAddress: 'sita@sbx' }, 20);
+            expect(second.token_no).toBe(first.token_no + 1);
+            expect(first.status).toBe('pending');
+
+            expect(() => service.receiveAbhaShare({ abhaAddress: 'nobody@sbx' }, 20))
+                .toThrow('patient name');
+
+            // Backdate the first token past expiry: it sweeps to expired.
+            db.prepare(`UPDATE abdm_share_tokens SET expires_at = datetime('now', '-1 minute') WHERE id = ?`)
+                .run(first.id);
+            const pending = service.getPendingShareTokens() as any[];
+            expect(pending.map((t) => t.id)).not.toContain(first.id);
+            expect(pending.map((t) => t.id)).toContain(second.id);
+            expect(db.prepare(`SELECT status FROM abdm_share_tokens WHERE id = ?`).get(first.id).status)
+                .toBe('expired');
+        });
+
+        it('accepts a token once and links patients by health ID', () => {
+            const token: any = service.receiveAbhaShare({ name: 'Ramesh', abhaAddress: 'ramesh@sbx' }, 20);
+            db.prepare(`INSERT INTO patients (uuid, name, mobile, age, gender, abha_address)
+                VALUES ('p-abha', 'Ramesh Kumar', '9876543210', 42, 'Male', 'RAMESH@sbx')`).run();
+
+            const found = service.findPatientByAbhaAddress('ramesh@sbx');
+            expect(found?.name).toBe('Ramesh Kumar');
+
+            const accepted: any = service.acceptShareToken(token.id, 20);
+            expect(accepted.status).toBe('accepted');
+            expect(() => service.acceptShareToken(token.id, 20)).toThrow('already handled');
+            expect(service.findPatientByAbhaAddress('  ')).toBeNull();
+        });
     });
 });

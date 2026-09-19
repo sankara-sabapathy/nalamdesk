@@ -1,5 +1,5 @@
 
-import { Component, OnInit, OnDestroy, signal } from '@angular/core';
+import { Component, HostListener, OnInit, OnDestroy, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -38,6 +38,23 @@ import { DoctorPickService } from '../shared/services/doctor-pick.service';
         </div>
 
         <!-- Main Card (Flex child takes remaining height) -->
+        <!-- Scan & Share dock: incoming ABHA tokens awaiting 1-click check-in -->
+        <div *ngIf="shareTokens.length > 0" class="mb-4 rounded-lg border border-blue-200 bg-blue-50/60 p-3">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-bold text-blue-800">Incoming Scans ({{ shareTokens.length }})</h3>
+            <span class="text-xs text-blue-600">Press Space or tap a token to check in</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button *ngFor="let t of shareTokens" (click)="acceptShareToken(t)"
+                    [disabled]="acceptingTokenId != null"
+                    class="bg-white border border-blue-200 hover:border-blue-500 hover:bg-blue-50 rounded-lg px-3 py-2 text-sm transition text-left shadow-sm disabled:opacity-50">
+              <span class="font-bold text-blue-800">[Token #{{ t.token_no }}]</span>
+              <span class="font-medium text-gray-800 ml-1">{{ t.patient_name }}</span>
+              <span class="text-gray-500 text-xs ml-1">{{ t.age || '-' }}/{{ t.gender || '-' }}</span>
+              <span *ngIf="t.abha_address" class="block font-mono text-xs text-blue-700 mt-0.5">{{ t.abha_address }}</span>
+            </button>
+          </div>
+        </div>
         <div class="card bg-white shadow-sm border border-gray-200 flex-1 overflow-hidden flex flex-col">
           <div class="card-body p-0 flex-1 overflow-y-auto relative">
             <div class="overflow-x-auto">
@@ -259,12 +276,107 @@ export class QueueComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.refreshQueue();
+    this.refreshShareTokens();
     // Poll every 30 seconds
     this.refreshIntervalId = setInterval(() => this.refreshQueue(), 30000);
+    // Scan & Share dock refreshes faster so accepted scans appear at once.
+    this.sharePollId = setInterval(() => this.refreshShareTokens(), 5000);
   }
 
   ngOnDestroy() {
     if (this.refreshIntervalId) clearInterval(this.refreshIntervalId);
+    if (this.sharePollId) clearInterval(this.sharePollId);
+  }
+
+  shareTokens: any[] = [];
+  sharePollId: any;
+  acceptingTokenId: number | null = null;
+
+  async refreshShareTokens() {
+    try {
+      const tokens = await this.dataService.invoke<any[]>('abdmGetShareTokens').catch(() => []);
+      this.shareTokens = tokens || [];
+    } catch (e) {
+      console.error('Failed to load share tokens', e);
+    }
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  onDocumentKeydown(event: KeyboardEvent) {
+    this.acceptFirstTokenIfIdle(event);
+  }
+
+  // Spacebar accepts the oldest pending scan when the receptionist is not
+  // typing, and no other modal owns the keyboard.
+  acceptFirstTokenIfIdle(event: KeyboardEvent): boolean {
+    if (event.key !== ' ') return false;
+    const target = event.target as HTMLElement | null;
+    const tag = (target?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable) return false;
+    if (this.showTriageModal || this.showVitalsModal || this.shareTokens.length === 0 || this.acceptingTokenId != null) return false;
+    event.preventDefault();
+    void this.acceptShareToken(this.shareTokens[0]);
+    return true;
+  }
+
+  async acceptShareToken(token: any) {
+    if (!token || this.acceptingTokenId != null) return;
+    this.acceptingTokenId = token.id;
+    try {
+      // Prefer an existing patient already linked to this health ID.
+      let patient = token.abha_address
+        ? await this.dataService.invoke<any>('findPatientByAbha', { abhaAddress: token.abha_address }).catch(() => null)
+        : null;
+      if (!patient) {
+        const created: any = await this.dataService.invoke<any>('savePatient', {
+          name: token.patient_name,
+          mobile: token.mobile || '',
+          age: token.age ?? null,
+          gender: token.gender || '',
+          abha_address: token.abha_address || null,
+          abha_name: token.abha_name || null
+        });
+        const newId = Number(created?.lastInsertRowid ?? created?.id);
+        if (!newId) throw new Error('Could not create the patient record.');
+        patient = { id: newId, name: token.patient_name, mobile: token.mobile || '', age: token.age ?? null, gender: token.gender || '' };
+      }
+      await this.addToQueueFromShare(patient, token);
+      await this.dataService.invoke('abdmAcceptShareToken', { tokenId: token.id });
+      await this.refreshShareTokens();
+    } catch (e) {
+      console.error('Failed to accept share token', e);
+      await this.dialogService.open({
+        title: 'Could not check in',
+        message: e instanceof Error && e.message ? e.message : 'Could not check in this token.',
+        type: 'error'
+      });
+    } finally {
+      this.acceptingTokenId = null;
+    }
+  }
+
+  private async addToQueueFromShare(patient: any, token: any) {
+    const alreadyQueued = (this.queue() || []).some((q: any) =>
+      Number(q.patient_id) === Number(patient.id) && q.status !== 'completed');
+    if (alreadyQueued) {
+      await this.dataService.invoke('abdmAcceptShareToken', { tokenId: token.id });
+      await this.refreshShareTokens();
+      return;
+    }
+    if (!this.patientServiceIsComplete(patient)) {
+      this.router.navigate(['/patients', patient.id]);
+      throw new Error(`${patient.name || 'This patient'} needs age, gender, and mobile completed before queueing. Opened their chart instead — the token stays pending.`);
+    }
+    await this.dataService.invoke<any>('addToQueue', { patientId: patient.id, priority: 1 });
+    await this.refreshQueue();
+  }
+
+  private patientServiceIsComplete(patient: any): boolean {
+    return !!patient
+      && !!String(patient.name || '').trim()
+      && !!String(patient.mobile || '').trim()
+      && !!String(patient.gender || '').trim()
+      && (patient.age != null && Number(patient.age) !== 0 || !!patient.dob);
   }
 
   goBack() {
